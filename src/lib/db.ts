@@ -513,6 +513,20 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_session_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_audit_logs (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          user_id INT UNSIGNED NULL,
+          actor_email VARCHAR(190) NOT NULL DEFAULT '',
+          action VARCHAR(40) NOT NULL DEFAULT '',
+          entity VARCHAR(40) NOT NULL DEFAULT '',
+          entity_id INT UNSIGNED NULL,
+          summary VARCHAR(255) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_audit_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -664,4 +678,45 @@ export async function deleteSessionByTokenHash(tokenHash: string): Promise<void>
 export async function deleteExpiredSessions(): Promise<void> {
   await ensureAuthSchema();
   await getPool().query("DELETE FROM crm_sessions WHERE expires_at <= CURRENT_TIMESTAMP");
+}
+
+// -------- audit log
+
+export interface AuditRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  user_id: number | null;
+  actor_email: string;
+  action: string;
+  entity: string;
+  entity_id: number | null;
+  summary: string;
+  created_at: Date;
+}
+
+export interface AuditEntry {
+  organizationId: number;
+  userId: number | null;
+  actorEmail: string;
+  action: string;
+  entity: string;
+  entityId?: number | null;
+  summary?: string;
+}
+
+export async function writeAudit(e: AuditEntry): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "INSERT INTO crm_audit_logs (organization_id, user_id, actor_email, action, entity, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [e.organizationId, e.userId, e.actorEmail.slice(0, 190), e.action.slice(0, 40), e.entity.slice(0, 40), e.entityId ?? null, (e.summary ?? "").slice(0, 255)]
+  );
+}
+
+export async function listAuditLogs(orgId: number, limit = 100): Promise<AuditRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<AuditRow[]>(
+    "SELECT * FROM crm_audit_logs WHERE organization_id = ? ORDER BY id DESC LIMIT ?",
+    [orgId, limit]
+  );
+  return rows;
 }

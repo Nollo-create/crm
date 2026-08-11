@@ -5,7 +5,8 @@
   "/login/page": "app/login/page.js",
   "/(crm)/companies/page": "app/(crm)/companies/page.js",
   "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
+  "/(crm)/settings/security/page": "app/(crm)/settings/security/page.js",
   "/(crm)/companies/[id]/page": "app/(crm)/companies/[id]/page.js",
-  "/(crm)/settings/users/page": "app/(crm)/settings/users/page.js",
-  "/(crm)/page": "app/(crm)/page.js"
+  "/(crm)/page": "app/(crm)/page.js",
+  "/(crm)/settings/users/page": "app/(crm)/settings/users/page.js"
 }

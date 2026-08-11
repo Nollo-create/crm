@@ -1,4 +1,4 @@
-exports.id=118,exports.ids=[118],exports.modules={28303:a=>{function b(a){var b=Error("Cannot find module '"+a+"'");throw b.code="MODULE_NOT_FOUND",b}b.keys=()=>[],b.resolve=b,b.id=28303,a.exports=b},35552:(a,b,c)=>{"use strict";c.d(b,{Bw:()=>g,C1:()=>l,Et:()=>v,Fg:()=>D,IP:()=>r,JT:()=>m,Kd:()=>w,MO:()=>t,PH:()=>p,RC:()=>n,RO:()=>y,_:()=>B,eK:()=>j,f8:()=>o,iG:()=>x,ik:()=>s,kF:()=>q,kl:()=>C,mm:()=>k,ro:()=>u,s3:()=>z});var d=c(29382);let e=globalThis;function f(){return e.__cmsPool||(e.__cmsPool=d.createPool({host:process.env.DB_HOST||"localhost",port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER||"",password:process.env.DB_PASSWORD||"",database:process.env.DB_NAME||"",waitForConnections:!0,connectionLimit:5,charset:"utf8mb4_general_ci"})),e.__cmsPool}async function g(){if(!process.env.DB_NAME)return!1;try{return await f().query("SELECT 1"),!0}catch{return!1}}async function h(a,b,c,d){let[e]=await a.query("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",[b,c]);0===Number(e[0]?.n??0)&&await a.query(`ALTER TABLE \`${b}\` ADD COLUMN ${d}`)}function i(){return e.__crmSchema||(e.__crmSchema=(async()=>{let a=f();await a.query(`
+exports.id=118,exports.ids=[118],exports.modules={28303:a=>{function b(a){var b=Error("Cannot find module '"+a+"'");throw b.code="MODULE_NOT_FOUND",b}b.keys=()=>[],b.resolve=b,b.id=28303,a.exports=b},35552:(a,b,c)=>{"use strict";c.d(b,{Bw:()=>g,C1:()=>l,Et:()=>v,Fg:()=>D,IP:()=>r,JT:()=>m,Kd:()=>w,MO:()=>t,PH:()=>p,RC:()=>n,RO:()=>y,_:()=>B,eK:()=>j,f8:()=>o,fs:()=>E,iG:()=>x,ik:()=>s,kF:()=>q,kl:()=>C,mm:()=>k,ro:()=>u,s3:()=>z});var d=c(29382);let e=globalThis;function f(){return e.__cmsPool||(e.__cmsPool=d.createPool({host:process.env.DB_HOST||"localhost",port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER||"",password:process.env.DB_PASSWORD||"",database:process.env.DB_NAME||"",waitForConnections:!0,connectionLimit:5,charset:"utf8mb4_general_ci"})),e.__cmsPool}async function g(){if(!process.env.DB_NAME)return!1;try{return await f().query("SELECT 1"),!0}catch{return!1}}async function h(a,b,c,d){let[e]=await a.query("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",[b,c]);0===Number(e[0]?.n??0)&&await a.query(`ALTER TABLE \`${b}\` ADD COLUMN ${d}`)}function i(){return e.__crmSchema||(e.__crmSchema=(async()=>{let a=f();await a.query(`
         CREATE TABLE IF NOT EXISTS crm_companies (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
           organization_id INT UNSIGNED NOT NULL DEFAULT 0,
@@ -97,4 +97,17 @@ exports.id=118,exports.ids=[118],exports.modules={28303:a=>{function b(a){var b=
           UNIQUE KEY uq_session_token (token_hash),
           INDEX idx_session_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-      `)})().catch(a=>{throw e.__crmAuthSchema=void 0,a})),e.__crmAuthSchema}async function B(){await A();let[a]=await f().query("SELECT COUNT(*) AS n FROM crm_users");return Number(a[0]?.n??0)}async function C(a){await A();let[b]=await f().query("SELECT * FROM crm_users WHERE id = ? LIMIT 1",[a]);return b[0]??null}async function D(a){await A();let[b]=await f().query("SELECT * FROM crm_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP LIMIT 1",[a]);return b[0]??null}}};
+      `),await a.query(`
+        CREATE TABLE IF NOT EXISTS crm_audit_logs (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          user_id INT UNSIGNED NULL,
+          actor_email VARCHAR(190) NOT NULL DEFAULT '',
+          action VARCHAR(40) NOT NULL DEFAULT '',
+          entity VARCHAR(40) NOT NULL DEFAULT '',
+          entity_id INT UNSIGNED NULL,
+          summary VARCHAR(255) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_audit_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `)})().catch(a=>{throw e.__crmAuthSchema=void 0,a})),e.__crmAuthSchema}async function B(){await A();let[a]=await f().query("SELECT COUNT(*) AS n FROM crm_users");return Number(a[0]?.n??0)}async function C(a){await A();let[b]=await f().query("SELECT * FROM crm_users WHERE id = ? LIMIT 1",[a]);return b[0]??null}async function D(a){await A();let[b]=await f().query("SELECT * FROM crm_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP LIMIT 1",[a]);return b[0]??null}async function E(a){await A(),await f().query("INSERT INTO crm_audit_logs (organization_id, user_id, actor_email, action, entity, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",[a.organizationId,a.userId,a.actorEmail.slice(0,190),a.action.slice(0,40),a.entity.slice(0,40),a.entityId??null,(a.summary??"").slice(0,255)])}}};

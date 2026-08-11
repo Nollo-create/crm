@@ -119,7 +119,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Roles & Permissions", href: "/settings/roles", icon: Shield, soon: true },
       { label: "Integrations", href: "/settings/integrations", icon: Plug, soon: true },
       { label: "Billing", href: "/settings/billing", icon: CreditCard, soon: true },
-      { label: "Security", href: "/settings/security", icon: KeyRound, soon: true },
+      { label: "Security", href: "/settings/security", icon: KeyRound },
       { label: "API", href: "/settings/api", icon: Settings, soon: true },
     ],
   },

@@ -5,7 +5,8 @@
   "/login/page": "/login",
   "/(crm)/companies/page": "/companies",
   "/(crm)/pipeline/page": "/pipeline",
+  "/(crm)/settings/security/page": "/settings/security",
   "/(crm)/companies/[id]/page": "/companies/[id]",
-  "/(crm)/settings/users/page": "/settings/users",
-  "/(crm)/page": "/"
+  "/(crm)/page": "/",
+  "/(crm)/settings/users/page": "/settings/users"
 }

@@ -13,6 +13,7 @@ import {
 import { requireSession } from "@/lib/auth/session";
 import { can, isRole } from "@/lib/auth/rbac";
 import { inviteRoleError, roleChangeError, statusChangeError } from "@/lib/auth/user-admin";
+import { recordAudit } from "@/lib/auth/audit";
 import { hashPassword } from "@/lib/auth/password";
 
 export interface OrgUser {
@@ -57,12 +58,14 @@ export async function inviteUserAction(input: { name: string; email: string; rol
   const roleErr = inviteRoleError(session.role, role);
   if (roleErr) return { error: roleErr };
 
+  let userId: number;
   try {
     const passwordHash = await hashPassword(input.password);
-    await createUser({ organizationId: session.organizationId, email, name: input.name.trim(), passwordHash, role });
+    userId = await createUser({ organizationId: session.organizationId, email, name: input.name.trim(), passwordHash, role });
   } catch {
     return { error: "A user with that email already exists." };
   }
+  await recordAudit(session, "invite", "user", userId, `${email} as ${role}`);
   revalidatePath("/settings/users");
   return {};
 }
@@ -83,6 +86,7 @@ export async function setUserRoleAction(userId: number, role: string): Promise<{
   if (err) return { error: err };
 
   await updateUserRole(session.organizationId, userId, role);
+  await recordAudit(session, "role_change", "user", userId, `${target.email} → ${role}`);
   revalidatePath("/settings/users");
   return {};
 }
@@ -103,6 +107,7 @@ export async function setUserStatusAction(userId: number, status: "active" | "di
   if (err) return { error: err };
 
   await setUserStatus(session.organizationId, userId, status);
+  await recordAudit(session, "status_change", "user", userId, `${target.email} → ${status}`);
   revalidatePath("/settings/users");
   return {};
 }

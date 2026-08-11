@@ -34,6 +34,7 @@ import {
 } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { recordAudit } from "@/lib/auth/audit";
 import { isStageId, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
@@ -173,9 +174,10 @@ export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
 }
 
 export async function bulkDeleteCompaniesAction(ids: number[]): Promise<{ error?: string }> {
-  const { organizationId, role } = await requireSession();
-  if (!can(role, "company:delete")) return { error: "Only admins can delete companies." };
-  await bulkDeleteCompanies(organizationId, ids);
+  const session = await requireSession();
+  if (!can(session.role, "company:delete")) return { error: "Only admins can delete companies." };
+  await bulkDeleteCompanies(session.organizationId, ids);
+  await recordAudit(session, "bulk_delete", "company", null, `${ids.length} companies`);
   revalidatePath("/companies");
   revalidatePath("/");
   return {};
@@ -191,9 +193,10 @@ export async function bulkSetStatusAction(ids: number[], status: string): Promis
 }
 
 export async function createCompanyAction(input: CompanyInput): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
   if (!input?.name?.trim()) return { error: "The company needs a name." };
-  const id = await createCompany(organizationId, { ...input, name: input.name.trim() });
+  const id = await createCompany(session.organizationId, { ...input, name: input.name.trim() });
+  await recordAudit(session, "create", "company", id, input.name.trim());
   revalidatePath("/companies");
   revalidatePath("/");
   return { id };
@@ -209,9 +212,10 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
 }
 
 export async function deleteCompanyAction(id: number): Promise<{ error?: string }> {
-  const { organizationId, role } = await requireSession();
-  if (!can(role, "company:delete")) return { error: "Only admins can delete companies." };
-  await deleteCompany(organizationId, id);
+  const session = await requireSession();
+  if (!can(session.role, "company:delete")) return { error: "Only admins can delete companies." };
+  await deleteCompany(session.organizationId, id);
+  await recordAudit(session, "delete", "company", id);
   revalidatePath("/companies");
   revalidatePath("/");
   return {};
