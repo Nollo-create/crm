@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2 } from "lucide-react";
 import {
   listCompaniesTableAction,
@@ -16,6 +15,7 @@ import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CompanyDrawer } from "@/components/crm/company-drawer";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,6 @@ function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } 
 type SortKey = "name" | "industry" | "contacts" | "openValue" | "score" | "health" | "lastActivity";
 
 export default function CompaniesPage() {
-  const router = useRouter();
   const [all, setAll] = useState<CompanyRowView[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -46,6 +45,7 @@ export default function CompaniesPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
+  const [peek, setPeek] = useState<number | null>(null);
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -259,8 +259,8 @@ export default function CompaniesPage() {
                   return (
                     <tr
                       key={c.id}
-                      onClick={() => router.push(`/companies/${c.id}`)}
-                      className={cn("cursor-pointer transition-colors hover:bg-secondary/50", selected.has(c.id) && "bg-electric/[0.05]")}
+                      onClick={() => setPeek(c.id)}
+                      className={cn("cursor-pointer transition-colors hover:bg-secondary/50", (selected.has(c.id) || peek === c.id) && "bg-electric/[0.05]")}
                     >
                       <td className={cn("px-3", pad)} onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleRow(c.id)} className="h-3.5 w-3.5 accent-electric" />
@@ -293,6 +293,8 @@ export default function CompaniesPage() {
           </table>
         </div>
       </Card>
+
+      <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={load} />
     </div>
   );
 }
