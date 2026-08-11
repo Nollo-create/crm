@@ -5,16 +5,19 @@
   "/sso/callback/route": "/sso/callback",
   "/login/page": "/login",
   "/setup/page": "/setup",
-  "/(crm)/companies/page": "/companies",
-  "/(crm)/contacts/page": "/contacts",
   "/(crm)/activities/page": "/activities",
   "/(crm)/customers/page": "/customers",
+  "/(crm)/companies/page": "/companies",
+  "/(crm)/calls/page": "/calls",
+  "/(crm)/contacts/page": "/contacts",
   "/(crm)/leads/page": "/leads",
+  "/(crm)/meetings/page": "/meetings",
   "/(crm)/deals/page": "/deals",
+  "/(crm)/emails/page": "/emails",
   "/(crm)/pipeline/page": "/pipeline",
   "/(crm)/tasks/page": "/tasks",
   "/(crm)/companies/[id]/page": "/companies/[id]",
+  "/(crm)/page": "/",
   "/(crm)/settings/security/page": "/settings/security",
-  "/(crm)/settings/users/page": "/settings/users",
-  "/(crm)/page": "/"
+  "/(crm)/settings/users/page": "/settings/users"
 }
