@@ -52,6 +52,9 @@ export default function LeadsPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [showAdd, setShowAdd] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowAdd(true);
+  }, []);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
 

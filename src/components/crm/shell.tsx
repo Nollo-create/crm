@@ -3,12 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeft, Search, Bell, Plus, Menu, LogOut } from "lucide-react";
+import { PanelLeft, Search, Plus, LogOut, Building2, Users, Target, Handshake, CheckSquare, Settings, CreditCard, KeyRound } from "lucide-react";
 import { crmNav } from "@/lib/crm/nav";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
 import { CommandPalette } from "@/components/crm/command-palette";
+import { NotificationsBell } from "@/components/crm/notifications-bell";
 import { BottomNav } from "@/components/crm/bottom-nav";
 import { Logo, BrandMark } from "@/components/crm/logo";
+
+const CREATE_ITEMS = [
+  { label: "New company", href: "/companies?new=1", icon: Building2 },
+  { label: "New contact", href: "/contacts?new=1", icon: Users },
+  { label: "New lead", href: "/leads?new=1", icon: Target },
+  { label: "New deal", href: "/deals?new=1", icon: Handshake },
+  { label: "New task", href: "/tasks?new=1", icon: CheckSquare },
+];
 import { Drawer, DrawerHeader, DrawerBody } from "@/components/ui/drawer";
 import { logoutAction } from "@/lib/actions/auth";
 import { cn } from "@/lib/utils";
@@ -26,6 +35,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
+  const [createMenu, setCreateMenu] = useState(false);
   const initial = (user.name || user.email || "?").slice(0, 1).toUpperCase();
 
   useEffect(() => {
@@ -114,16 +124,36 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
             <Search size={18} />
           </button>
           <div className="flex items-center gap-1">
-            <Link
-              href="/companies"
-              className="hidden h-8 w-8 place-items-center rounded-lg bg-electric text-white transition-colors hover:bg-electric/90 md:grid"
-              title="New company"
-            >
-              <Plus size={16} />
-            </Link>
-            <button disabled className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-lg text-muted-foreground/40" title="Notifications — coming soon" aria-label="Notifications (coming soon)">
-              <Bell size={16} />
-            </button>
+            {/* Quick create */}
+            <div className="relative">
+              <button
+                onClick={() => setCreateMenu((v) => !v)}
+                className="grid h-8 w-8 place-items-center rounded-lg bg-electric text-white transition-colors hover:bg-electric/90"
+                title="Create new"
+                aria-label="Create new"
+              >
+                <Plus size={16} />
+              </button>
+              {createMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setCreateMenu(false)} />
+                  <div className="absolute right-0 z-50 mt-1.5 w-48 rounded-lg border border-border bg-popover p-1 shadow-pop">
+                    <p className="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground/60">Create</p>
+                    {CREATE_ITEMS.map((c) => (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        onClick={() => setCreateMenu(false)}
+                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <c.icon size={15} className="shrink-0 text-muted-foreground" /> {c.label}
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <NotificationsBell />
             <ThemeToggle />
             <div className="relative ml-1">
               <button
@@ -143,6 +173,21 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
                       <p className="truncate text-2xs text-muted-foreground">{user.email}</p>
                       <span className="mt-1.5 inline-block rounded bg-secondary px-1.5 py-0.5 text-2xs capitalize text-muted-foreground">{user.role}</span>
                     </div>
+                    <div className="my-1 border-t border-border" />
+                    {[
+                      { label: "Settings", href: "/settings/org", icon: Settings },
+                      { label: "Billing", href: "/settings/billing", icon: CreditCard },
+                      { label: "API keys", href: "/settings/api", icon: KeyRound },
+                    ].map((m) => (
+                      <Link
+                        key={m.href}
+                        href={m.href}
+                        onClick={() => setUserMenu(false)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <m.icon size={14} /> {m.label}
+                      </Link>
+                    ))}
                     <div className="my-1 border-t border-border" />
                     <form action={logoutAction}>
                       <button

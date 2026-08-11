@@ -70,6 +70,9 @@ export default function CompaniesPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowCreate(true);
+  }, []);
   const [peek, setPeek] = useState<number | null>(null);
   const [cols, setCols] = useState<Record<ColKey, boolean>>(allColsVisible);
   const [colMenu, setColMenu] = useState(false);

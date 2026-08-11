@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Building2, LayoutDashboard, GitBranch, Plus, CornerDownLeft, Loader2 } from "lucide-react";
+import { Search, Building2, Users, Target, Handshake, CheckSquare, Plus, CornerDownLeft, Loader2 } from "lucide-react";
 import { searchCompaniesAction, type SearchHit } from "@/lib/actions/crm";
+import { crmNav } from "@/lib/crm/nav";
 import { cn } from "@/lib/utils";
 
 type Icon = ComponentType<{ size?: number; className?: string }>;
@@ -17,12 +18,21 @@ interface FlatItem {
   href: string;
 }
 
-const COMMANDS: FlatItem[] = [
-  { key: "nav-dash", group: "Navigate", label: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { key: "nav-companies", group: "Navigate", label: "Companies", icon: Building2, href: "/companies" },
-  { key: "nav-pipeline", group: "Navigate", label: "Pipeline", icon: GitBranch, href: "/pipeline" },
-  { key: "new-company", group: "Create", label: "New company", icon: Plus, href: "/companies" },
+// Every real module is jumpable (built from the one nav source of truth; `soon`
+// items are skipped since they lead nowhere yet), plus quick-create shortcuts.
+const NAV_COMMANDS: FlatItem[] = crmNav.flatMap((g) =>
+  g.items
+    .filter((it) => !it.soon)
+    .map((it) => ({ key: `nav-${it.href}`, group: "Navigate", label: it.label, sub: g.title, icon: it.icon, href: it.href }))
+);
+const CREATE_COMMANDS: FlatItem[] = [
+  { key: "new-company", group: "Create", label: "New company", icon: Building2, href: "/companies?new=1" },
+  { key: "new-contact", group: "Create", label: "New contact", icon: Users, href: "/contacts?new=1" },
+  { key: "new-lead", group: "Create", label: "New lead", icon: Target, href: "/leads?new=1" },
+  { key: "new-deal", group: "Create", label: "New deal", icon: Handshake, href: "/deals?new=1" },
+  { key: "new-task", group: "Create", label: "New task", icon: CheckSquare, href: "/tasks?new=1" },
 ];
+const COMMANDS: FlatItem[] = [...NAV_COMMANDS, ...CREATE_COMMANDS];
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -114,7 +124,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Search companies or run a command…"
+            placeholder="Search modules, companies, or create…"
             className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {searching && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
