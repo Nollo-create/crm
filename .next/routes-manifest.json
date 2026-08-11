@@ -54,6 +54,12 @@
       "namedRegex": "^/contacts(?:/)?$"
     },
     {
+      "page": "/deals",
+      "regex": "^/deals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/deals(?:/)?$"
+    },
+    {
       "page": "/leads",
       "regex": "^/leads(?:/)?$",
       "routeKeys": {},
@@ -100,6 +106,12 @@
       "regex": "^/sso/start(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/sso/start(?:/)?$"
+    },
+    {
+      "page": "/tasks",
+      "regex": "^/tasks(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/tasks(?:/)?$"
     }
   ],
   "dataRoutes": [],

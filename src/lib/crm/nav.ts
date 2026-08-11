@@ -65,7 +65,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Pipeline", href: "/pipeline", icon: GitBranch },
       { label: "Contacts", href: "/contacts", icon: Users },
       { label: "Leads", href: "/leads", icon: Target },
-      { label: "Deals", href: "/deals", icon: Handshake, soon: true },
+      { label: "Deals", href: "/deals", icon: Handshake },
       { label: "Customers", href: "/customers", icon: UserCheck, soon: true },
     ],
   },
@@ -73,7 +73,7 @@ export const crmNav: CrmNavGroup[] = [
     title: "Sales",
     items: [
       { label: "Activities", href: "/activities", icon: Activity, soon: true },
-      { label: "Tasks", href: "/tasks", icon: CheckSquare, soon: true },
+      { label: "Tasks", href: "/tasks", icon: CheckSquare },
       { label: "Meetings", href: "/meetings", icon: CalendarDays, soon: true },
       { label: "Calls", href: "/calls", icon: Phone, soon: true },
       { label: "Emails", href: "/emails", icon: Mail, soon: true },

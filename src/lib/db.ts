@@ -4,6 +4,8 @@ import { leadScore } from "@/lib/crm/pipeline";
 import { buildCompanyOrderBy, pageBounds } from "@/lib/crm/company-query";
 import { buildContactOrderBy } from "@/lib/crm/contact-query";
 import { buildLeadOrderBy } from "@/lib/crm/leads";
+import { buildDealOrderBy } from "@/lib/crm/deal-query";
+import { buildTaskOrderBy } from "@/lib/crm/tasks";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -142,6 +144,21 @@ export function ensureSchema(): Promise<void> {
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_lead_org (organization_id, lead_score),
           INDEX idx_lead_status (organization_id, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_tasks (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          company_id INT UNSIGNED NULL,
+          title VARCHAR(300) NOT NULL DEFAULT '',
+          notes VARCHAR(500) NOT NULL DEFAULT '',
+          due_date DATE NULL,
+          priority VARCHAR(10) NOT NULL DEFAULT 'normal',
+          done TINYINT(1) NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_task_org (organization_id, done, due_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
@@ -553,6 +570,51 @@ export async function deleteDeal(orgId: number, id: number): Promise<void> {
   await getPool().query("DELETE FROM crm_deals WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
+export interface DealStatsRow extends DealRow {
+  company_name: string;
+}
+
+export interface DealsPageResult {
+  rows: DealStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/** One page of the cross-company deals list, joined to the company, filtered/
+ *  sorted/counted server-side. Sort is allowlisted (buildDealOrderBy). */
+export async function listDealsPage(
+  orgId: number,
+  opts: { q?: string; stage?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<DealsPageResult> {
+  await ensureSchema();
+  const where: string[] = ["d.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("(d.title LIKE ? OR co.name LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like);
+  }
+  if (opts.stage) {
+    where.push("d.stage = ?");
+    params.push(opts.stage);
+  }
+  const joinSql = "FROM crm_deals d JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildDealOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<DealStatsRow[]>(
+    `SELECT d.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return { rows, total, page, pageCount };
+}
+
 // --------------------------------------------------------------- activities
 
 export interface ActivityInput {
@@ -742,6 +804,94 @@ export async function convertLead(orgId: number, id: number): Promise<number | n
   } finally {
     conn.release();
   }
+}
+
+// -------------------------------------------------------------------- tasks
+
+export interface TaskRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  company_id: number | null;
+  title: string;
+  notes: string;
+  due_date: Date | null;
+  priority: string;
+  done: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface TaskStatsRow extends TaskRow {
+  company_name: string | null;
+}
+
+export interface TaskInput {
+  title: string;
+  notes?: string;
+  dueDate?: string | null;
+  priority?: string;
+  companyId?: number | null;
+}
+
+export async function createTask(orgId: number, t: TaskInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_tasks (organization_id, company_id, title, notes, due_date, priority) VALUES (?, ?, ?, ?, ?, ?)`,
+    [orgId, t.companyId ?? null, t.title.slice(0, 300), (t.notes ?? "").slice(0, 500), t.dueDate || null, (t.priority ?? "normal").slice(0, 10)]
+  );
+  return res.insertId;
+}
+
+export interface TasksPageResult {
+  rows: TaskStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function listTasksPage(
+  orgId: number,
+  opts: { q?: string; done?: boolean; priority?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<TasksPageResult> {
+  await ensureSchema();
+  const where: string[] = ["t.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("t.title LIKE ?");
+    params.push(`%${opts.q}%`);
+  }
+  if (opts.done !== undefined) {
+    where.push("t.done = ?");
+    params.push(opts.done ? 1 : 0);
+  }
+  if (opts.priority) {
+    where.push("t.priority = ?");
+    params.push(opts.priority);
+  }
+  const joinSql = "FROM crm_tasks t LEFT JOIN crm_companies co ON co.id = t.company_id AND co.organization_id = t.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildTaskOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<TaskStatsRow[]>(
+    `SELECT t.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return { rows, total, page, pageCount };
+}
+
+export async function setTaskDone(orgId: number, id: number, done: boolean): Promise<void> {
+  await ensureSchema();
+  await getPool().query("UPDATE crm_tasks SET done = ? WHERE id = ? AND organization_id = ?", [done ? 1 : 0, id, orgId]);
+}
+
+export async function deleteTask(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_tasks WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 // ====================================================================

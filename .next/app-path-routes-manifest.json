@@ -5,12 +5,14 @@
   "/sso/start/route": "/sso/start",
   "/setup/page": "/setup",
   "/login/page": "/login",
-  "/(crm)/leads/page": "/leads",
   "/(crm)/companies/page": "/companies",
+  "/(crm)/leads/page": "/leads",
   "/(crm)/contacts/page": "/contacts",
+  "/(crm)/deals/page": "/deals",
   "/(crm)/pipeline/page": "/pipeline",
   "/(crm)/companies/[id]/page": "/companies/[id]",
-  "/(crm)/settings/users/page": "/settings/users",
   "/(crm)/settings/security/page": "/settings/security",
-  "/(crm)/page": "/"
+  "/(crm)/tasks/page": "/tasks",
+  "/(crm)/page": "/",
+  "/(crm)/settings/users/page": "/settings/users"
 }

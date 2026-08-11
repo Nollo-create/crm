@@ -22,8 +22,10 @@ import {
   type ContactStatsRow,
   createDeal,
   listDeals,
+  listDealsPage,
   updateDeal,
   deleteDeal,
+  type DealStatsRow,
   addActivity,
   listActivities,
   type CompanyRow,
@@ -449,4 +451,36 @@ export async function boardAction(): Promise<BoardDeal[]> {
   const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId)]);
   const names = new Map(companyRows.map((c) => [c.id, c.name]));
   return dealRows.map((r) => ({ ...toDeal(r), companyName: names.get(r.company_id) ?? "—" }));
+}
+
+export interface DealsPage {
+  rows: BoardDeal[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function dealsPageAction(opts: {
+  q?: string;
+  stage?: string;
+  sortKey: string;
+  sortDir: 1 | -1;
+  page: number;
+  pageSize: number;
+}): Promise<DealsPage> {
+  const { organizationId } = await requireSession();
+  const res = await listDealsPage(organizationId, {
+    q: opts.q?.trim() || undefined,
+    stage: opts.stage || undefined,
+    sortKey: opts.sortKey,
+    sortDir: opts.sortDir,
+    page: opts.page,
+    pageSize: opts.pageSize,
+  });
+  return {
+    rows: res.rows.map((r: DealStatsRow) => ({ ...toDeal(r), companyName: r.company_name })),
+    total: res.total,
+    page: res.page,
+    pageCount: res.pageCount,
+  };
 }
