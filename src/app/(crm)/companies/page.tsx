@@ -15,6 +15,7 @@ import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { CompanyDrawer } from "@/components/crm/company-drawer";
 import { BUILTIN_VIEWS, activeViewId, makeView, normalizeViews, type CompanyView, type CompanySortKey, type ViewState } from "@/lib/crm/views";
 import { eur, timeAgo } from "@/lib/format";
@@ -40,6 +41,7 @@ function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } 
 type SortKey = CompanySortKey;
 
 export default function CompaniesPage() {
+  const { toast } = useToast();
   const [all, setAll] = useState<CompanyRowView[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -149,24 +151,33 @@ export default function CompaniesPage() {
       status: form.status, accountManager: form.accountManager, industryMatch: form.industryMatch,
     });
     setBusy(false);
-    if (res.error) return;
+    if (res.error) {
+      toast(res.error, { tone: "error" });
+      return;
+    }
+    toast(`${form.name.trim()} added`, { tone: "success" });
     setForm(empty);
     setShowCreate(false);
     void load();
   }
 
   async function bulkDelete() {
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${selected.size} companies and all their records?`)) return;
+    const n = selected.size;
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${n} ${n === 1 ? "company" : "companies"} and all their records?`)) return;
     setBulkBusy(true);
     await bulkDeleteCompaniesAction([...selected]);
     setBulkBusy(false);
+    toast(`${n} ${n === 1 ? "company" : "companies"} deleted`, { tone: "success" });
     void load();
   }
   async function bulkStatus(s: string) {
     if (!s) return;
+    const n = selected.size;
     setBulkBusy(true);
-    await bulkSetStatusAction([...selected], s);
+    const r = await bulkSetStatusAction([...selected], s);
     setBulkBusy(false);
+    if (r.error) toast(r.error, { tone: "error" });
+    else toast(`${n} ${n === 1 ? "company" : "companies"} set to ${STATUS_LABEL[s] ?? s}`, { tone: "success" });
     void load();
   }
   function exportCsv() {

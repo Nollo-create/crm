@@ -10,6 +10,7 @@ import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,7 @@ const dot = (t: Tone) => (t === "emerald" ? "bg-emerald" : t === "danger" ? "bg-
  */
 export function CompanyDrawer({ id, onClose, onChanged }: { id: number | null; onClose: () => void; onChanged?: () => void }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [d, setD] = useState<CompanyDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -75,6 +77,7 @@ export function CompanyDrawer({ id, onClose, onChanged }: { id: number | null; o
       accountManager: c.accountManager, industryMatch: c.industryMatch,
     });
     setBusy(false);
+    toast(`${c.name} set to ${STATUS_LABEL[status] ?? status}`, { tone: "success" });
     await reload();
   }
   async function logNote() {
@@ -82,10 +85,13 @@ export function CompanyDrawer({ id, onClose, onChanged }: { id: number | null; o
     setBusy(true);
     const r = await addActivityAction({ companyId: d.company.id, type: "note", summary: note });
     setBusy(false);
-    if (!r.error) {
-      setNote("");
-      await reload();
+    if (r.error) {
+      toast(r.error, { tone: "error" });
+      return;
     }
+    toast("Activity logged", { tone: "success" });
+    setNote("");
+    await reload();
   }
 
   const c = d?.company;

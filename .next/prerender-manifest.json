@@ -26,30 +26,6 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/companies": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/companies",
-      "dataRoute": "/companies.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/pipeline": {
       "experimentalBypassFor": [
         {
@@ -73,13 +49,37 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
+    },
+    "/companies": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/companies",
+      "dataRoute": "/companies.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "74fadc17a4d07fd8e8a0050690ace9ab",
-    "previewModeSigningKey": "8e29d29732a3fecf3d642716dbe5bb0501f93c4bbb6268b24981cc623fa8c6f6",
-    "previewModeEncryptionKey": "f0fb849496ac3da0ddd23912dd256b0b5a40f79443b70e62cec711968350bbd3"
+    "previewModeId": "baf9431343e4ad16ef2dd267b3ae42cd",
+    "previewModeSigningKey": "fe4b858f30c47772fd9f6aee5a486082db58aa1ef6db63a8ea89221461e9072b",
+    "previewModeEncryptionKey": "4879684276b00663911cc975248c47dc5373e5639a6f6f2750154097dfd40cf1"
   }
 }
