@@ -319,8 +319,8 @@ export default function CompaniesPage() {
         </div>
       )}
 
-      {/* Table */}
-      <Card className="overflow-hidden p-0">
+      {/* Table (desktop) */}
+      <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
@@ -391,6 +391,61 @@ export default function CompaniesPage() {
           </table>
         </div>
       </Card>
+
+      {/* Card list (mobile) */}
+      <div className="space-y-2 md:hidden">
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[74px] w-full rounded-xl" />)
+        ) : shown.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+            {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
+          </p>
+        ) : (
+          shown.map((c) => {
+            const h = health(c);
+            const sc = score(c);
+            return (
+              <button
+                key={c.id}
+                onClick={() => setPeek(c.id)}
+                className={cn(
+                  "w-full rounded-xl border border-border bg-card p-3 text-left transition-colors active:bg-secondary/50",
+                  peek === c.id && "border-electric/50"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{c.name}</p>
+                    <p className="truncate text-2xs text-muted-foreground">{[c.industry, c.city].filter(Boolean).join(" · ") || "—"}</p>
+                  </div>
+                  <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
+                </div>
+                <div className="mt-2.5 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>
+                    {c.openValue ? <span className="font-medium tabular text-foreground">{eur(c.openValue)}</span> : "—"}
+                    <span className="ml-1 text-2xs">pipeline</span>
+                  </span>
+                  <span className={cn("rounded px-1.5 py-0.5 text-2xs font-semibold tabular", sc >= 75 ? "bg-emerald/10 text-emerald" : sc >= 50 ? "bg-warning/10 text-warning" : "bg-secondary text-muted-foreground")}>{sc}</span>
+                  <span className="ml-auto inline-flex items-center gap-1.5">
+                    <span className={cn("h-2 w-2 rounded-full", h.tone === "emerald" ? "bg-emerald" : h.tone === "danger" ? "bg-danger" : h.tone === "warning" ? "bg-warning" : "bg-muted-foreground")} />
+                    {h.label}
+                  </span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Mobile FAB — primary create action */}
+      <button
+        onClick={() => { setShowCreate(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+        className="fixed right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-electric text-white shadow-glow transition-transform active:scale-95 md:hidden"
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
+        aria-label="New company"
+      >
+        <Plus size={24} />
+      </button>
 
       <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={load} />
     </div>
