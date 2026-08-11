@@ -34,6 +34,19 @@ export async function dbHealth(): Promise<boolean> {
   }
 }
 
+/** Add a column only if it's missing — MySQL has no reliable ADD COLUMN IF NOT
+ *  EXISTS, so we check information_schema first. Idempotent for the existing prod
+ *  DB (which predates multi-tenancy). */
+async function ensureColumn(pool: mysql.Pool, table: string, column: string, ddl: string): Promise<void> {
+  const [rows] = await pool.query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+    [table, column]
+  );
+  if (Number(rows[0]?.n ?? 0) === 0) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`);
+  }
+}
+
 export function ensureSchema(): Promise<void> {
   if (!globalForDb.__crmSchema) {
     globalForDb.__crmSchema = (async () => {
@@ -41,6 +54,7 @@ export function ensureSchema(): Promise<void> {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_companies (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
           name VARCHAR(190) NOT NULL DEFAULT '',
           industry VARCHAR(120) NOT NULL DEFAULT '',
           city VARCHAR(120) NOT NULL DEFAULT '',
@@ -58,6 +72,7 @@ export function ensureSchema(): Promise<void> {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_contacts (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
           company_id INT UNSIGNED NOT NULL,
           name VARCHAR(190) NOT NULL DEFAULT '',
           role VARCHAR(120) NOT NULL DEFAULT '',
@@ -72,6 +87,7 @@ export function ensureSchema(): Promise<void> {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_deals (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
           company_id INT UNSIGNED NOT NULL,
           title VARCHAR(190) NOT NULL DEFAULT '',
           value INT UNSIGNED NOT NULL DEFAULT 0,
@@ -88,6 +104,7 @@ export function ensureSchema(): Promise<void> {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_activities (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
           company_id INT UNSIGNED NOT NULL,
           contact_id INT UNSIGNED NULL,
           type VARCHAR(20) NOT NULL DEFAULT 'note',
@@ -96,6 +113,12 @@ export function ensureSchema(): Promise<void> {
           INDEX idx_activity_company (company_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Multi-tenancy: add organization_id to tables that predate it (existing
+      // prod DB). New installs already have it from the CREATE statements above.
+      await ensureColumn(pool, "crm_companies", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_contacts", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_deals", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_activities", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -166,12 +189,13 @@ export interface CompanyInput {
   industryMatch?: boolean;
 }
 
-export async function createCompany(c: CompanyInput): Promise<number> {
+export async function createCompany(orgId: number, c: CompanyInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_companies (name, industry, city, website, employees, annual_value, status, account_manager, industry_match)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      orgId,
       c.name.slice(0, 190),
       (c.industry ?? "").slice(0, 120),
       (c.city ?? "").slice(0, 120),
@@ -186,10 +210,10 @@ export async function createCompany(c: CompanyInput): Promise<number> {
   return res.insertId;
 }
 
-export async function listCompanies(opts: { q?: string; status?: string } = {}): Promise<CompanyRow[]> {
+export async function listCompanies(orgId: number, opts: { q?: string; status?: string } = {}): Promise<CompanyRow[]> {
   await ensureSchema();
-  const where: string[] = [];
-  const params: (string | number)[] = [];
+  const where: string[] = ["organization_id = ?"];
+  const params: (string | number)[] = [orgId];
   if (opts.q) {
     where.push("(name LIKE ? OR industry LIKE ? OR city LIKE ?)");
     const like = `%${opts.q}%`;
@@ -200,22 +224,25 @@ export async function listCompanies(opts: { q?: string; status?: string } = {}):
     params.push(opts.status);
   }
   const [rows] = await getPool().query<CompanyRow[]>(
-    `SELECT * FROM crm_companies ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC LIMIT 500`,
+    `SELECT * FROM crm_companies WHERE ${where.join(" AND ")} ORDER BY updated_at DESC LIMIT 500`,
     params
   );
   return rows;
 }
 
-export async function getCompany(id: number): Promise<CompanyRow | null> {
+export async function getCompany(orgId: number, id: number): Promise<CompanyRow | null> {
   await ensureSchema();
-  const [rows] = await getPool().query<CompanyRow[]>("SELECT * FROM crm_companies WHERE id = ? LIMIT 1", [id]);
+  const [rows] = await getPool().query<CompanyRow[]>(
+    "SELECT * FROM crm_companies WHERE id = ? AND organization_id = ? LIMIT 1",
+    [id, orgId]
+  );
   return rows[0] ?? null;
 }
 
-export async function updateCompany(id: number, c: CompanyInput): Promise<void> {
+export async function updateCompany(orgId: number, id: number, c: CompanyInput): Promise<void> {
   await ensureSchema();
   await getPool().query(
-    `UPDATE crm_companies SET name=?, industry=?, city=?, website=?, employees=?, annual_value=?, status=?, account_manager=?, industry_match=? WHERE id=?`,
+    `UPDATE crm_companies SET name=?, industry=?, city=?, website=?, employees=?, annual_value=?, status=?, account_manager=?, industry_match=? WHERE id=? AND organization_id=?`,
     [
       c.name.slice(0, 190),
       (c.industry ?? "").slice(0, 120),
@@ -227,17 +254,18 @@ export async function updateCompany(id: number, c: CompanyInput): Promise<void> 
       (c.accountManager ?? "").slice(0, 120),
       c.industryMatch ? 1 : 0,
       id,
+      orgId,
     ]
   );
 }
 
-export async function deleteCompany(id: number): Promise<void> {
+export async function deleteCompany(orgId: number, id: number): Promise<void> {
   await ensureSchema();
   const pool = getPool();
-  await pool.query("DELETE FROM crm_activities WHERE company_id = ?", [id]);
-  await pool.query("DELETE FROM crm_deals WHERE company_id = ?", [id]);
-  await pool.query("DELETE FROM crm_contacts WHERE company_id = ?", [id]);
-  await pool.query("DELETE FROM crm_companies WHERE id = ?", [id]);
+  await pool.query("DELETE FROM crm_activities WHERE company_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("DELETE FROM crm_deals WHERE company_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("DELETE FROM crm_contacts WHERE company_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("DELETE FROM crm_companies WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 export interface CompanyStatsRow extends CompanyRow {
@@ -250,10 +278,10 @@ export interface CompanyStatsRow extends CompanyRow {
 /** Companies + per-row aggregates for the table (contacts, open deals + value,
  *  last activity). Subqueries are fine at this scale (≤500 rows); server-side
  *  pagination is a scale-up item. */
-export async function listCompaniesWithStats(opts: { q?: string; status?: string } = {}): Promise<CompanyStatsRow[]> {
+export async function listCompaniesWithStats(orgId: number, opts: { q?: string; status?: string } = {}): Promise<CompanyStatsRow[]> {
   await ensureSchema();
-  const where: string[] = [];
-  const params: (string | number)[] = [];
+  const where: string[] = ["c.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
   if (opts.q) {
     where.push("(c.name LIKE ? OR c.industry LIKE ? OR c.city LIKE ?)");
     const like = `%${opts.q}%`;
@@ -270,31 +298,31 @@ export async function listCompaniesWithStats(opts: { q?: string; status?: string
        (SELECT COALESCE(SUM(d.value),0) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) AS open_value,
        (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) AS last_activity
        FROM crm_companies c
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      WHERE ${where.join(" AND ")}
       ORDER BY c.updated_at DESC LIMIT 500`,
     params
   );
   return rows;
 }
 
-export async function bulkDeleteCompanies(ids: number[]): Promise<void> {
+export async function bulkDeleteCompanies(orgId: number, ids: number[]): Promise<void> {
   const clean = ids.filter((n) => Number.isInteger(n)).slice(0, 500);
   if (!clean.length) return;
   await ensureSchema();
   const ph = clean.map(() => "?").join(",");
   const pool = getPool();
-  await pool.query(`DELETE FROM crm_activities WHERE company_id IN (${ph})`, clean);
-  await pool.query(`DELETE FROM crm_deals WHERE company_id IN (${ph})`, clean);
-  await pool.query(`DELETE FROM crm_contacts WHERE company_id IN (${ph})`, clean);
-  await pool.query(`DELETE FROM crm_companies WHERE id IN (${ph})`, clean);
+  await pool.query(`DELETE FROM crm_activities WHERE organization_id = ? AND company_id IN (${ph})`, [orgId, ...clean]);
+  await pool.query(`DELETE FROM crm_deals WHERE organization_id = ? AND company_id IN (${ph})`, [orgId, ...clean]);
+  await pool.query(`DELETE FROM crm_contacts WHERE organization_id = ? AND company_id IN (${ph})`, [orgId, ...clean]);
+  await pool.query(`DELETE FROM crm_companies WHERE organization_id = ? AND id IN (${ph})`, [orgId, ...clean]);
 }
 
-export async function bulkSetCompanyStatus(ids: number[], status: string): Promise<void> {
+export async function bulkSetCompanyStatus(orgId: number, ids: number[], status: string): Promise<void> {
   const clean = ids.filter((n) => Number.isInteger(n)).slice(0, 500);
   if (!clean.length) return;
   await ensureSchema();
   const ph = clean.map(() => "?").join(",");
-  await getPool().query(`UPDATE crm_companies SET status = ? WHERE id IN (${ph})`, [status.slice(0, 20), ...clean]);
+  await getPool().query(`UPDATE crm_companies SET status = ? WHERE organization_id = ? AND id IN (${ph})`, [status.slice(0, 20), orgId, ...clean]);
 }
 
 // ----------------------------------------------------------------- contacts
@@ -308,11 +336,12 @@ export interface ContactInput {
   influence?: string;
 }
 
-export async function addContact(companyId: number, c: ContactInput): Promise<number> {
+export async function addContact(orgId: number, companyId: number, c: ContactInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_contacts (company_id, name, role, email, phone, department, influence) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      orgId,
       companyId,
       c.name.slice(0, 190),
       (c.role ?? "").slice(0, 120),
@@ -325,18 +354,18 @@ export async function addContact(companyId: number, c: ContactInput): Promise<nu
   return res.insertId;
 }
 
-export async function listContacts(companyId: number): Promise<ContactRow[]> {
+export async function listContacts(orgId: number, companyId: number): Promise<ContactRow[]> {
   await ensureSchema();
   const [rows] = await getPool().query<ContactRow[]>(
-    "SELECT * FROM crm_contacts WHERE company_id = ? ORDER BY id ASC",
-    [companyId]
+    "SELECT * FROM crm_contacts WHERE company_id = ? AND organization_id = ? ORDER BY id ASC",
+    [companyId, orgId]
   );
   return rows;
 }
 
-export async function deleteContact(id: number): Promise<void> {
+export async function deleteContact(orgId: number, id: number): Promise<void> {
   await ensureSchema();
-  await getPool().query("DELETE FROM crm_contacts WHERE id = ?", [id]);
+  await getPool().query("DELETE FROM crm_contacts WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 // -------------------------------------------------------------------- deals
@@ -350,11 +379,12 @@ export interface DealInput {
   owner?: string;
 }
 
-export async function createDeal(companyId: number, d: DealInput): Promise<number> {
+export async function createDeal(orgId: number, companyId: number, d: DealInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_deals (company_id, title, value, stage, probability, expected_close, owner) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      orgId,
       companyId,
       d.title.slice(0, 190),
       d.value ?? 0,
@@ -367,20 +397,24 @@ export async function createDeal(companyId: number, d: DealInput): Promise<numbe
   return res.insertId;
 }
 
-export async function listDeals(opts: { companyId?: number } = {}): Promise<DealRow[]> {
+export async function listDeals(orgId: number, opts: { companyId?: number } = {}): Promise<DealRow[]> {
   await ensureSchema();
   if (opts.companyId != null) {
     const [rows] = await getPool().query<DealRow[]>(
-      "SELECT * FROM crm_deals WHERE company_id = ? ORDER BY updated_at DESC",
-      [opts.companyId]
+      "SELECT * FROM crm_deals WHERE organization_id = ? AND company_id = ? ORDER BY updated_at DESC",
+      [orgId, opts.companyId]
     );
     return rows;
   }
-  const [rows] = await getPool().query<DealRow[]>("SELECT * FROM crm_deals ORDER BY updated_at DESC LIMIT 1000");
+  const [rows] = await getPool().query<DealRow[]>(
+    "SELECT * FROM crm_deals WHERE organization_id = ? ORDER BY updated_at DESC LIMIT 1000",
+    [orgId]
+  );
   return rows;
 }
 
 export async function updateDeal(
+  orgId: number,
   id: number,
   patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string }
 ): Promise<void> {
@@ -394,13 +428,13 @@ export async function updateDeal(
   if (patch.expectedClose !== undefined) { sets.push("expected_close=?"); vals.push(patch.expectedClose || null); }
   if (patch.owner !== undefined) { sets.push("owner=?"); vals.push(patch.owner.slice(0, 120)); }
   if (!sets.length) return;
-  vals.push(id);
-  await getPool().query(`UPDATE crm_deals SET ${sets.join(", ")} WHERE id = ?`, vals);
+  vals.push(id, orgId);
+  await getPool().query(`UPDATE crm_deals SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`, vals);
 }
 
-export async function deleteDeal(id: number): Promise<void> {
+export async function deleteDeal(orgId: number, id: number): Promise<void> {
   await ensureSchema();
-  await getPool().query("DELETE FROM crm_deals WHERE id = ?", [id]);
+  await getPool().query("DELETE FROM crm_deals WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 // --------------------------------------------------------------- activities
@@ -412,20 +446,20 @@ export interface ActivityInput {
   summary: string;
 }
 
-export async function addActivity(a: ActivityInput): Promise<number> {
+export async function addActivity(orgId: number, a: ActivityInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_activities (company_id, contact_id, type, summary) VALUES (?, ?, ?, ?)`,
-    [a.companyId, a.contactId ?? null, (a.type ?? "note").slice(0, 20), a.summary.slice(0, 500)]
+    `INSERT INTO crm_activities (organization_id, company_id, contact_id, type, summary) VALUES (?, ?, ?, ?, ?)`,
+    [orgId, a.companyId, a.contactId ?? null, (a.type ?? "note").slice(0, 20), a.summary.slice(0, 500)]
   );
   return res.insertId;
 }
 
-export async function listActivities(companyId: number, limit = 50): Promise<ActivityRow[]> {
+export async function listActivities(orgId: number, companyId: number, limit = 50): Promise<ActivityRow[]> {
   await ensureSchema();
   const [rows] = await getPool().query<ActivityRow[]>(
-    "SELECT * FROM crm_activities WHERE company_id = ? ORDER BY id DESC LIMIT ?",
-    [companyId, limit]
+    "SELECT * FROM crm_activities WHERE company_id = ? AND organization_id = ? ORDER BY id DESC LIMIT ?",
+    [companyId, orgId, limit]
   );
   return rows;
 }

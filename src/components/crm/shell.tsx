@@ -3,20 +3,29 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeft, Search, Bell, Plus, Menu } from "lucide-react";
+import { PanelLeft, Search, Bell, Plus, Menu, LogOut } from "lucide-react";
 import { crmNav } from "@/lib/crm/nav";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
 import { CommandPalette } from "@/components/crm/command-palette";
 import { BottomNav } from "@/components/crm/bottom-nav";
 import { Drawer, DrawerHeader, DrawerBody } from "@/components/ui/drawer";
+import { logoutAction } from "@/lib/actions/auth";
 import { cn } from "@/lib/utils";
 
-export function Shell({ connected, children }: { connected: boolean; children: React.ReactNode }) {
+export interface ShellUser {
+  name: string;
+  email: string;
+  role: string;
+}
+
+export function Shell({ connected, user, children }: { connected: boolean; user: ShellUser; children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const [userMenu, setUserMenu] = useState(false);
+  const initial = (user.name || user.email || "?").slice(0, 1).toUpperCase();
 
   useEffect(() => {
     setCollapsed(localStorage.getItem("crm-sidebar") === "1");
@@ -123,9 +132,37 @@ export function Shell({ connected, children }: { connected: boolean; children: R
               <Bell size={16} />
             </button>
             <ThemeToggle />
-            <span className="ml-1 grid h-8 w-8 place-items-center rounded-full bg-royal/15 text-xs font-semibold text-royal" title="Account">
-              S
-            </span>
+            <div className="relative ml-1">
+              <button
+                onClick={() => setUserMenu((v) => !v)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-royal/15 text-xs font-semibold text-royal"
+                title={user.email}
+                aria-label="Account menu"
+              >
+                {initial}
+              </button>
+              {userMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setUserMenu(false)} />
+                  <div className="absolute right-0 z-50 mt-1.5 w-56 rounded-lg border border-border bg-popover p-1 shadow-pop">
+                    <div className="px-2 py-1.5">
+                      <p className="truncate text-sm font-medium">{user.name || "Account"}</p>
+                      <p className="truncate text-2xs text-muted-foreground">{user.email}</p>
+                      <span className="mt-1.5 inline-block rounded bg-secondary px-1.5 py-0.5 text-2xs capitalize text-muted-foreground">{user.role}</span>
+                    </div>
+                    <div className="my-1 border-t border-border" />
+                    <form action={logoutAction}>
+                      <button
+                        type="submit"
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <LogOut size={14} /> Sign out
+                      </button>
+                    </form>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
@@ -143,8 +180,20 @@ export function Shell({ connected, children }: { connected: boolean; children: R
             <span className="ml-1 text-muted-foreground">CRM</span>
           </p>
         </DrawerHeader>
-        <DrawerBody className="space-y-3 p-2">
+        <DrawerBody className="flex flex-col p-2">
           <SidebarNav collapsed={false} pathname={pathname} onNavigate={() => setMobileNav(false)} />
+          <div className="mt-auto border-t border-border pt-2">
+            <p className="truncate px-2 text-sm font-medium">{user.name || "Account"}</p>
+            <p className="truncate px-2 text-2xs text-muted-foreground">{user.email}</p>
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="mt-1.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <LogOut size={16} /> Sign out
+              </button>
+            </form>
+          </div>
         </DrawerBody>
       </Drawer>
 

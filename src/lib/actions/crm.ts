@@ -1,8 +1,8 @@
 "use server";
 
-// NOTE: no authentication yet — the CRM runs open until the Sajtpress SSO bridge
-// lands (next etapa). Keep the app private (cPanel Directory Privacy) and don't
-// load real customer data until then.
+// Every action runs as the signed-in user: requireSession() supplies the org,
+// and no query touches the DB without it (tenant isolation, BLUEPRINT §7). The
+// org is taken from the session — never from client input.
 
 import { revalidatePath } from "next/cache";
 import {
@@ -32,6 +32,7 @@ import {
   type ContactInput,
   type DealInput,
 } from "@/lib/db";
+import { requireSession } from "@/lib/auth/session";
 import { isStageId, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
@@ -128,7 +129,8 @@ function toActivity(r: ActivityRow): Activity {
 // ------------------------------------------------------------------ companies
 
 export async function listCompaniesAction(q = "", status = ""): Promise<Company[]> {
-  const rows = await listCompanies({ q: q.trim() || undefined, status: status || undefined });
+  const { organizationId } = await requireSession();
+  const rows = await listCompanies(organizationId, { q: q.trim() || undefined, status: status || undefined });
   return rows.map(toCompany);
 }
 
@@ -142,7 +144,8 @@ export interface CompanyRowView extends Company {
 const STATUSES = ["lead", "active", "customer", "at_risk", "lost"];
 
 export async function listCompaniesTableAction(q = "", status = ""): Promise<CompanyRowView[]> {
-  const rows = await listCompaniesWithStats({ q: q.trim() || undefined, status: status || undefined });
+  const { organizationId } = await requireSession();
+  const rows = await listCompaniesWithStats(organizationId, { q: q.trim() || undefined, status: status || undefined });
   return rows.map((r: CompanyStatsRow) => ({
     ...toCompany(r),
     contacts: Number(r.contacts),
@@ -161,44 +164,50 @@ export interface SearchHit {
 
 /** Lightweight company search for the command palette. */
 export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
+  const { organizationId } = await requireSession();
   const s = q.trim();
   if (!s) return [];
-  const rows = await listCompanies({ q: s });
+  const rows = await listCompanies(organizationId, { q: s });
   return rows.slice(0, 8).map((r) => ({ id: r.id, name: r.name, city: r.city, status: r.status }));
 }
 
 export async function bulkDeleteCompaniesAction(ids: number[]): Promise<void> {
-  await bulkDeleteCompanies(ids);
+  const { organizationId } = await requireSession();
+  await bulkDeleteCompanies(organizationId, ids);
   revalidatePath("/companies");
   revalidatePath("/");
 }
 
 export async function bulkSetStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!STATUSES.includes(status)) return { error: "Unknown status." };
-  await bulkSetCompanyStatus(ids, status);
+  await bulkSetCompanyStatus(organizationId, ids, status);
   revalidatePath("/companies");
   revalidatePath("/");
   return {};
 }
 
 export async function createCompanyAction(input: CompanyInput): Promise<{ id?: number; error?: string }> {
+  const { organizationId } = await requireSession();
   if (!input?.name?.trim()) return { error: "The company needs a name." };
-  const id = await createCompany({ ...input, name: input.name.trim() });
+  const id = await createCompany(organizationId, { ...input, name: input.name.trim() });
   revalidatePath("/companies");
   revalidatePath("/");
   return { id };
 }
 
 export async function updateCompanyAction(id: number, input: CompanyInput): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!input?.name?.trim()) return { error: "The company needs a name." };
-  await updateCompany(id, { ...input, name: input.name.trim() });
+  await updateCompany(organizationId, id, { ...input, name: input.name.trim() });
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
   return {};
 }
 
 export async function deleteCompanyAction(id: number): Promise<void> {
-  await deleteCompany(id);
+  const { organizationId } = await requireSession();
+  await deleteCompany(organizationId, id);
   revalidatePath("/companies");
   revalidatePath("/");
 }
@@ -212,9 +221,14 @@ export interface CompanyDetail {
 }
 
 export async function getCompanyAction(id: number): Promise<CompanyDetail | null> {
-  const c = await getCompany(id);
+  const { organizationId } = await requireSession();
+  const c = await getCompany(organizationId, id);
   if (!c) return null;
-  const [contacts, deals, activities] = await Promise.all([listContacts(id), listDeals({ companyId: id }), listActivities(id)]);
+  const [contacts, deals, activities] = await Promise.all([
+    listContacts(organizationId, id),
+    listDeals(organizationId, { companyId: id }),
+    listActivities(organizationId, id),
+  ]);
   const mapped = deals.map(toDeal);
   return {
     company: toCompany(c),
@@ -228,23 +242,28 @@ export async function getCompanyAction(id: number): Promise<CompanyDetail | null
 // ------------------------------------------------------------------- contacts
 
 export async function addContactAction(companyId: number, input: ContactInput): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!input?.name?.trim()) return { error: "The contact needs a name." };
-  await addContact(companyId, { ...input, name: input.name.trim() });
+  if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
+  await addContact(organizationId, companyId, { ...input, name: input.name.trim() });
   revalidatePath(`/companies/${companyId}`);
   return {};
 }
 
 export async function deleteContactAction(id: number, companyId: number): Promise<void> {
-  await deleteContact(id);
+  const { organizationId } = await requireSession();
+  await deleteContact(organizationId, id);
   revalidatePath(`/companies/${companyId}`);
 }
 
 // ---------------------------------------------------------------------- deals
 
 export async function createDealAction(companyId: number, input: DealInput): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!input?.title?.trim()) return { error: "The deal needs a title." };
+  if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   const stage = input.stage && isStageId(input.stage) ? input.stage : "new";
-  await createDeal(companyId, { ...input, title: input.title.trim(), stage });
+  await createDeal(organizationId, companyId, { ...input, title: input.title.trim(), stage });
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -252,8 +271,9 @@ export async function createDealAction(companyId: number, input: DealInput): Pro
 }
 
 export async function updateDealStageAction(id: number, stage: string): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!isStageId(stage)) return { error: "Unknown stage." };
-  await updateDeal(id, { stage });
+  await updateDeal(organizationId, id, { stage });
   revalidatePath("/pipeline");
   revalidatePath("/");
   return {};
@@ -264,8 +284,9 @@ export async function updateDealAction(
   companyId: number,
   patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string }
 ): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
-  await updateDeal(id, patch);
+  await updateDeal(organizationId, id, patch);
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -273,7 +294,8 @@ export async function updateDealAction(
 }
 
 export async function deleteDealAction(id: number, companyId: number): Promise<void> {
-  await deleteDeal(id);
+  const { organizationId } = await requireSession();
+  await deleteDeal(organizationId, id);
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -286,8 +308,10 @@ export async function addActivityAction(input: {
   type?: string;
   summary: string;
 }): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
   if (!input?.summary?.trim()) return { error: "Write what happened." };
-  await addActivity({ companyId: input.companyId, type: input.type, summary: input.summary.trim() });
+  if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
+  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim() });
   revalidatePath(`/companies/${input.companyId}`);
   return {};
 }
@@ -309,7 +333,8 @@ export interface DashboardData {
 }
 
 export async function dashboardAction(): Promise<DashboardData> {
-  const [companyRows, dealRows] = await Promise.all([listCompanies(), listDeals()]);
+  const { organizationId } = await requireSession();
+  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId)]);
   const companies = companyRows.map(toCompany);
   const deals = dealRows.map(toDeal);
   const names = new Map(companyRows.map((c) => [c.id, c.name]));
@@ -329,7 +354,8 @@ export async function dashboardAction(): Promise<DashboardData> {
 }
 
 export async function boardAction(): Promise<BoardDeal[]> {
-  const [companyRows, dealRows] = await Promise.all([listCompanies(), listDeals()]);
+  const { organizationId } = await requireSession();
+  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId)]);
   const names = new Map(companyRows.map((c) => [c.id, c.name]));
   return dealRows.map((r) => ({ ...toDeal(r), companyName: names.get(r.company_id) ?? "—" }));
 }

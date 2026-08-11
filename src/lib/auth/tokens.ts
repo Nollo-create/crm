@@ -1,5 +1,7 @@
 import { randomBytes, createHash } from "crypto";
 
+export { SESSION_COOKIE, SESSION_TTL_DAYS } from "./constants";
+
 // Opaque session tokens. The raw token goes to the browser in an httpOnly
 // cookie; only its SHA-256 is stored in the DB, so a database leak can't be
 // replayed as a live session (same pattern as the connector token). Pure — the
@@ -14,6 +16,3 @@ export function generateSessionToken(): string {
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
-
-export const SESSION_COOKIE = "crm_session";
-export const SESSION_TTL_DAYS = 30;
