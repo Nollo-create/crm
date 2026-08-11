@@ -274,7 +274,8 @@ export function CompanyDetail({ id }: { id: number }) {
                   return (
                     <div key={ct.id} className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">{ct.name} {ct.role && <span className="text-xs font-normal text-muted-foreground">· {ct.role}</span>}</p>
+                        <Link href={`/contacts/${ct.id}`} className="text-sm font-medium hover:text-electric hover:underline">{ct.name}</Link>
+                        {ct.role && <span className="text-xs font-normal text-muted-foreground"> · {ct.role}</span>}
                         <p className="truncate text-2xs text-muted-foreground">{[ct.email, ct.phone].filter(Boolean).join(" · ") || "—"}</p>
                         {inf.stars > 0 && <p className="mt-0.5 text-2xs text-warning">{"★".repeat(inf.stars)}<span className="text-muted-foreground"> {inf.label}</span></p>}
                       </div>

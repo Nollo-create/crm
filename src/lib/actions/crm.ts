@@ -21,7 +21,11 @@ import {
   listContacts,
   listContactsPage,
   deleteContact,
+  getContact,
+  updateContact,
+  listContactActivities,
   type ContactStatsRow,
+  type ContactWithCompanyRow,
   createDeal,
   listDeals,
   listDealsPage,
@@ -70,6 +74,9 @@ export interface Contact {
   phone: string;
   department: string;
   influence: string;
+  mobile: string;
+  linkedin: string;
+  notes: string;
 }
 export interface Deal {
   id: number;
@@ -118,6 +125,9 @@ function toContact(r: ContactRow): Contact {
     phone: r.phone,
     department: r.department,
     influence: r.influence,
+    mobile: r.mobile ?? "",
+    linkedin: r.linkedin ?? "",
+    notes: r.notes ?? "",
   };
 }
 function toDeal(r: DealRow): Deal {
@@ -327,6 +337,32 @@ export async function deleteContactAction(id: number, companyId: number): Promis
   revalidatePath("/contacts");
 }
 
+export interface ContactDetail {
+  contact: Contact & { companyName: string };
+  activities: Activity[];
+}
+
+export async function getContactAction(id: number): Promise<ContactDetail | null> {
+  const { organizationId } = await requireSession();
+  const row: ContactWithCompanyRow | null = await getContact(organizationId, id);
+  if (!row) return null;
+  const activities = await listContactActivities(organizationId, id).catch(() => []);
+  return {
+    contact: { ...toContact(row), companyName: row.company_name },
+    activities: activities.map(toActivity),
+  };
+}
+
+export async function updateContactAction(id: number, companyId: number, input: ContactInput): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  if (!input?.name?.trim()) return { error: "The contact needs a name." };
+  await updateContact(organizationId, id, { ...input, name: input.name.trim() });
+  revalidatePath(`/contacts/${id}`);
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/contacts");
+  return {};
+}
+
 export interface ContactListItem {
   id: number;
   companyId: number;
@@ -435,12 +471,14 @@ export async function addActivityAction(input: {
   companyId: number;
   type?: string;
   summary: string;
+  contactId?: number | null;
 }): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (!input?.summary?.trim()) return { error: "Write what happened." };
   if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
-  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim() });
+  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim(), contactId: input.contactId ?? null });
   revalidatePath(`/companies/${input.companyId}`);
+  if (input.contactId) revalidatePath(`/contacts/${input.contactId}`);
   revalidatePath("/activities");
   return {};
 }

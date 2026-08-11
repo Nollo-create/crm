@@ -244,7 +244,7 @@ export default function ContactsPage() {
                 </tr>
               ) : (
                 rows.map((c) => (
-                  <tr key={c.id} className="cursor-pointer transition-colors hover:bg-secondary/50" onClick={() => router.push(`/companies/${c.companyId}`)}>
+                  <tr key={c.id} className="cursor-pointer transition-colors hover:bg-secondary/50" onClick={() => router.push(`/contacts/${c.id}`)}>
                     <td className="px-3 py-2.5">
                       <p className="font-medium">{c.name}</p>
                       {c.role && <p className="text-2xs text-muted-foreground">{c.role}</p>}
@@ -284,7 +284,7 @@ export default function ContactsPage() {
           rows.map((c) => (
             <div key={c.id} className="rounded-xl border border-border bg-card p-3">
               <div className="flex items-start justify-between gap-2">
-                <button onClick={() => router.push(`/companies/${c.companyId}`)} className="min-w-0 text-left">
+                <button onClick={() => router.push(`/contacts/${c.id}`)} className="min-w-0 text-left">
                   <p className="truncate font-medium">{c.name}</p>
                   <p className="truncate text-2xs text-muted-foreground">{[c.role, c.companyName].filter(Boolean).join(" · ")}</p>
                 </button>

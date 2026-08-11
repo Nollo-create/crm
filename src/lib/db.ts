@@ -243,6 +243,10 @@ export function ensureSchema(): Promise<void> {
       // Denormalised lead score (kept in sync by createCompany/updateCompany) so
       // the table can sort + paginate by it server-side.
       await ensureColumn(pool, "crm_companies", "lead_score", "lead_score TINYINT UNSIGNED NOT NULL DEFAULT 0");
+      // Contact detail fields (Phase 1A — surfaced on the contact profile).
+      await ensureColumn(pool, "crm_contacts", "mobile", "mobile VARCHAR(40) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_contacts", "linkedin", "linkedin VARCHAR(200) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_contacts", "notes", "notes TEXT NULL");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -276,6 +280,9 @@ export interface ContactRow extends mysql.RowDataPacket {
   phone: string;
   department: string;
   influence: string;
+  mobile: string;
+  linkedin: string;
+  notes: string | null;
   created_at: Date;
 }
 export interface DealRow extends mysql.RowDataPacket {
@@ -531,12 +538,16 @@ export interface ContactInput {
   phone?: string;
   department?: string;
   influence?: string;
+  mobile?: string;
+  linkedin?: string;
+  notes?: string;
 }
 
 export async function addContact(orgId: number, companyId: number, c: ContactInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence, mobile, linkedin, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       companyId,
@@ -546,9 +557,59 @@ export async function addContact(orgId: number, companyId: number, c: ContactInp
       (c.phone ?? "").slice(0, 60),
       (c.department ?? "").slice(0, 60),
       (c.influence ?? "none").slice(0, 20),
+      (c.mobile ?? "").slice(0, 40),
+      (c.linkedin ?? "").slice(0, 200),
+      (c.notes ?? "").slice(0, 2000),
     ]
   );
   return res.insertId;
+}
+
+/** One contact joined to its company name — for the contact profile. Org-scoped. */
+export interface ContactWithCompanyRow extends ContactRow {
+  company_name: string;
+}
+export async function getContact(orgId: number, id: number): Promise<ContactWithCompanyRow | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ContactWithCompanyRow[]>(
+    `SELECT ct.*, COALESCE(co.name, '') AS company_name
+       FROM crm_contacts ct
+       LEFT JOIN crm_companies co ON co.id = ct.company_id AND co.organization_id = ct.organization_id
+      WHERE ct.id = ? AND ct.organization_id = ? LIMIT 1`,
+    [id, orgId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function updateContact(orgId: number, id: number, c: ContactInput): Promise<void> {
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_contacts SET name=?, role=?, email=?, phone=?, department=?, influence=?, mobile=?, linkedin=?, notes=?
+       WHERE id=? AND organization_id=?`,
+    [
+      c.name.slice(0, 190),
+      (c.role ?? "").slice(0, 120),
+      (c.email ?? "").slice(0, 190),
+      (c.phone ?? "").slice(0, 60),
+      (c.department ?? "").slice(0, 60),
+      (c.influence ?? "none").slice(0, 20),
+      (c.mobile ?? "").slice(0, 40),
+      (c.linkedin ?? "").slice(0, 200),
+      (c.notes ?? "").slice(0, 2000),
+      id,
+      orgId,
+    ]
+  );
+}
+
+/** Activities logged against a specific contact (their own timeline). Org-scoped. */
+export async function listContactActivities(orgId: number, contactId: number, limit = 50): Promise<ActivityRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ActivityRow[]>(
+    "SELECT * FROM crm_activities WHERE contact_id = ? AND organization_id = ? ORDER BY id DESC LIMIT ?",
+    [contactId, orgId, limit]
+  );
+  return rows;
 }
 
 export async function listContacts(orgId: number, companyId: number): Promise<ContactRow[]> {
