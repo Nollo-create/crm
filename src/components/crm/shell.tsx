@@ -8,6 +8,7 @@ import { crmNav } from "@/lib/crm/nav";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
 import { CommandPalette } from "@/components/crm/command-palette";
 import { BottomNav } from "@/components/crm/bottom-nav";
+import { Logo, BrandMark } from "@/components/crm/logo";
 import { Drawer, DrawerHeader, DrawerBody } from "@/components/ui/drawer";
 import { logoutAction } from "@/lib/actions/auth";
 import { cn } from "@/lib/utils";
@@ -62,14 +63,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
         )}
       >
         <div className={cn("flex h-14 items-center border-b border-border", collapsed ? "justify-center" : "px-4")}>
-          {collapsed ? (
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-electric text-sm font-bold text-white">S</span>
-          ) : (
-            <p className="text-[15px] font-semibold tracking-tight">
-              Sajt<span className="text-electric">press</span>
-              <span className="ml-1 text-muted-foreground">CRM</span>
-            </p>
-          )}
+          {collapsed ? <BrandMark /> : <Logo />}
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-3">
@@ -96,9 +90,8 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
           {/* Mobile brand (the sidebar carries it on desktop) */}
-          <Link href="/" className="text-[15px] font-semibold tracking-tight md:hidden">
-            Sajt<span className="text-electric">press</span>
-            <span className="ml-1 text-muted-foreground">CRM</span>
+          <Link href="/" className="md:hidden">
+            <Logo />
           </Link>
           {/* Desktop search field */}
           <button
@@ -175,10 +168,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
       <BottomNav onMore={() => setMobileNav(true)} />
       <Drawer open={mobileNav} onClose={() => setMobileNav(false)} side="left" width="xs">
         <DrawerHeader onClose={() => setMobileNav(false)}>
-          <p className="text-[15px] font-semibold tracking-tight">
-            Sajt<span className="text-electric">press</span>
-            <span className="ml-1 text-muted-foreground">CRM</span>
-          </p>
+          <Logo />
         </DrawerHeader>
         <DrawerBody className="flex flex-col p-2">
           <SidebarNav collapsed={false} pathname={pathname} onNavigate={() => setMobileNav(false)} />
