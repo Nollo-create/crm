@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import { leadScore } from "@/lib/crm/pipeline";
 import { buildCompanyOrderBy, pageBounds } from "@/lib/crm/company-query";
 import { buildContactOrderBy } from "@/lib/crm/contact-query";
+import { buildLeadOrderBy } from "@/lib/crm/leads";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -116,6 +117,31 @@ export function ensureSchema(): Promise<void> {
           summary VARCHAR(500) NOT NULL DEFAULT '',
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_activity_company (company_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_leads (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          company VARCHAR(190) NOT NULL DEFAULT '',
+          title VARCHAR(120) NOT NULL DEFAULT '',
+          email VARCHAR(190) NOT NULL DEFAULT '',
+          phone VARCHAR(60) NOT NULL DEFAULT '',
+          source VARCHAR(30) NOT NULL DEFAULT 'other',
+          status VARCHAR(20) NOT NULL DEFAULT 'new',
+          industry VARCHAR(120) NOT NULL DEFAULT '',
+          website VARCHAR(300) NOT NULL DEFAULT '',
+          employees INT UNSIGNED NULL,
+          annual_value INT UNSIGNED NOT NULL DEFAULT 0,
+          industry_match TINYINT(1) NOT NULL DEFAULT 0,
+          lead_score TINYINT UNSIGNED NOT NULL DEFAULT 0,
+          notes VARCHAR(500) NOT NULL DEFAULT '',
+          converted_company_id INT UNSIGNED NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_lead_org (organization_id, lead_score),
+          INDEX idx_lead_status (organization_id, status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
@@ -552,6 +578,170 @@ export async function listActivities(orgId: number, companyId: number, limit = 5
     [companyId, orgId, limit]
   );
   return rows;
+}
+
+// -------------------------------------------------------------------- leads
+
+export interface LeadRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  name: string;
+  company: string;
+  title: string;
+  email: string;
+  phone: string;
+  source: string;
+  status: string;
+  industry: string;
+  website: string;
+  employees: number | null;
+  annual_value: number;
+  industry_match: number;
+  lead_score: number;
+  notes: string;
+  converted_company_id: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface LeadInput {
+  name: string;
+  company?: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+  status?: string;
+  industry?: string;
+  website?: string;
+  employees?: number | null;
+  industryMatch?: boolean;
+  annualValue?: number;
+  notes?: string;
+}
+
+function leadScoreOf(l: { website?: string; employees?: number | null; industryMatch?: boolean; annualValue?: number }): number {
+  return leadScore({ hasWebsite: !!(l.website ?? "").trim(), employees: l.employees ?? null, industryMatch: !!l.industryMatch, annualValue: l.annualValue ?? 0 });
+}
+
+export async function createLead(orgId: number, l: LeadInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_leads (organization_id, name, company, title, email, phone, source, status, industry, website, employees, annual_value, industry_match, lead_score, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      orgId,
+      l.name.slice(0, 190),
+      (l.company ?? "").slice(0, 190),
+      (l.title ?? "").slice(0, 120),
+      (l.email ?? "").slice(0, 190),
+      (l.phone ?? "").slice(0, 60),
+      (l.source ?? "other").slice(0, 30),
+      (l.status ?? "new").slice(0, 20),
+      (l.industry ?? "").slice(0, 120),
+      (l.website ?? "").slice(0, 300),
+      l.employees ?? null,
+      l.annualValue ?? 0,
+      l.industryMatch ? 1 : 0,
+      leadScoreOf(l),
+      (l.notes ?? "").slice(0, 500),
+    ]
+  );
+  return res.insertId;
+}
+
+export interface LeadsPageResult {
+  rows: LeadRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function listLeadsPage(
+  orgId: number,
+  opts: { q?: string; status?: string; source?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<LeadsPageResult> {
+  await ensureSchema();
+  const where: string[] = ["l.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("(l.name LIKE ? OR l.company LIKE ? OR l.email LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like, like);
+  }
+  if (opts.status) {
+    where.push("l.status = ?");
+    params.push(opts.status);
+  }
+  if (opts.source) {
+    where.push("l.source = ?");
+    params.push(opts.source);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM crm_leads l ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildLeadOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<LeadRow[]>(`SELECT l.* FROM crm_leads l ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  return { rows, total, page, pageCount };
+}
+
+export async function setLeadStatus(orgId: number, id: number, status: string): Promise<void> {
+  await ensureSchema();
+  await getPool().query("UPDATE crm_leads SET status = ? WHERE id = ? AND organization_id = ?", [status.slice(0, 20), id, orgId]);
+}
+
+export async function deleteLead(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_leads WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+/** Convert a lead into a company (+ a contact if it has a person), atomically.
+ *  Returns the new (or already-converted) company id, or null if not found. */
+export async function convertLead(orgId: number, id: number): Promise<number | null> {
+  await ensureSchema();
+  const conn = await getPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    const [leadRows] = await conn.query<LeadRow[]>("SELECT * FROM crm_leads WHERE id = ? AND organization_id = ? FOR UPDATE", [id, orgId]);
+    const lead = leadRows[0];
+    if (!lead) {
+      await conn.rollback();
+      return null;
+    }
+    if (lead.converted_company_id) {
+      await conn.commit();
+      return lead.converted_company_id;
+    }
+
+    const score = leadScoreOf({ website: lead.website, employees: lead.employees, industryMatch: !!lead.industry_match, annualValue: lead.annual_value });
+    const [companyRes] = await conn.query<mysql.ResultSetHeader>(
+      `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match, lead_score)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', '', ?, ?)`,
+      [orgId, (lead.company || lead.name).slice(0, 190), lead.industry.slice(0, 120), "", lead.website.slice(0, 300), lead.employees, lead.annual_value, lead.industry_match, score]
+    );
+    const companyId = companyRes.insertId;
+
+    if (lead.name.trim()) {
+      await conn.query(
+        `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence)
+           VALUES (?, ?, ?, ?, ?, ?, '', 'none')`,
+        [orgId, companyId, lead.name.slice(0, 190), lead.title.slice(0, 120), lead.email.slice(0, 190), lead.phone.slice(0, 60)]
+      );
+    }
+
+    await conn.query("UPDATE crm_leads SET status = 'converted', converted_company_id = ? WHERE id = ? AND organization_id = ?", [companyId, id, orgId]);
+    await conn.commit();
+    return companyId;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 // ====================================================================
