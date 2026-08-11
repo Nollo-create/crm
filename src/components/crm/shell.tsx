@@ -279,11 +279,13 @@ function SidebarNav({ collapsed, pathname, onNavigate }: { collapsed: boolean; p
       {crmNav.map((group, gi) => (
         <div key={group.title ?? gi} className="space-y-0.5">
           {group.title && !collapsed && (
-            <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {group.title}
-            </p>
+            <div className="flex items-center gap-2 px-2 pb-1.5 pt-3">
+              <span className="h-3 w-[3px] shrink-0 rounded-full bg-gradient-to-b from-electric to-royal" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/70">{group.title}</span>
+              <span className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
+            </div>
           )}
-          {group.title && collapsed && gi > 0 && <div className="mx-2 my-1.5 border-t border-border/70" />}
+          {group.title && collapsed && gi > 0 && <div className="mx-auto my-2 h-px w-6 bg-gradient-to-r from-transparent via-electric/40 to-transparent" />}
           {group.items.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             const Icon = item.icon;
