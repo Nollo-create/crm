@@ -115,7 +115,7 @@ export const crmNav: CrmNavGroup[] = [
     title: "Settings",
     items: [
       { label: "Organization", href: "/settings/org", icon: Building, soon: true },
-      { label: "Users & Teams", href: "/settings/users", icon: Users2, soon: true },
+      { label: "Users & Teams", href: "/settings/users", icon: Users2 },
       { label: "Roles & Permissions", href: "/settings/roles", icon: Shield, soon: true },
       { label: "Integrations", href: "/settings/integrations", icon: Plug, soon: true },
       { label: "Billing", href: "/settings/billing", icon: CreditCard, soon: true },

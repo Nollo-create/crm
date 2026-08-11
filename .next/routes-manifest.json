@@ -60,6 +60,12 @@
       "namedRegex": "^/pipeline(?:/)?$"
     },
     {
+      "page": "/settings/users",
+      "regex": "^/settings/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/users(?:/)?$"
+    },
+    {
       "page": "/setup",
       "regex": "^/setup(?:/)?$",
       "routeKeys": {},

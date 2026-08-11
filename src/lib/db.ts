@@ -601,6 +601,35 @@ export async function setUserLastLogin(id: number): Promise<void> {
   await getPool().query("UPDATE crm_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
 }
 
+export async function listUsers(orgId: number): Promise<UserRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<UserRow[]>(
+    "SELECT * FROM crm_users WHERE organization_id = ? ORDER BY created_at ASC",
+    [orgId]
+  );
+  return rows;
+}
+
+/** Active owners in an org — used to refuse demoting/disabling the last one. */
+export async function countActiveOwners(orgId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ? AND role = 'owner' AND status = 'active'",
+    [orgId]
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function updateUserRole(orgId: number, userId: number, role: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET role = ? WHERE id = ? AND organization_id = ?", [role.slice(0, 20), userId, orgId]);
+}
+
+export async function setUserStatus(orgId: number, userId: number, status: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET status = ? WHERE id = ? AND organization_id = ?", [status.slice(0, 20), userId, orgId]);
+}
+
 // -------- sessions
 
 export interface NewSession {
