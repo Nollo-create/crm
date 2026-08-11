@@ -243,8 +243,10 @@ export default function LeadsPage() {
                   return (
                     <tr key={l.id} className="transition-colors hover:bg-secondary/40">
                       <td className="px-3 py-2.5">
-                        <p className="font-medium">{l.name || l.company || "—"}</p>
-                        <p className="text-2xs text-muted-foreground">{[l.title, l.company && l.name ? l.company : null].filter(Boolean).join(" · ") || l.email}</p>
+                        <button onClick={() => router.push(`/leads/${l.id}`)} className="text-left">
+                          <p className="font-medium hover:text-electric hover:underline">{l.name || l.company || "—"}</p>
+                          <p className="text-2xs text-muted-foreground">{[l.title, l.company && l.name ? l.company : null].filter(Boolean).join(" · ") || l.email}</p>
+                        </button>
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">{LEAD_SOURCE_LABEL[l.source as keyof typeof LEAD_SOURCE_LABEL] ?? l.source}</td>
                       <td className="px-3 py-2.5 text-right">
@@ -298,10 +300,10 @@ export default function LeadsPage() {
             return (
               <div key={l.id} className="rounded-xl border border-border bg-card p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{l.name || l.company || "—"}</p>
+                  <button onClick={() => router.push(`/leads/${l.id}`)} className="min-w-0 text-left">
+                    <p className="truncate font-medium hover:text-electric">{l.name || l.company || "—"}</p>
                     <p className="truncate text-2xs text-muted-foreground">{[l.title, l.company].filter(Boolean).join(" · ") || l.email || "—"}</p>
-                  </div>
+                  </button>
                   <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-2xs font-semibold tabular", scoreClass(l.score))}>{l.score}</span>
                 </div>
                 <div className="mt-2 flex items-center gap-2">

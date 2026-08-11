@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, type LeadRow } from "@/lib/db";
+import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, type LeadRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
-import { isLeadSource, isLeadStatus } from "@/lib/crm/leads";
+import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
 
 export interface Lead {
   id: number;
@@ -22,6 +22,8 @@ export interface Lead {
   industryMatch: boolean;
   score: number;
   notes: string;
+  priority: string;
+  owner: string;
   convertedCompanyId: number | null;
   createdAt: string;
 }
@@ -43,6 +45,8 @@ function toLead(r: LeadRow): Lead {
     industryMatch: !!r.industry_match,
     score: r.lead_score,
     notes: r.notes,
+    priority: r.priority ?? "normal",
+    owner: r.owner ?? "",
     convertedCompanyId: r.converted_company_id,
     createdAt: new Date(r.created_at).toISOString(),
   };
@@ -90,6 +94,8 @@ export interface LeadInputDTO {
   industryMatch?: boolean;
   annualValue?: number;
   notes?: string;
+  priority?: string;
+  owner?: string;
 }
 
 export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: number; error?: string }> {
@@ -108,6 +114,25 @@ export async function setLeadStatusAction(id: number, status: string): Promise<{
   if (!isLeadStatus(status)) return { error: "Unknown status." };
   if (status === "converted") return { error: "Use Convert to convert a lead." };
   await setLeadStatus(organizationId, id, status);
+  revalidatePath("/leads");
+  return {};
+}
+
+export async function getLeadAction(id: number): Promise<Lead | null> {
+  const { organizationId } = await requireSession();
+  const row = await getLead(organizationId, id);
+  return row ? toLead(row) : null;
+}
+
+export async function updateLeadAction(id: number, input: LeadInputDTO): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  const name = (input.name ?? "").trim();
+  const company = (input.company ?? "").trim();
+  if (!name && !company) return { error: "A lead needs a name or a company." };
+  const source = input.source && isLeadSource(input.source) ? input.source : "other";
+  const priority = input.priority && isLeadPriority(input.priority) ? input.priority : "normal";
+  await updateLead(organizationId, id, { ...input, name, company, source, priority });
+  revalidatePath(`/leads/${id}`);
   revalidatePath("/leads");
   return {};
 }

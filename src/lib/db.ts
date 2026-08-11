@@ -256,6 +256,9 @@ export function ensureSchema(): Promise<void> {
       await ensureColumn(pool, "crm_companies", "address", "address VARCHAR(300) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_companies", "vat_id", "vat_id VARCHAR(40) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_companies", "description", "description TEXT NULL");
+      // Lead management fields (Phase 2A — priority + owner on the lead profile).
+      await ensureColumn(pool, "crm_leads", "priority", "priority VARCHAR(12) NOT NULL DEFAULT 'normal'");
+      await ensureColumn(pool, "crm_leads", "owner", "owner VARCHAR(120) NOT NULL DEFAULT ''");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -922,6 +925,8 @@ export interface LeadRow extends mysql.RowDataPacket {
   industry_match: number;
   lead_score: number;
   notes: string;
+  priority: string;
+  owner: string;
   converted_company_id: number | null;
   created_at: Date;
   updated_at: Date;
@@ -941,6 +946,8 @@ export interface LeadInput {
   industryMatch?: boolean;
   annualValue?: number;
   notes?: string;
+  priority?: string;
+  owner?: string;
 }
 
 function leadScoreOf(l: { website?: string; employees?: number | null; industryMatch?: boolean; annualValue?: number }): number {
@@ -950,8 +957,8 @@ function leadScoreOf(l: { website?: string; employees?: number | null; industryM
 export async function createLead(orgId: number, l: LeadInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_leads (organization_id, name, company, title, email, phone, source, status, industry, website, employees, annual_value, industry_match, lead_score, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_leads (organization_id, name, company, title, email, phone, source, status, industry, website, employees, annual_value, industry_match, lead_score, notes, priority, owner)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       l.name.slice(0, 190),
@@ -968,9 +975,46 @@ export async function createLead(orgId: number, l: LeadInput): Promise<number> {
       l.industryMatch ? 1 : 0,
       leadScoreOf(l),
       (l.notes ?? "").slice(0, 500),
+      (l.priority ?? "normal").slice(0, 12),
+      (l.owner ?? "").slice(0, 120),
     ]
   );
   return res.insertId;
+}
+
+export async function getLead(orgId: number, id: number): Promise<LeadRow | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<LeadRow[]>("SELECT * FROM crm_leads WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  return rows[0] ?? null;
+}
+
+/** Full lead edit (everything except status — see setLeadStatus — and the
+ *  convert link). Recomputes lead_score from the scoring inputs, same as create. */
+export async function updateLead(orgId: number, id: number, l: LeadInput): Promise<void> {
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_leads SET name=?, company=?, title=?, email=?, phone=?, source=?, industry=?, website=?, employees=?, annual_value=?, industry_match=?, lead_score=?, notes=?, priority=?, owner=?
+       WHERE id=? AND organization_id=?`,
+    [
+      l.name.slice(0, 190),
+      (l.company ?? "").slice(0, 190),
+      (l.title ?? "").slice(0, 120),
+      (l.email ?? "").slice(0, 190),
+      (l.phone ?? "").slice(0, 60),
+      (l.source ?? "other").slice(0, 30),
+      (l.industry ?? "").slice(0, 120),
+      (l.website ?? "").slice(0, 300),
+      l.employees ?? null,
+      l.annualValue ?? 0,
+      l.industryMatch ? 1 : 0,
+      leadScoreOf(l),
+      (l.notes ?? "").slice(0, 500),
+      (l.priority ?? "normal").slice(0, 12),
+      (l.owner ?? "").slice(0, 120),
+      id,
+      orgId,
+    ]
+  );
 }
 
 export interface LeadsPageResult {

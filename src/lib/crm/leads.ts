@@ -28,6 +28,13 @@ export function isLeadSource(v: string): v is LeadSource {
   return (LEAD_SOURCES as string[]).includes(v);
 }
 
+export type LeadPriority = "low" | "normal" | "high";
+export const LEAD_PRIORITIES: LeadPriority[] = ["low", "normal", "high"];
+export const LEAD_PRIORITY_LABEL: Record<LeadPriority, string> = { low: "Low", normal: "Normal", high: "High" };
+export function isLeadPriority(v: string): v is LeadPriority {
+  return (LEAD_PRIORITIES as string[]).includes(v);
+}
+
 export type LeadSortKey = "name" | "company" | "source" | "status" | "score" | "created";
 const SORT_EXPR: Record<LeadSortKey, string> = {
   name: "l.name",
