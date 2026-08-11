@@ -84,6 +84,14 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* The native <select> popup is drawn by the OS and can't use the web font
+     (Inter), so its options fall back to an ugly serif. Give them a clean system
+     stack the OS can always render — the closed control keeps inheriting Inter. */
+  option,
+  optgroup {
+    font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.9rem;
+  }
   /* Tabular figures for money/metrics */
   .tabular {
     font-variant-numeric: tabular-nums;
