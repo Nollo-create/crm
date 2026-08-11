@@ -1,13 +1,12 @@
 import "server-only";
 import mysql from "mysql2/promise";
 
-// The CMS's OWN database — a separate MySQL database (its own name) on the same
-// server as the webapp for now. It never joins across into the webapp's tables;
-// anything it needs from there comes through the Sajtpress client (sajtpress.ts).
-// That separation is what lets the CMS be pointed at its own DB elsewhere and
-// run standalone.
+// The CMS/CRM's OWN database — a separate MySQL database on the same server. It
+// never joins across into the webapp's tables; anything from there comes through
+// the Sajtpress client (sajtpress.ts). Self-healing schema: CREATE IF NOT EXISTS
+// on first use, memoised for the process.
 
-const globalForDb = globalThis as unknown as { __cmsPool?: mysql.Pool };
+const globalForDb = globalThis as unknown as { __cmsPool?: mysql.Pool; __crmSchema?: Promise<void> };
 
 export function getPool(): mysql.Pool {
   if (!globalForDb.__cmsPool) {
@@ -25,7 +24,6 @@ export function getPool(): mysql.Pool {
   return globalForDb.__cmsPool;
 }
 
-/** Is the CMS database reachable? Best-effort, for the health check. */
 export async function dbHealth(): Promise<boolean> {
   if (!process.env.DB_NAME) return false;
   try {
@@ -34,4 +32,343 @@ export async function dbHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export function ensureSchema(): Promise<void> {
+  if (!globalForDb.__crmSchema) {
+    globalForDb.__crmSchema = (async () => {
+      const pool = getPool();
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_companies (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          industry VARCHAR(120) NOT NULL DEFAULT '',
+          city VARCHAR(120) NOT NULL DEFAULT '',
+          website VARCHAR(300) NOT NULL DEFAULT '',
+          employees INT UNSIGNED NULL,
+          annual_value INT UNSIGNED NOT NULL DEFAULT 0,
+          status VARCHAR(20) NOT NULL DEFAULT 'lead',
+          account_manager VARCHAR(120) NOT NULL DEFAULT '',
+          industry_match TINYINT(1) NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_company_status (status, name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_contacts (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          company_id INT UNSIGNED NOT NULL,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          role VARCHAR(120) NOT NULL DEFAULT '',
+          email VARCHAR(190) NOT NULL DEFAULT '',
+          phone VARCHAR(60) NOT NULL DEFAULT '',
+          department VARCHAR(60) NOT NULL DEFAULT '',
+          influence VARCHAR(20) NOT NULL DEFAULT 'none',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_contact_company (company_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_deals (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          company_id INT UNSIGNED NOT NULL,
+          title VARCHAR(190) NOT NULL DEFAULT '',
+          value INT UNSIGNED NOT NULL DEFAULT 0,
+          stage VARCHAR(20) NOT NULL DEFAULT 'new',
+          probability TINYINT UNSIGNED NULL,
+          expected_close DATE NULL,
+          owner VARCHAR(120) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_deal_company (company_id),
+          INDEX idx_deal_stage (stage)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_activities (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          company_id INT UNSIGNED NOT NULL,
+          contact_id INT UNSIGNED NULL,
+          type VARCHAR(20) NOT NULL DEFAULT 'note',
+          summary VARCHAR(500) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_activity_company (company_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+    })().catch((err) => {
+      globalForDb.__crmSchema = undefined;
+      throw err;
+    });
+  }
+  return globalForDb.__crmSchema;
+}
+
+// ---------------------------------------------------------------- row types
+
+export interface CompanyRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  industry: string;
+  city: string;
+  website: string;
+  employees: number | null;
+  annual_value: number;
+  status: string;
+  account_manager: string;
+  industry_match: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export interface ContactRow extends mysql.RowDataPacket {
+  id: number;
+  company_id: number;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  department: string;
+  influence: string;
+  created_at: Date;
+}
+export interface DealRow extends mysql.RowDataPacket {
+  id: number;
+  company_id: number;
+  title: string;
+  value: number;
+  stage: string;
+  probability: number | null;
+  expected_close: Date | null;
+  owner: string;
+  created_at: Date;
+  updated_at: Date;
+}
+export interface ActivityRow extends mysql.RowDataPacket {
+  id: number;
+  company_id: number;
+  contact_id: number | null;
+  type: string;
+  summary: string;
+  created_at: Date;
+}
+
+// ---------------------------------------------------------------- companies
+
+export interface CompanyInput {
+  name: string;
+  industry?: string;
+  city?: string;
+  website?: string;
+  employees?: number | null;
+  annualValue?: number;
+  status?: string;
+  accountManager?: string;
+  industryMatch?: boolean;
+}
+
+export async function createCompany(c: CompanyInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_companies (name, industry, city, website, employees, annual_value, status, account_manager, industry_match)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      c.name.slice(0, 190),
+      (c.industry ?? "").slice(0, 120),
+      (c.city ?? "").slice(0, 120),
+      (c.website ?? "").slice(0, 300),
+      c.employees ?? null,
+      c.annualValue ?? 0,
+      (c.status ?? "lead").slice(0, 20),
+      (c.accountManager ?? "").slice(0, 120),
+      c.industryMatch ? 1 : 0,
+    ]
+  );
+  return res.insertId;
+}
+
+export async function listCompanies(opts: { q?: string; status?: string } = {}): Promise<CompanyRow[]> {
+  await ensureSchema();
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.q) {
+    where.push("(name LIKE ? OR industry LIKE ? OR city LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like, like);
+  }
+  if (opts.status) {
+    where.push("status = ?");
+    params.push(opts.status);
+  }
+  const [rows] = await getPool().query<CompanyRow[]>(
+    `SELECT * FROM crm_companies ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC LIMIT 500`,
+    params
+  );
+  return rows;
+}
+
+export async function getCompany(id: number): Promise<CompanyRow | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<CompanyRow[]>("SELECT * FROM crm_companies WHERE id = ? LIMIT 1", [id]);
+  return rows[0] ?? null;
+}
+
+export async function updateCompany(id: number, c: CompanyInput): Promise<void> {
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_companies SET name=?, industry=?, city=?, website=?, employees=?, annual_value=?, status=?, account_manager=?, industry_match=? WHERE id=?`,
+    [
+      c.name.slice(0, 190),
+      (c.industry ?? "").slice(0, 120),
+      (c.city ?? "").slice(0, 120),
+      (c.website ?? "").slice(0, 300),
+      c.employees ?? null,
+      c.annualValue ?? 0,
+      (c.status ?? "lead").slice(0, 20),
+      (c.accountManager ?? "").slice(0, 120),
+      c.industryMatch ? 1 : 0,
+      id,
+    ]
+  );
+}
+
+export async function deleteCompany(id: number): Promise<void> {
+  await ensureSchema();
+  const pool = getPool();
+  await pool.query("DELETE FROM crm_activities WHERE company_id = ?", [id]);
+  await pool.query("DELETE FROM crm_deals WHERE company_id = ?", [id]);
+  await pool.query("DELETE FROM crm_contacts WHERE company_id = ?", [id]);
+  await pool.query("DELETE FROM crm_companies WHERE id = ?", [id]);
+}
+
+// ----------------------------------------------------------------- contacts
+
+export interface ContactInput {
+  name: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  department?: string;
+  influence?: string;
+}
+
+export async function addContact(companyId: number, c: ContactInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_contacts (company_id, name, role, email, phone, department, influence) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      companyId,
+      c.name.slice(0, 190),
+      (c.role ?? "").slice(0, 120),
+      (c.email ?? "").slice(0, 190),
+      (c.phone ?? "").slice(0, 60),
+      (c.department ?? "").slice(0, 60),
+      (c.influence ?? "none").slice(0, 20),
+    ]
+  );
+  return res.insertId;
+}
+
+export async function listContacts(companyId: number): Promise<ContactRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ContactRow[]>(
+    "SELECT * FROM crm_contacts WHERE company_id = ? ORDER BY id ASC",
+    [companyId]
+  );
+  return rows;
+}
+
+export async function deleteContact(id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_contacts WHERE id = ?", [id]);
+}
+
+// -------------------------------------------------------------------- deals
+
+export interface DealInput {
+  title: string;
+  value?: number;
+  stage?: string;
+  probability?: number | null;
+  expectedClose?: string | null;
+  owner?: string;
+}
+
+export async function createDeal(companyId: number, d: DealInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_deals (company_id, title, value, stage, probability, expected_close, owner) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      companyId,
+      d.title.slice(0, 190),
+      d.value ?? 0,
+      (d.stage ?? "new").slice(0, 20),
+      d.probability ?? null,
+      d.expectedClose || null,
+      (d.owner ?? "").slice(0, 120),
+    ]
+  );
+  return res.insertId;
+}
+
+export async function listDeals(opts: { companyId?: number } = {}): Promise<DealRow[]> {
+  await ensureSchema();
+  if (opts.companyId != null) {
+    const [rows] = await getPool().query<DealRow[]>(
+      "SELECT * FROM crm_deals WHERE company_id = ? ORDER BY updated_at DESC",
+      [opts.companyId]
+    );
+    return rows;
+  }
+  const [rows] = await getPool().query<DealRow[]>("SELECT * FROM crm_deals ORDER BY updated_at DESC LIMIT 1000");
+  return rows;
+}
+
+export async function updateDeal(
+  id: number,
+  patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string }
+): Promise<void> {
+  await ensureSchema();
+  const sets: string[] = [];
+  const vals: (string | number | null)[] = [];
+  if (patch.title !== undefined) { sets.push("title=?"); vals.push(patch.title.slice(0, 190)); }
+  if (patch.value !== undefined) { sets.push("value=?"); vals.push(patch.value); }
+  if (patch.stage !== undefined) { sets.push("stage=?"); vals.push(patch.stage.slice(0, 20)); }
+  if (patch.probability !== undefined) { sets.push("probability=?"); vals.push(patch.probability); }
+  if (patch.expectedClose !== undefined) { sets.push("expected_close=?"); vals.push(patch.expectedClose || null); }
+  if (patch.owner !== undefined) { sets.push("owner=?"); vals.push(patch.owner.slice(0, 120)); }
+  if (!sets.length) return;
+  vals.push(id);
+  await getPool().query(`UPDATE crm_deals SET ${sets.join(", ")} WHERE id = ?`, vals);
+}
+
+export async function deleteDeal(id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_deals WHERE id = ?", [id]);
+}
+
+// --------------------------------------------------------------- activities
+
+export interface ActivityInput {
+  companyId: number;
+  contactId?: number | null;
+  type?: string;
+  summary: string;
+}
+
+export async function addActivity(a: ActivityInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_activities (company_id, contact_id, type, summary) VALUES (?, ?, ?, ?)`,
+    [a.companyId, a.contactId ?? null, (a.type ?? "note").slice(0, 20), a.summary.slice(0, 500)]
+  );
+  return res.insertId;
+}
+
+export async function listActivities(companyId: number, limit = 50): Promise<ActivityRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ActivityRow[]>(
+    "SELECT * FROM crm_activities WHERE company_id = ? ORDER BY id DESC LIMIT ?",
+    [companyId, limit]
+  );
+  return rows;
 }
