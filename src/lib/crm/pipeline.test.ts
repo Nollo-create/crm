@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weightedValue, summarizePipeline, leadScore, dealCloseInfo, type DealLike } from "./pipeline";
+import { weightedValue, summarizePipeline, leadScore, leadScoreBreakdown, dealCloseInfo, type DealLike } from "./pipeline";
 
 describe("weightedValue", () => {
   it("uses the stage default, an override, and closes correctly", () => {
@@ -61,5 +61,26 @@ describe("leadScore", () => {
     expect(leadScore({ hasWebsite: true, employees: 80, industryMatch: true, annualValue: 50000 })).toBe(95);
     expect(leadScore({ hasWebsite: false, employees: 2, industryMatch: false })).toBe(30);
     expect(leadScore({ hasWebsite: true, employees: 500, industryMatch: true, annualValue: 100000 })).toBe(100);
+  });
+});
+
+describe("leadScoreBreakdown", () => {
+  it("factors always sum to the same value as leadScore()", () => {
+    const samples = [
+      { hasWebsite: true, employees: 80, industryMatch: true, annualValue: 50000 },
+      { hasWebsite: false, employees: 2, industryMatch: false, annualValue: 0 },
+      { hasWebsite: true, employees: 500, industryMatch: true, annualValue: 100000 },
+      { hasWebsite: true, employees: 15, industryMatch: false, annualValue: 10000 },
+    ];
+    for (const s of samples) {
+      expect(leadScoreBreakdown(s).total).toBe(leadScore(s));
+    }
+  });
+
+  it("always includes the base and explains the tiers", () => {
+    const b = leadScoreBreakdown({ hasWebsite: true, employees: 60, industryMatch: false, annualValue: 0 });
+    expect(b.factors[0]).toEqual({ label: "Base", points: 30 });
+    expect(b.factors.some((f) => f.label === "50+ employees")).toBe(true);
+    expect(b.factors.some((f) => f.label.includes("200"))).toBe(false);
   });
 });

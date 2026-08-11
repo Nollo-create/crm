@@ -56,6 +56,60 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/(crm)/ai/assistant/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/assistant">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/assistant/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/ai/company/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/company">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/company/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/ai/insights/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/insights">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/insights/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/ai/next-action/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/next-action">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/next-action/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/ai/outreach/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/outreach">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/outreach/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/ai/scoring/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/ai/scoring">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/ai/scoring/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/(crm)/analytics/conversion/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/analytics/conversion">> = Specific

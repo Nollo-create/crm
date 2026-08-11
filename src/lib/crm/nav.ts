@@ -84,12 +84,12 @@ export const crmNav: CrmNavGroup[] = [
   {
     title: "AI",
     items: [
-      { label: "AI Sales Assistant", href: "/ai/assistant", icon: Sparkles, soon: true },
-      { label: "Lead Scoring", href: "/ai/scoring", icon: Star, soon: true },
-      { label: "Company Analysis", href: "/ai/company", icon: ScanSearch, soon: true },
-      { label: "Next Best Action", href: "/ai/next-action", icon: Compass, soon: true },
-      { label: "Sales Insights", href: "/ai/insights", icon: Lightbulb, soon: true },
-      { label: "AI Outreach", href: "/ai/outreach", icon: Send, soon: true },
+      { label: "AI Sales Assistant", href: "/ai/assistant", icon: Sparkles },
+      { label: "Lead Scoring", href: "/ai/scoring", icon: Star },
+      { label: "Company Analysis", href: "/ai/company", icon: ScanSearch },
+      { label: "Next Best Action", href: "/ai/next-action", icon: Compass },
+      { label: "Sales Insights", href: "/ai/insights", icon: Lightbulb },
+      { label: "AI Outreach", href: "/ai/outreach", icon: Send },
     ],
   },
   {

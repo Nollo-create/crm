@@ -55,3 +55,29 @@ export async function webappReachable(): Promise<boolean> {
   const res = await callWebapp("/api/internal/ping", { method: "GET" }, 4000);
   return !!res && res.ok;
 }
+
+export interface AiResult {
+  /** the completion text, "" when the platform AI isn't available */
+  text: string;
+  /** true only when the platform's Anthropic key is configured + enabled */
+  enabled: boolean;
+}
+
+/** Run a prompt on the Sajtpress platform's LLM. The CRM owns the prompt +
+ *  context; this is just the model call. Degrades to { text:"", enabled:false }
+ *  when the integration is off, unconfigured, unreachable or the platform AI is
+ *  disabled — so every AI page has an honest "connect Sajtpress AI" state. */
+export async function aiComplete(input: { system?: string; prompt: string; maxTokens?: number }): Promise<AiResult> {
+  const res = await callWebapp(
+    "/api/internal/ai/complete",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
+    45000
+  );
+  if (!res || !res.ok) return { text: "", enabled: false };
+  try {
+    const data = (await res.json()) as { text?: string; enabled?: boolean };
+    return { text: typeof data.text === "string" ? data.text : "", enabled: !!data.enabled };
+  } catch {
+    return { text: "", enabled: false };
+  }
+}

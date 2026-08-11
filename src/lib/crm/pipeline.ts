@@ -148,3 +148,28 @@ export function leadScore(c: {
   if ((c.annualValue ?? 0) >= 20000) score += 10;
   return Math.max(0, Math.min(100, score));
 }
+
+export interface ScoreFactor {
+  label: string;
+  points: number;
+}
+
+/** The same score as leadScore(), broken into its contributing factors so the
+ *  Lead Scoring page can explain the "why". Kept in lockstep with leadScore. */
+export function leadScoreBreakdown(c: {
+  hasWebsite?: boolean;
+  employees?: number | null;
+  industryMatch?: boolean;
+  annualValue?: number | null;
+}): { total: number; factors: ScoreFactor[] } {
+  const factors: ScoreFactor[] = [{ label: "Base", points: 30 }];
+  if (c.hasWebsite) factors.push({ label: "Has a website", points: 15 });
+  if (c.industryMatch) factors.push({ label: "Industry fit", points: 25 });
+  const emp = c.employees ?? 0;
+  if (emp >= 200) factors.push({ label: "200+ employees", points: 20 });
+  else if (emp >= 50) factors.push({ label: "50+ employees", points: 15 });
+  else if (emp >= 10) factors.push({ label: "10+ employees", points: 8 });
+  if ((c.annualValue ?? 0) >= 20000) factors.push({ label: "Annual value ≥ €20k", points: 10 });
+  const total = Math.max(0, Math.min(100, factors.reduce((s, f) => s + f.points, 0)));
+  return { total, factors };
+}

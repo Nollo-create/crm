@@ -56,6 +56,42 @@
       "namedRegex": "^/activities(?:/)?$"
     },
     {
+      "page": "/ai/assistant",
+      "regex": "^/ai/assistant(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/assistant(?:/)?$"
+    },
+    {
+      "page": "/ai/company",
+      "regex": "^/ai/company(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/company(?:/)?$"
+    },
+    {
+      "page": "/ai/insights",
+      "regex": "^/ai/insights(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/insights(?:/)?$"
+    },
+    {
+      "page": "/ai/next-action",
+      "regex": "^/ai/next\\-action(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/next\\-action(?:/)?$"
+    },
+    {
+      "page": "/ai/outreach",
+      "regex": "^/ai/outreach(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/outreach(?:/)?$"
+    },
+    {
+      "page": "/ai/scoring",
+      "regex": "^/ai/scoring(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/ai/scoring(?:/)?$"
+    },
+    {
       "page": "/analytics/conversion",
       "regex": "^/analytics/conversion(?:/)?$",
       "routeKeys": {},

@@ -1,0 +1,105 @@
+"use server";
+
+import { requireSession } from "@/lib/auth/session";
+import { aiComplete } from "@/lib/sajtpress";
+import { getAnalytics } from "@/lib/analytics";
+import { getCompanyAction } from "@/lib/actions/crm";
+import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes } from "@/lib/db";
+import { quoteNumber } from "@/lib/crm/quotes";
+import { eur } from "@/lib/format";
+
+export interface AiOut {
+  text: string;
+  enabled: boolean;
+  error?: string;
+}
+
+// -------- Next best action (heuristic worklist)
+
+export interface NbaItem {
+  kind: "deal" | "account" | "quote" | "lead";
+  title: string;
+  subtitle: string;
+  href: string;
+  priority: number;
+}
+
+export async function nextBestActionsAction(): Promise<NbaItem[]> {
+  const { organizationId: org } = await requireSession();
+  const [stale, overdue, hot, quotes] = await Promise.all([
+    nbaStaleAccounts(org, 30, 5).catch(() => []),
+    nbaOverdueDeals(org, 5).catch(() => []),
+    nbaHotLeads(org, 60, 5).catch(() => []),
+    nbaAgingQuotes(org, 7, 5).catch(() => []),
+  ]);
+  const items: NbaItem[] = [];
+  for (const d of overdue) items.push({ kind: "deal", title: `Follow up: ${d.title}`, subtitle: `${d.companyName} · ${d.days}d overdue`, href: `/companies/${d.companyId}`, priority: 100 + d.days });
+  for (const s of stale) items.push({ kind: "account", title: `Re-engage ${s.name}`, subtitle: s.lastDays == null ? "No activity logged" : `${s.lastDays}d since last touch`, href: `/companies/${s.id}`, priority: 80 + (s.lastDays ?? 90) });
+  for (const q of quotes) items.push({ kind: "quote", title: `Chase ${quoteNumber(q.id)}`, subtitle: `${q.companyName} · sent ${q.days}d ago`, href: `/quotes/${q.id}`, priority: 70 + q.days });
+  for (const l of hot) items.push({ kind: "lead", title: `Work lead ${l.name || l.company}`, subtitle: `Score ${l.score}${l.company && l.name ? ` · ${l.company}` : ""}`, href: "/leads", priority: 60 + l.score / 10 });
+  return items.sort((a, b) => b.priority - a.priority).slice(0, 15);
+}
+
+// -------- Generative (via the platform LLM)
+
+async function snapshot(): Promise<string> {
+  const a = await getAnalytics();
+  return [
+    `Open pipeline: ${eur(a.deals.open)} (${a.deals.openCount} deals), weighted ${eur(a.deals.weighted)}.`,
+    `Won: ${eur(a.deals.won)}. Win rate: ${a.deals.winRate}%.`,
+    `Customers: ${a.companies.customers}, at risk: ${a.companies.atRisk}, recurring value ${eur(a.companies.arr)}.`,
+    `Leads: ${a.leads.total} (${a.leads.conversionRate}% converted). Activity last 30d: ${a.activities.last30}.`,
+    `Deals by stage: ${a.deals.byStage.filter((s) => s.count > 0).map((s) => `${s.label} ${s.count}`).join(", ") || "none"}.`,
+  ].join("\n");
+}
+
+export async function aiAssistantAction(question: string): Promise<AiOut> {
+  await requireSession();
+  const q = question.trim();
+  if (!q) return { text: "", enabled: true };
+  const ctx = await snapshot().catch(() => "");
+  return aiComplete({
+    system: "You are a concise B2B sales assistant inside the Sajtpress CRM. Use the workspace snapshot to ground your answer; be practical and brief. If numbers aren't in the snapshot, say you don't have them rather than guessing.",
+    prompt: `Workspace snapshot:\n${ctx}\n\nQuestion: ${q}`,
+    maxTokens: 700,
+  });
+}
+
+export async function companyAnalysisAction(companyId: number): Promise<AiOut> {
+  await requireSession();
+  const detail = await getCompanyAction(companyId);
+  if (!detail) return { text: "", enabled: true, error: "Company not found." };
+  const c = detail.company;
+  const ctx = [
+    `Company: ${c.name}`,
+    `Industry: ${c.industry || "-"} · City: ${c.city || "-"} · Employees: ${c.employees ?? "-"} · Website: ${c.website || "-"}`,
+    `Status: ${c.status} · Annual value: ${eur(c.annualValue)} · Contacts: ${detail.contacts.length}`,
+    `Open pipeline: ${eur(detail.summary.open)} (weighted ${eur(detail.summary.weighted)})`,
+    `Deals: ${detail.deals.map((d) => `${d.title} [${d.stage}, ${eur(d.value)}]`).join("; ") || "none"}`,
+    `Recent activity: ${detail.activities.slice(0, 5).map((a) => `${a.type}: ${a.summary}`).join("; ") || "none"}`,
+  ].join("\n");
+  return aiComplete({
+    system: "You are a B2B account strategist. Analyse this account and reply in plain text with short sections: Health (one line), Opportunities (2 bullets), Risks (2 bullets), Recommended next step (one line). Be concrete; base it only on the data given.",
+    prompt: ctx,
+    maxTokens: 900,
+  });
+}
+
+export async function outreachDraftAction(input: { companyId: number; goal?: string }): Promise<AiOut> {
+  await requireSession();
+  const detail = await getCompanyAction(input.companyId);
+  if (!detail) return { text: "", enabled: true, error: "Company not found." };
+  const c = detail.company;
+  const contact = detail.contacts[0];
+  const goal = (input.goal ?? "").trim() || "book a short intro call";
+  const ctx = [
+    `Recipient: ${contact ? `${contact.name}${contact.role ? `, ${contact.role}` : ""}` : "the main contact"} at ${c.name} (${c.industry || "business"}, ${c.city || "unknown location"}).`,
+    `Goal of the email: ${goal}.`,
+    detail.summary.open > 0 ? `We have ${eur(detail.summary.open)} of open pipeline with them.` : "",
+  ].filter(Boolean).join("\n");
+  return aiComplete({
+    system: "You draft short, warm, professional B2B outreach emails. Return a Subject line then a 4-6 sentence body in plain text. Use the given details — never leave placeholders like [Name]. This is a DRAFT for the rep to review and send manually; do not claim it was sent.",
+    prompt: ctx,
+    maxTokens: 500,
+  });
+}

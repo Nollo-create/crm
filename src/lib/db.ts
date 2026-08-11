@@ -1343,6 +1343,62 @@ export async function analyticsActivitiesLast30(orgId: number): Promise<number> 
   return Number(rows[0]?.n ?? 0);
 }
 
+// -------- next-best-action signals (heuristic worklists; integer args are our
+//          own constants, inlined via Number() so they can't be injected)
+
+export async function nbaStaleAccounts(orgId: number, days: number, limit: number): Promise<{ id: number; name: string; lastDays: number | null }[]> {
+  await ensureSchema();
+  const d = Number(days) || 30;
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT c.id, c.name,
+       DATEDIFF(NOW(), (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id)) AS last_days
+     FROM crm_companies c
+     WHERE c.organization_id = ? AND c.status IN ('customer','at_risk')
+       AND ((SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) IS NULL
+            OR (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) < NOW() - INTERVAL ${d} DAY)
+     ORDER BY last_days IS NULL DESC, last_days DESC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), name: String(r.name), lastDays: r.last_days == null ? null : Number(r.last_days) }));
+}
+
+export async function nbaOverdueDeals(orgId: number, limit: number): Promise<{ id: number; companyId: number; companyName: string; title: string; days: number }[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT d.id, d.company_id, d.title, co.name AS company_name, DATEDIFF(NOW(), d.expected_close) AS days
+     FROM crm_deals d JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id
+     WHERE d.organization_id = ? AND d.stage NOT IN ('won','lost') AND d.expected_close IS NOT NULL AND d.expected_close < CURDATE()
+     ORDER BY d.expected_close ASC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), companyId: Number(r.company_id), companyName: String(r.company_name), title: String(r.title), days: Number(r.days) }));
+}
+
+export async function nbaHotLeads(orgId: number, minScore: number, limit: number): Promise<{ id: number; name: string; company: string; score: number }[]> {
+  await ensureSchema();
+  const s = Number(minScore) || 60;
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT id, name, company, lead_score FROM crm_leads
+     WHERE organization_id = ? AND status IN ('new','working') AND lead_score >= ${s}
+     ORDER BY lead_score DESC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), name: String(r.name), company: String(r.company), score: Number(r.lead_score) }));
+}
+
+export async function nbaAgingQuotes(orgId: number, days: number, limit: number): Promise<{ id: number; companyName: string; days: number }[]> {
+  await ensureSchema();
+  const d = Number(days) || 7;
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT q.id, co.name AS company_name, DATEDIFF(NOW(), q.created_at) AS days
+     FROM crm_quotes q JOIN crm_companies co ON co.id = q.company_id AND co.organization_id = q.organization_id
+     WHERE q.organization_id = ? AND q.status = 'sent' AND q.created_at < NOW() - INTERVAL ${d} DAY
+     ORDER BY q.created_at ASC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), companyName: String(r.company_name), days: Number(r.days) }));
+}
+
 // ====================================================================
 // Auth & tenancy storage (organizations, users, sessions)
 //
