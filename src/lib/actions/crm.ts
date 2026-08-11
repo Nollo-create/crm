@@ -30,6 +30,8 @@ import {
   type DealStatsRow,
   addActivity,
   listActivities,
+  listActivitiesPage,
+  type ActivityStatsRow,
   type CompanyRow,
   type ContactRow,
   type DealRow,
@@ -436,7 +438,46 @@ export async function addActivityAction(input: {
   if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
   await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim() });
   revalidatePath(`/companies/${input.companyId}`);
+  revalidatePath("/activities");
   return {};
+}
+
+// ------------------------------------------------------------ activity feed
+
+export interface ActivityFeedItem extends Activity {
+  companyName: string;
+}
+
+export interface ActivitiesPage {
+  rows: ActivityFeedItem[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function activitiesPageAction(opts: {
+  q?: string;
+  type?: string;
+  sortKey: string;
+  sortDir: 1 | -1;
+  page: number;
+  pageSize: number;
+}): Promise<ActivitiesPage> {
+  const { organizationId } = await requireSession();
+  const res = await listActivitiesPage(organizationId, {
+    q: opts.q?.trim() || undefined,
+    type: opts.type || undefined,
+    sortKey: opts.sortKey,
+    sortDir: opts.sortDir,
+    page: opts.page,
+    pageSize: opts.pageSize,
+  });
+  return {
+    rows: res.rows.map((r: ActivityStatsRow) => ({ ...toActivity(r), companyName: r.company_name })),
+    total: res.total,
+    page: res.page,
+    pageCount: res.pageCount,
+  };
 }
 
 // ------------------------------------------------------------- dashboard + board

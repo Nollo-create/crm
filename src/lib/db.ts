@@ -6,6 +6,7 @@ import { buildContactOrderBy } from "@/lib/crm/contact-query";
 import { buildLeadOrderBy } from "@/lib/crm/leads";
 import { buildDealOrderBy } from "@/lib/crm/deal-query";
 import { buildTaskOrderBy } from "@/lib/crm/tasks";
+import { buildActivityOrderBy } from "@/lib/crm/activities";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -676,6 +677,51 @@ export async function listActivities(orgId: number, companyId: number, limit = 5
     [companyId, orgId, limit]
   );
   return rows;
+}
+
+export interface ActivityStatsRow extends ActivityRow {
+  company_name: string;
+}
+
+export interface ActivitiesPageResult {
+  rows: ActivityStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/** One page of the cross-company activity feed, joined to the company,
+ *  filtered/sorted/counted server-side. Sort is allowlisted. */
+export async function listActivitiesPage(
+  orgId: number,
+  opts: { q?: string; type?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<ActivitiesPageResult> {
+  await ensureSchema();
+  const where: string[] = ["a.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("(a.summary LIKE ? OR co.name LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like);
+  }
+  if (opts.type) {
+    where.push("a.type = ?");
+    params.push(opts.type);
+  }
+  const joinSql = "FROM crm_activities a JOIN crm_companies co ON co.id = a.company_id AND co.organization_id = a.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildActivityOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<ActivityStatsRow[]>(
+    `SELECT a.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return { rows, total, page, pageCount };
 }
 
 // -------------------------------------------------------------------- leads
