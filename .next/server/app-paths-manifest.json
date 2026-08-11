@@ -1,12 +1,14 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/api/health/route": "app/api/health/route.js",
-  "/login/page": "app/login/page.js",
+  "/sso/start/route": "app/sso/start/route.js",
+  "/sso/callback/route": "app/sso/callback/route.js",
   "/setup/page": "app/setup/page.js",
-  "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
+  "/login/page": "app/login/page.js",
   "/(crm)/companies/page": "app/(crm)/companies/page.js",
-  "/(crm)/page": "app/(crm)/page.js",
+  "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
   "/(crm)/settings/security/page": "app/(crm)/settings/security/page.js",
+  "/(crm)/settings/users/page": "app/(crm)/settings/users/page.js",
   "/(crm)/companies/[id]/page": "app/(crm)/companies/[id]/page.js",
-  "/(crm)/settings/users/page": "app/(crm)/settings/users/page.js"
+  "/(crm)/page": "app/(crm)/page.js"
 }

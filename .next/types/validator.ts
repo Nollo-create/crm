@@ -128,6 +128,24 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/sso/callback/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/sso/callback">> = Specific
+  const handler = {} as typeof import("../../src/app/sso/callback/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/sso/start/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/sso/start">> = Specific
+  const handler = {} as typeof import("../../src/app/sso/start/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 
 
 

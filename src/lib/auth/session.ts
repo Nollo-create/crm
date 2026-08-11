@@ -45,20 +45,44 @@ export async function requireSession(): Promise<SessionUser> {
   return session;
 }
 
-/** Mint a session and set the cookie. Call only from a Server Action / Route Handler. */
-export async function startSession(userId: number, organizationId: number): Promise<void> {
+export interface IssuedSession {
+  name: string;
+  value: string;
+  options: {
+    httpOnly: true;
+    secure: boolean;
+    sameSite: "lax";
+    path: string;
+    expires: Date;
+    domain?: string;
+  };
+}
+
+/** Create the session row + return the cookie to set. Lets a Route Handler set
+ *  it on its own NextResponse (where next/headers cookies() wouldn't apply). */
+export async function issueSession(userId: number, organizationId: number): Promise<IssuedSession> {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
   await createSession({ userId, organizationId, tokenHash: hashToken(token), expiresAt });
+  return {
+    name: SESSION_COOKIE,
+    value: token,
+    options: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: expiresAt,
+      domain: integration.cookieDomain || undefined,
+    },
+  };
+}
+
+/** Mint a session and set the cookie. Call only from a Server Action / Route Handler. */
+export async function startSession(userId: number, organizationId: number): Promise<void> {
+  const { name, value, options } = await issueSession(userId, organizationId);
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires: expiresAt,
-    domain: integration.cookieDomain || undefined,
-  });
+  jar.set(name, value, options);
 }
 
 /** Revoke the current session (DB + cookie). */

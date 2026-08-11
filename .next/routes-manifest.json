@@ -76,6 +76,18 @@
       "regex": "^/setup(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/setup(?:/)?$"
+    },
+    {
+      "page": "/sso/callback",
+      "regex": "^/sso/callback(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sso/callback(?:/)?$"
+    },
+    {
+      "page": "/sso/start",
+      "regex": "^/sso/start(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sso/start(?:/)?$"
     }
   ],
   "dataRoutes": [],

@@ -3,3 +3,6 @@
 
 export const SESSION_COOKIE = "crm_session";
 export const SESSION_TTL_DAYS = 30;
+
+/** Per-session CSRF state for the "Continue with Sajtpress" SSO flow. */
+export const SSO_STATE_COOKIE = "crm_sso_state";

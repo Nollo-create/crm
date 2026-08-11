@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 // happens in the (crm) layout via requireSession(). Runs on the Edge runtime,
 // so it must not import anything Node-only (hence the dep-free constant).
 
-const PUBLIC = ["/login", "/setup"];
+const PUBLIC = ["/login", "/setup", "/sso"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
