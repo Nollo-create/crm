@@ -111,6 +111,24 @@ export function summarizePipeline(deals: DealLike[]): PipelineSummary {
   return { open, weighted, won, openCount, wonCount, lostCount, winRate, byStage };
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A human close-date label with urgency, from a YYYY-MM-DD string. `now` is
+ *  injectable so the urgency thresholds stay deterministic in tests. Formatting
+ *  avoids `toLocaleDateString` so server and client agree (no hydration drift). */
+export function dealCloseInfo(ymd: string | null, now: Date = new Date()): { label: string; tone: "danger" | "warning" | "muted" } | null {
+  if (!ymd) return null;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, tone: "danger" };
+  if (days === 0) return { label: "Closes today", tone: "warning" };
+  if (days <= 7) return { label: `in ${days}d`, tone: "warning" };
+  return { label: `${MONTHS[d.getMonth()]} ${d.getDate()}`, tone: "muted" };
+}
+
 /** A quick 0–100 lead score from cheap signals, so a rep works the best first.
  *  Deliberately simple and explainable; the AI-driven score comes in a later
  *  etapa (it will call the webapp's agents). */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weightedValue, summarizePipeline, leadScore, type DealLike } from "./pipeline";
+import { weightedValue, summarizePipeline, leadScore, dealCloseInfo, type DealLike } from "./pipeline";
 
 describe("weightedValue", () => {
   it("uses the stage default, an override, and closes correctly", () => {
@@ -32,6 +32,27 @@ describe("summarizePipeline", () => {
   it("handles an empty pipeline", () => {
     const s = summarizePipeline([]);
     expect(s).toMatchObject({ open: 0, weighted: 0, won: 0, winRate: 0 });
+  });
+});
+
+describe("dealCloseInfo", () => {
+  const now = new Date("2026-08-11T09:30:00"); // a fixed "today", mid-morning
+
+  it("returns null without a date", () => {
+    expect(dealCloseInfo(null, now)).toBeNull();
+    expect(dealCloseInfo("not-a-date", now)).toBeNull();
+  });
+
+  it("flags overdue, today and near dates by urgency", () => {
+    expect(dealCloseInfo("2026-08-09", now)).toEqual({ label: "2d overdue", tone: "danger" });
+    expect(dealCloseInfo("2026-08-11", now)).toEqual({ label: "Closes today", tone: "warning" });
+    expect(dealCloseInfo("2026-08-13", now)).toEqual({ label: "in 2d", tone: "warning" });
+    expect(dealCloseInfo("2026-08-18", now)).toEqual({ label: "in 7d", tone: "warning" });
+  });
+
+  it("shows a plain, locale-independent date once it is more than a week out", () => {
+    expect(dealCloseInfo("2026-09-01", now)).toEqual({ label: "Sep 1", tone: "muted" });
+    expect(dealCloseInfo("2026-10-01", now)).toEqual({ label: "Oct 1", tone: "muted" });
   });
 });
 
