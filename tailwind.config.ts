@@ -1,8 +1,7 @@
 import type { Config } from "tailwindcss";
 
-// Shares the Sajtpress brand tokens (defined as CSS vars in globals.css) so the
-// CMS looks native to the platform — and stays white-labelable by swapping the
-// vars.
+// Sajtpress CRM design tokens (CSS vars live in globals.css, defined for light +
+// dark independently). Colour carries meaning; keep usage sparing.
 const config: Config = {
   darkMode: "class",
   content: ["./src/**/*.{ts,tsx}"],
@@ -12,6 +11,7 @@ const config: Config = {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },
+        popover: { DEFAULT: "hsl(var(--popover))", foreground: "hsl(var(--card-foreground))" },
         primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
         secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },
         muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
@@ -30,6 +30,14 @@ const config: Config = {
         lg: "var(--radius-lg)",
         md: "var(--radius-md)",
         sm: "var(--radius-sm)",
+      },
+      boxShadow: {
+        xs: "var(--shadow-sm)",
+        card: "var(--shadow)",
+        pop: "var(--shadow-md)",
+      },
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
       },
     },
   },

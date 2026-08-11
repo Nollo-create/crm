@@ -2,64 +2,127 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Sajtpress CRM design system.
+  A calm, professional neutral foundation; colour carries meaning only.
+  Light and dark are designed independently (dark is not an inversion).
+  Radii are moderate (premium, not bubbly); shadows are subtle.
+*/
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 24% 12%;
+    /* Light — soft neutral page, white surfaces */
+    --background: 220 24% 98%;
+    --foreground: 222 32% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222 24% 12%;
-    --primary: 222 24% 12%;
+    --card-foreground: 222 32% 12%;
+    --popover: 0 0% 100%;
+    --primary: 222 47% 14%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 96%;
-    --secondary-foreground: 222 24% 12%;
-    --muted: 220 16% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 16% 95%;
-    --accent-foreground: 222 24% 12%;
-    --border: 220 14% 90%;
-    --input: 220 14% 90%;
-    --ring: 222 84% 62%;
+    --secondary: 220 16% 95%;
+    --secondary-foreground: 222 32% 16%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 10% 44%;
+    --accent: 220 16% 94%;
+    --accent-foreground: 222 32% 14%;
+    --border: 220 16% 90%;
+    --input: 220 16% 88%;
+    --ring: 222 90% 58%;
 
-    /* Brand palette (RGB triplets) + radii — swap to white-label */
-    --c-electric: 79 140 255;
-    --c-royal: 124 92 255;
-    --c-emerald: 22 199 132;
-    --c-warning: 255 184 79;
-    --c-danger: 255 92 124;
-    --radius-xl: 18px;
-    --radius-lg: 14px;
-    --radius-md: 10px;
-    --radius-sm: 8px;
+    /* Brand + semantic (RGB triplets, alpha-value ready) */
+    --c-electric: 59 130 246; /* primary action / accent */
+    --c-royal: 124 92 255; /* AI */
+    --c-emerald: 22 184 129; /* success */
+    --c-warning: 234 168 46; /* attention */
+    --c-danger: 235 84 104; /* risk / error */
+
+    --radius-xl: 14px;
+    --radius-lg: 10px;
+    --radius-md: 8px;
+    --radius-sm: 6px;
+
+    --shadow-sm: 0 1px 2px 0 rgb(16 24 40 / 0.04);
+    --shadow: 0 1px 3px rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.05);
+    --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 6px -2px rgb(16 24 40 / 0.05);
   }
 
   .dark {
-    --background: 224 30% 6%;
-    --foreground: 213 31% 95%;
-    --card: 224 26% 9%;
-    --card-foreground: 213 31% 95%;
-    --primary: 213 31% 95%;
-    --primary-foreground: 224 30% 6%;
-    --secondary: 223 20% 14%;
-    --secondary-foreground: 213 31% 95%;
-    --muted: 223 20% 14%;
-    --muted-foreground: 217 15% 60%;
-    --accent: 223 20% 16%;
-    --accent-foreground: 213 31% 95%;
-    --border: 223 18% 18%;
-    --input: 223 18% 18%;
-    --ring: 222 84% 62%;
+    /* Dark — deep slate, not black; tuned contrast */
+    --background: 224 28% 7%;
+    --foreground: 213 24% 92%;
+    --card: 223 24% 10%;
+    --card-foreground: 213 24% 92%;
+    --popover: 223 24% 11%;
+    --primary: 213 24% 92%;
+    --primary-foreground: 224 28% 8%;
+    --secondary: 222 18% 15%;
+    --secondary-foreground: 213 24% 92%;
+    --muted: 222 18% 15%;
+    --muted-foreground: 216 14% 60%;
+    --accent: 222 18% 17%;
+    --accent-foreground: 213 24% 92%;
+    --border: 222 16% 18%;
+    --input: 222 16% 20%;
+    --ring: 217 90% 62%;
+
+    --c-electric: 96 155 255;
+    --c-royal: 148 122 255;
+    --c-emerald: 39 199 145;
+    --c-warning: 240 182 74;
+    --c-danger: 244 108 126;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.5);
   }
 
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground antialiased;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular figures for money/metrics */
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-.glass {
-  @apply border border-border/60 bg-card/70 backdrop-blur;
+@layer components {
+  /* A surface card — the base container across the app */
+  .surface {
+    @apply rounded-xl border border-border bg-card shadow-[var(--shadow-sm)];
+  }
+  /* Back-compat aliases so existing screens adopt the new system automatically */
+  .glass {
+    @apply rounded-xl border border-border bg-card shadow-[var(--shadow-sm)];
+  }
+  .glass-strong {
+    @apply rounded-xl border border-border bg-card shadow-[var(--shadow)];
+  }
+  /* Subtle AI treatment: a distinct hue so AI-generated info reads apart */
+  .ai-surface {
+    @apply rounded-xl border border-royal/25 bg-royal/[0.04];
+  }
+  .soon-badge {
+    @apply rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+}
+
+/* Slim, unobtrusive scrollbars */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
 }

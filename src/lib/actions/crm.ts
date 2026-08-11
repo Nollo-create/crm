@@ -28,7 +28,7 @@ import {
   type ContactInput,
   type DealInput,
 } from "@/lib/db";
-import { isStageId, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
+import { isStageId, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
 
@@ -241,29 +241,38 @@ export async function addActivityAction(input: {
 
 // ------------------------------------------------------------- dashboard + board
 
+export interface BoardDeal extends Deal {
+  companyName: string;
+}
+
 export interface DashboardData {
   summary: PipelineSummary;
   companies: number;
   leads: number;
   customers: number;
   recent: Company[];
+  /** biggest open deals — the "deals to watch" queue */
+  focusDeals: BoardDeal[];
 }
 
 export async function dashboardAction(): Promise<DashboardData> {
   const [companyRows, dealRows] = await Promise.all([listCompanies(), listDeals()]);
   const companies = companyRows.map(toCompany);
   const deals = dealRows.map(toDeal);
+  const names = new Map(companyRows.map((c) => [c.id, c.name]));
+  const focusDeals = deals
+    .filter((d) => stage(d.stage).open)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6)
+    .map((d) => ({ ...d, companyName: names.get(d.companyId) ?? "—" }));
   return {
     summary: summarizePipeline(deals),
     companies: companies.length,
     leads: companies.filter((c) => c.status === "lead").length,
     customers: companies.filter((c) => c.status === "customer").length,
     recent: companies.slice(0, 6),
+    focusDeals,
   };
-}
-
-export interface BoardDeal extends Deal {
-  companyName: string;
 }
 
 export async function boardAction(): Promise<BoardDeal[]> {
