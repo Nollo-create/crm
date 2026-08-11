@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import {
   createCompany,
   listCompanies,
-  listCompaniesWithStats,
+  listCompaniesPage,
   bulkDeleteCompanies,
   bulkSetCompanyStatus,
   getCompany,
@@ -145,16 +145,41 @@ export interface CompanyRowView extends Company {
 
 const STATUSES = ["lead", "active", "customer", "at_risk", "lost"];
 
-export async function listCompaniesTableAction(q = "", status = ""): Promise<CompanyRowView[]> {
-  const { organizationId } = await requireSession();
-  const rows = await listCompaniesWithStats(organizationId, { q: q.trim() || undefined, status: status || undefined });
-  return rows.map((r: CompanyStatsRow) => ({
+function toRowView(r: CompanyStatsRow): CompanyRowView {
+  return {
     ...toCompany(r),
     contacts: Number(r.contacts),
     openDeals: Number(r.open_deals),
     openValue: Number(r.open_value),
     lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : null,
-  }));
+  };
+}
+
+export interface CompaniesPage {
+  rows: CompanyRowView[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function companiesPageAction(opts: {
+  q?: string;
+  status?: string;
+  sortKey: string;
+  sortDir: 1 | -1;
+  page: number;
+  pageSize: number;
+}): Promise<CompaniesPage> {
+  const { organizationId } = await requireSession();
+  const res = await listCompaniesPage(organizationId, {
+    q: opts.q?.trim() || undefined,
+    status: opts.status || undefined,
+    sortKey: opts.sortKey,
+    sortDir: opts.sortDir,
+    page: opts.page,
+    pageSize: opts.pageSize,
+  });
+  return { rows: res.rows.map(toRowView), total: res.total, page: res.page, pageCount: res.pageCount };
 }
 
 export interface SearchHit {

@@ -1,5 +1,7 @@
 import "server-only";
 import mysql from "mysql2/promise";
+import { leadScore } from "@/lib/crm/pipeline";
+import { buildCompanyOrderBy, pageBounds } from "@/lib/crm/company-query";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -64,9 +66,11 @@ export function ensureSchema(): Promise<void> {
           status VARCHAR(20) NOT NULL DEFAULT 'lead',
           account_manager VARCHAR(120) NOT NULL DEFAULT '',
           industry_match TINYINT(1) NOT NULL DEFAULT 0,
+          lead_score TINYINT UNSIGNED NOT NULL DEFAULT 0,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_company_status (status, name)
+          INDEX idx_company_status (status, name),
+          INDEX idx_company_org (organization_id, updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       await pool.query(`
@@ -119,6 +123,9 @@ export function ensureSchema(): Promise<void> {
       await ensureColumn(pool, "crm_contacts", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
       await ensureColumn(pool, "crm_deals", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
       await ensureColumn(pool, "crm_activities", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
+      // Denormalised lead score (kept in sync by createCompany/updateCompany) so
+      // the table can sort + paginate by it server-side.
+      await ensureColumn(pool, "crm_companies", "lead_score", "lead_score TINYINT UNSIGNED NOT NULL DEFAULT 0");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -189,11 +196,17 @@ export interface CompanyInput {
   industryMatch?: boolean;
 }
 
+/** The denormalised lead score for a company input — the one place it's
+ *  computed on write, so the stored column can never drift from leadScore(). */
+function scoreOf(c: CompanyInput): number {
+  return leadScore({ hasWebsite: !!(c.website ?? "").trim(), employees: c.employees ?? null, industryMatch: !!c.industryMatch, annualValue: c.annualValue ?? 0 });
+}
+
 export async function createCompany(orgId: number, c: CompanyInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match, lead_score)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       c.name.slice(0, 190),
@@ -205,6 +218,7 @@ export async function createCompany(orgId: number, c: CompanyInput): Promise<num
       (c.status ?? "lead").slice(0, 20),
       (c.accountManager ?? "").slice(0, 120),
       c.industryMatch ? 1 : 0,
+      scoreOf(c),
     ]
   );
   return res.insertId;
@@ -242,7 +256,7 @@ export async function getCompany(orgId: number, id: number): Promise<CompanyRow 
 export async function updateCompany(orgId: number, id: number, c: CompanyInput): Promise<void> {
   await ensureSchema();
   await getPool().query(
-    `UPDATE crm_companies SET name=?, industry=?, city=?, website=?, employees=?, annual_value=?, status=?, account_manager=?, industry_match=? WHERE id=? AND organization_id=?`,
+    `UPDATE crm_companies SET name=?, industry=?, city=?, website=?, employees=?, annual_value=?, status=?, account_manager=?, industry_match=?, lead_score=? WHERE id=? AND organization_id=?`,
     [
       c.name.slice(0, 190),
       (c.industry ?? "").slice(0, 120),
@@ -253,6 +267,7 @@ export async function updateCompany(orgId: number, id: number, c: CompanyInput):
       (c.status ?? "lead").slice(0, 20),
       (c.accountManager ?? "").slice(0, 120),
       c.industryMatch ? 1 : 0,
+      scoreOf(c),
       id,
       orgId,
     ]
@@ -278,7 +293,20 @@ export interface CompanyStatsRow extends CompanyRow {
 /** Companies + per-row aggregates for the table (contacts, open deals + value,
  *  last activity). Subqueries are fine at this scale (≤500 rows); server-side
  *  pagination is a scale-up item. */
-export async function listCompaniesWithStats(orgId: number, opts: { q?: string; status?: string } = {}): Promise<CompanyStatsRow[]> {
+export interface CompaniesPageResult {
+  rows: CompanyStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/** One page of companies + per-row aggregates, sorted and counted server-side.
+ *  Sort is allowlisted (buildCompanyOrderBy). `health_rank` mirrors the health()
+ *  heuristic in companies/page.tsx — keep the two buckets in sync. */
+export async function listCompaniesPage(
+  orgId: number,
+  opts: { q?: string; status?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<CompaniesPageResult> {
   await ensureSchema();
   const where: string[] = ["c.organization_id = ?"];
   const params: (string | number)[] = [orgId];
@@ -291,18 +319,34 @@ export async function listCompaniesWithStats(orgId: number, opts: { q?: string; 
     where.push("c.status = ?");
     params.push(opts.status);
   }
-  const [rows] = await getPool().query<CompanyStatsRow[]>(
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM crm_companies c ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildCompanyOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<CompanyStatsRow[]>(
     `SELECT c.*,
        (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.company_id = c.id) AS contacts,
        (SELECT COUNT(*) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) AS open_deals,
        (SELECT COALESCE(SUM(d.value),0) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) AS open_value,
-       (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) AS last_activity
+       (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) AS last_activity,
+       (CASE
+          WHEN (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) IS NULL THEN 2
+          WHEN (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) < (NOW() - INTERVAL 30 DAY) THEN 0
+          WHEN (SELECT COALESCE(SUM(d.value),0) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) > 0
+               AND (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) >= (NOW() - INTERVAL 14 DAY) THEN 3
+          ELSE 1
+        END) AS health_rank
        FROM crm_companies c
-      WHERE ${where.join(" AND ")}
-      ORDER BY c.updated_at DESC LIMIT 500`,
-    params
+       ${whereSql}
+       ${orderBy}
+       LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
   );
-  return rows;
+  return { rows, total, page, pageCount };
 }
 
 export async function bulkDeleteCompanies(orgId: number, ids: number[]): Promise<void> {

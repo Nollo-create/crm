@@ -1,12 +1,12 @@
 {
   "/_not-found/page": "/_not-found",
   "/api/health/route": "/api/health",
-  "/setup/page": "/setup",
   "/login/page": "/login",
-  "/(crm)/companies/page": "/companies",
+  "/setup/page": "/setup",
   "/(crm)/pipeline/page": "/pipeline",
+  "/(crm)/companies/page": "/companies",
+  "/(crm)/page": "/",
   "/(crm)/settings/security/page": "/settings/security",
   "/(crm)/companies/[id]/page": "/companies/[id]",
-  "/(crm)/page": "/",
   "/(crm)/settings/users/page": "/settings/users"
 }

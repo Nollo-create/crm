@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  listCompaniesTableAction,
+  companiesPageAction,
   createCompanyAction,
   bulkDeleteCompaniesAction,
   bulkSetStatusAction,
@@ -18,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { CompanyDrawer } from "@/components/crm/company-drawer";
 import { BUILTIN_VIEWS, activeViewId, makeView, normalizeViews, type CompanyView, type CompanySortKey, type ViewState } from "@/lib/crm/views";
-import { paginate } from "@/lib/crm/paginate";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +30,8 @@ const empty = { name: "", industry: "", city: "", website: "", employees: "", an
 function score(c: CompanyRowView) {
   return leadScore({ hasWebsite: !!c.website, employees: c.employees, industryMatch: c.industryMatch, annualValue: c.annualValue });
 }
+// NOTE: the buckets here are mirrored in SQL as `health_rank` in db.ts
+// (listCompaniesPage) so the server can sort by health — keep the two in sync.
 function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } {
   if (!c.lastActivity) return { tone: "neutral", label: "New", rank: 2 };
   const days = (Date.now() - new Date(c.lastActivity).getTime()) / 86_400_000;
@@ -58,9 +59,12 @@ const allColsVisible = () => Object.fromEntries(COL_KEYS.map((k) => [k, true])) 
 
 export default function CompaniesPage() {
   const { toast } = useToast();
-  const [all, setAll] = useState<CompanyRowView[]>([]);
+  const [rows, setRows] = useState<CompanyRowView[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [status, setStatus] = useState("");
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
@@ -71,6 +75,7 @@ export default function CompaniesPage() {
   const [colMenu, setColMenu] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [reloadKey, setReloadKey] = useState(0);
   const [userViews, setUserViews] = useState<CompanyView[]>([]);
   const [savingView, setSavingView] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -78,16 +83,7 @@ export default function CompaniesPage() {
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  async function load() {
-    setLoading(true);
-    try {
-      setAll(await listCompaniesTableAction());
-    } catch {
-      /* no db */
-    }
-    setLoading(false);
-    setSelected(new Set());
-  }
+  // Preferences (local only) — separate from the server data fetch.
   useEffect(() => {
     setDensity((localStorage.getItem("crm-density") as "comfortable" | "compact") || "comfortable");
     try {
@@ -105,8 +101,46 @@ export default function CompaniesPage() {
     } catch {
       /* ignore malformed storage */
     }
-    void load();
   }, []);
+
+  // Debounce the search box, resetting to the first page when it settles.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQ(q);
+      setPage(1);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // The single server fetch — one page at a time, sorted + counted server-side.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    companiesPageAction({ q: debouncedQ, status, sortKey: sort.key, sortDir: sort.dir, page, pageSize })
+      .then((res) => {
+        if (cancelled) return;
+        setRows(res.rows);
+        setTotal(res.total);
+        setPageCount(res.pageCount);
+        setSelected(new Set());
+        if (res.page !== page) setPage(res.page); // server clamped an out-of-range page
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRows([]);
+        setTotal(0);
+        setPageCount(1);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ, status, sort, page, pageSize, reloadKey]);
+
+  const refetch = () => setReloadKey((k) => k + 1);
 
   const visibleCols = COLUMNS.filter((c) => cols[c.key]);
   function toggleCol(key: ColKey) {
@@ -124,6 +158,7 @@ export default function CompaniesPage() {
   const allViews = useMemo(() => [...BUILTIN_VIEWS, ...userViews], [userViews]);
   const viewState: ViewState = { status, sortKey: sort.key, sortDir: sort.dir };
   const activeId = activeViewId(allViews, viewState);
+  const hasFilters = !!(debouncedQ || status);
 
   function persistViews(next: CompanyView[]) {
     setUserViews(next);
@@ -137,6 +172,7 @@ export default function CompaniesPage() {
     setStatus(v.status);
     setSort({ key: v.sortKey, dir: v.sortDir });
     setSelected(new Set());
+    setPage(1);
   }
   function saveCurrentView() {
     const name = viewName.trim();
@@ -150,33 +186,9 @@ export default function CompaniesPage() {
     persistViews(userViews.filter((v) => v.id !== id));
   }
 
-  const shown = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    const filtered = all.filter(
-      (c) => (!status || c.status === status) && (!s || `${c.name} ${c.industry} ${c.city}`.toLowerCase().includes(s))
-    );
-    const val = (c: CompanyRowView): number | string =>
-      sort.key === "name" ? c.name.toLowerCase()
-      : sort.key === "industry" ? c.industry.toLowerCase()
-      : sort.key === "contacts" ? c.contacts
-      : sort.key === "openValue" ? c.openValue
-      : sort.key === "score" ? score(c)
-      : sort.key === "health" ? health(c).rank
-      : c.lastActivity ? new Date(c.lastActivity).getTime() : 0;
-    return filtered.sort((a, b) => {
-      const av = val(a), bv = val(b);
-      return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
-    });
-  }, [all, q, status, sort]);
-
-  // Reset to the first page whenever the result set or page size changes.
-  useEffect(() => {
-    setPage(1);
-  }, [q, status, sort, pageSize]);
-  const pageInfo = paginate(shown, page, pageSize);
-
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "name" || key === "industry" ? 1 : -1 }));
+    setPage(1);
   }
   function setDens(d: "comfortable" | "compact") {
     setDensity(d);
@@ -189,7 +201,7 @@ export default function CompaniesPage() {
       return n;
     });
   }
-  const allShownSelected = shown.length > 0 && shown.every((c) => selected.has(c.id));
+  const allShownSelected = rows.length > 0 && rows.every((c) => selected.has(c.id));
 
   async function create() {
     if (!form.name.trim()) return;
@@ -207,7 +219,8 @@ export default function CompaniesPage() {
     toast(`${form.name.trim()} added`, { tone: "success" });
     setForm(empty);
     setShowCreate(false);
-    void load();
+    setPage(1);
+    refetch();
   }
 
   async function bulkDelete() {
@@ -221,7 +234,7 @@ export default function CompaniesPage() {
       return;
     }
     toast(`${n} ${n === 1 ? "company" : "companies"} deleted`, { tone: "success" });
-    void load();
+    refetch();
   }
   async function bulkStatus(s: string) {
     if (!s) return;
@@ -231,13 +244,26 @@ export default function CompaniesPage() {
     setBulkBusy(false);
     if (r.error) toast(r.error, { tone: "error" });
     else toast(`${n} ${n === 1 ? "company" : "companies"} set to ${STATUS_LABEL[s] ?? s}`, { tone: "success" });
-    void load();
+    refetch();
   }
-  function exportCsv() {
-    const rows = selected.size ? shown.filter((c) => selected.has(c.id)) : shown;
+  async function exportCsv() {
+    // Selected rows come from the current page; otherwise export the whole
+    // filtered set by paging through it (capped so a huge export stays bounded).
+    let data: CompanyRowView[];
+    if (selected.size) {
+      data = rows.filter((c) => selected.has(c.id));
+    } else {
+      data = [];
+      for (let p = 1; p <= 20; p++) {
+        const res = await companiesPageAction({ q: debouncedQ, status, sortKey: sort.key, sortDir: sort.dir, page: p, pageSize: 100 }).catch(() => null);
+        if (!res || res.rows.length === 0) break;
+        data.push(...res.rows);
+        if (p >= res.pageCount) break;
+      }
+    }
     const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const head = ["Name", "Industry", "City", "Status", "Contacts", "Open deals", "Open pipeline", "Lead score", "Last activity"];
-    const csv = [head.map(cell).join(","), ...rows.map((c) => [c.name, c.industry, c.city, c.status, c.contacts, c.openDeals, c.openValue, score(c), c.lastActivity ?? ""].map(cell).join(","))].join("\n");
+    const csv = [head.map(cell).join(","), ...data.map((c) => [c.name, c.industry, c.city, c.status, c.contacts, c.openDeals, c.openValue, score(c), c.lastActivity ?? ""].map(cell).join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
@@ -247,13 +273,15 @@ export default function CompaniesPage() {
   }
 
   const pad = density === "compact" ? "py-1.5" : "py-2.5";
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Companies</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{shown.length} of {all.length} accounts</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{total} account{total === 1 ? "" : "s"}</p>
         </div>
         <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
           <Plus size={15} /> New company
@@ -371,7 +399,7 @@ export default function CompaniesPage() {
           </div>
           <div className="flex flex-wrap gap-1">
             {["", ...Object.keys(STATUS_LABEL)].map((s) => (
-              <button key={s || "all"} onClick={() => setStatus(s)} className={cn("rounded-lg px-2.5 py-1 text-xs font-medium transition-colors", status === s ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60")}>
+              <button key={s || "all"} onClick={() => { setStatus(s); setPage(1); }} className={cn("rounded-lg px-2.5 py-1 text-xs font-medium transition-colors", status === s ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60")}>
                 {s ? STATUS_LABEL[s] : "All"}
               </button>
             ))}
@@ -415,7 +443,7 @@ export default function CompaniesPage() {
             <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="w-9 px-3 py-2">
-                  <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((c) => c.id)) : new Set())} className="h-3.5 w-3.5 accent-electric" />
+                  <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((c) => c.id)) : new Set())} className="h-3.5 w-3.5 accent-electric" />
                 </th>
                 <Th label="Company" k="name" sort={sort} onSort={toggleSort} />
                 {visibleCols.map((col) => (
@@ -430,14 +458,14 @@ export default function CompaniesPage() {
                     <td className="px-3 py-3" colSpan={2 + visibleCols.length}><Skeleton className="h-4 w-full" /></td>
                   </tr>
                 ))
-              ) : shown.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={2 + visibleCols.length} className="px-3 py-12 text-center text-sm text-muted-foreground">
-                    {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
+                    {hasFilters ? "No matches." : "No companies yet — add your first account."}
                   </td>
                 </tr>
               ) : (
-                pageInfo.rows.map((c) => {
+                rows.map((c) => {
                   const h = health(c);
                   const sc = score(c);
                   return (
@@ -471,12 +499,12 @@ export default function CompaniesPage() {
       <div className="space-y-2 md:hidden">
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[74px] w-full rounded-xl" />)
-        ) : shown.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-            {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
+            {hasFilters ? "No matches." : "No companies yet — add your first account."}
           </p>
         ) : (
-          pageInfo.rows.map((c) => {
+          rows.map((c) => {
             const h = health(c);
             const sc = score(c);
             return (
@@ -513,23 +541,23 @@ export default function CompaniesPage() {
       </div>
 
       {/* Pagination */}
-      {!loading && pageInfo.total > 0 && (
+      {!loading && total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-muted-foreground">
           <span>
-            {pageInfo.from}–{pageInfo.to} of {pageInfo.total}
+            {from}–{to} of {total}
           </span>
           <div className="flex items-center gap-3">
-            <Select value={String(pageSize)} onChange={(e) => setPageSize(Number(e.target.value))} className="h-8 w-auto text-xs">
+            <Select value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="h-8 w-auto text-xs">
               {[25, 50, 100].map((n) => (
                 <option key={n} value={n}>{n} / page</option>
               ))}
             </Select>
             <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" disabled={pageInfo.page <= 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
                 <ChevronLeft size={14} />
               </Button>
-              <span className="px-1 tabular">{pageInfo.page} / {pageInfo.pageCount}</span>
-              <Button size="sm" variant="outline" disabled={pageInfo.page >= pageInfo.pageCount} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+              <span className="px-1 tabular">{page} / {pageCount}</span>
+              <Button size="sm" variant="outline" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
                 <ChevronRight size={14} />
               </Button>
             </div>
@@ -547,7 +575,7 @@ export default function CompaniesPage() {
         <Plus size={24} />
       </button>
 
-      <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={load} />
+      <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={refetch} />
     </div>
   );
 }
