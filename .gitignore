@@ -1,0 +1,16 @@
+# deps
+/node_modules
+
+# next build output — force-committed for cPanel deploy (see README),
+# EXCEPT the cache. `git add -f .next && git rm -r --cached .next/cache`
+/.next/cache
+
+# local env — real secrets live in the cPanel Node app env, never in git
+.env
+.env*.local
+
+# misc
+next-env.d.ts
+*.tsbuildinfo
+.DS_Store
+npm-debug.log*
