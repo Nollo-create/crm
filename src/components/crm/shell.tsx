@@ -6,16 +6,28 @@ import { usePathname } from "next/navigation";
 import { PanelLeft, Search, Bell, Plus } from "lucide-react";
 import { crmNav } from "@/lib/crm/nav";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
+import { CommandPalette } from "@/components/crm/command-palette";
 import { cn } from "@/lib/utils";
 
 export function Shell({ connected, children }: { connected: boolean; children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem("crm-sidebar") === "1");
     setMounted(true);
+  }, []);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
   function toggle() {
     setCollapsed((v) => {
@@ -112,8 +124,9 @@ export function Shell({ connected, children }: { connected: boolean; children: R
             <PanelLeft size={16} />
           </button>
           <button
+            onClick={() => setCmdOpen(true)}
             className="flex h-9 max-w-md flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-muted-foreground transition-colors hover:border-electric/40"
-            title="Command palette — coming soon"
+            title="Search — ⌘K"
           >
             <Search size={15} />
             <span className="flex-1 text-left">Search or jump to…</span>
@@ -141,6 +154,8 @@ export function Shell({ connected, children }: { connected: boolean; children: R
           <div className="mx-auto max-w-7xl p-4 sm:p-6">{children}</div>
         </main>
       </div>
+
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
     </div>
   );
 }

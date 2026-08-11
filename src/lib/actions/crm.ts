@@ -152,6 +152,21 @@ export async function listCompaniesTableAction(q = "", status = ""): Promise<Com
   }));
 }
 
+export interface SearchHit {
+  id: number;
+  name: string;
+  city: string;
+  status: string;
+}
+
+/** Lightweight company search for the command palette. */
+export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
+  const s = q.trim();
+  if (!s) return [];
+  const rows = await listCompanies({ q: s });
+  return rows.slice(0, 8).map((r) => ({ id: r.id, name: r.name, city: r.city, status: r.status }));
+}
+
 export async function bulkDeleteCompaniesAction(ids: number[]): Promise<void> {
   await bulkDeleteCompanies(ids);
   revalidatePath("/companies");
