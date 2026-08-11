@@ -114,10 +114,10 @@ export const crmNav: CrmNavGroup[] = [
   {
     title: "Settings",
     items: [
-      { label: "Organization", href: "/settings/org", icon: Building, soon: true },
+      { label: "Organization", href: "/settings/org", icon: Building },
       { label: "Users & Teams", href: "/settings/users", icon: Users2 },
-      { label: "Roles & Permissions", href: "/settings/roles", icon: Shield, soon: true },
-      { label: "Integrations", href: "/settings/integrations", icon: Plug, soon: true },
+      { label: "Roles & Permissions", href: "/settings/roles", icon: Shield },
+      { label: "Integrations", href: "/settings/integrations", icon: Plug },
       { label: "Billing", href: "/settings/billing", icon: CreditCard, soon: true },
       { label: "Security", href: "/settings/security", icon: KeyRound },
       { label: "API", href: "/settings/api", icon: Settings, soon: true },

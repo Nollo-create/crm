@@ -1,0 +1,81 @@
+import { Check, Minus } from "lucide-react";
+import { requireSession } from "@/lib/auth/session";
+import { can, ROLES, type Permission } from "@/lib/auth/rbac";
+import { Card } from "@/components/ui/card";
+
+export const dynamic = "force-dynamic";
+
+const PERMISSIONS: { key: Permission; label: string }[] = [
+  { key: "company:read", label: "View companies & contacts" },
+  { key: "company:write", label: "Create & edit records" },
+  { key: "company:delete", label: "Delete companies" },
+  { key: "deal:delete", label: "Delete deals" },
+  { key: "member:manage", label: "Manage users" },
+  { key: "org:manage", label: "Manage the organization" },
+];
+
+const ROLE_DESC: Record<string, string> = {
+  owner: "Full control, including the organization and other owners.",
+  admin: "Manage users and delete records; can't touch owners or org settings.",
+  member: "Create and edit records (companies, contacts, deals, tasks…).",
+};
+
+export default async function RolesPage() {
+  const session = await requireSession();
+  if (!can(session.role, "member:manage")) {
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <p className="text-sm text-muted-foreground">You don&apos;t have access to roles &amp; permissions.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Roles &amp; permissions</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">What each role can do. Assign roles in Users &amp; Teams.</p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        {ROLES.map((r) => (
+          <Card key={r} className="p-3">
+            <p className="text-sm font-semibold capitalize">{r}</p>
+            <p className="mt-1 text-2xs text-muted-foreground">{ROLE_DESC[r]}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Permission</th>
+                {ROLES.map((r) => (
+                  <th key={r} className="px-3 py-2 text-center font-medium capitalize">{r}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {PERMISSIONS.map((p) => (
+                <tr key={p.key}>
+                  <td className="px-3 py-2.5">{p.label}</td>
+                  {ROLES.map((r) => (
+                    <td key={r} className="px-3 py-2.5 text-center">
+                      {can(r, p.key) ? (
+                        <Check size={15} className="mx-auto text-emerald" />
+                      ) : (
+                        <Minus size={15} className="mx-auto text-muted-foreground/40" />
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}

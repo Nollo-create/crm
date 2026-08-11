@@ -1457,6 +1457,23 @@ export async function createOrganization(name: string, slug: string): Promise<nu
   return res.insertId;
 }
 
+export async function getOrganization(id: number): Promise<OrganizationRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<OrganizationRow[]>("SELECT * FROM crm_organizations WHERE id = ? LIMIT 1", [id]);
+  return rows[0] ?? null;
+}
+
+export async function updateOrganization(id: number, name: string, slug: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_organizations SET name = ?, slug = ? WHERE id = ?", [name.slice(0, 190), slug.slice(0, 120), id]);
+}
+
+export async function countOrgUsers(orgId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ?", [orgId]);
+  return Number(rows[0]?.n ?? 0);
+}
+
 export interface NewUser {
   organizationId: number;
   email: string;

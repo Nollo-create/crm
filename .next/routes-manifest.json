@@ -158,6 +158,24 @@
       "namedRegex": "^/quotes(?:/)?$"
     },
     {
+      "page": "/settings/integrations",
+      "regex": "^/settings/integrations(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/integrations(?:/)?$"
+    },
+    {
+      "page": "/settings/org",
+      "regex": "^/settings/org(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/org(?:/)?$"
+    },
+    {
+      "page": "/settings/roles",
+      "regex": "^/settings/roles(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/roles(?:/)?$"
+    },
+    {
       "page": "/settings/security",
       "regex": "^/settings/security(?:/)?$",
       "routeKeys": {},
