@@ -2,7 +2,7 @@
   "version": 1,
   "config": {
     "env": {
-      "NEXT_PUBLIC_APP_VERSION": "1"
+      "NEXT_PUBLIC_APP_VERSION": "3"
     },
     "webpack": null,
     "eslint": {
@@ -101,7 +101,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "D:\\cms",
+    "outputFileTracingRoot": "D:\\crm",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -290,10 +290,10 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.mjs",
     "turbopack": {
-      "root": "D:\\cms"
+      "root": "D:\\crm"
     }
   },
-  "appDir": "D:\\cms",
+  "appDir": "D:\\crm",
   "relativeAppDir": "",
   "files": [
     ".next\\routes-manifest.json",

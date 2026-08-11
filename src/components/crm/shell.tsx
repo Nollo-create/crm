@@ -16,38 +16,47 @@ export function Shell({ connected, children }: { connected: boolean; children: R
           </p>
           <p className="text-[11px] text-muted-foreground">B2B Sales OS</p>
         </div>
-        <nav className="mt-2 flex-1 space-y-0.5 overflow-y-auto">
-          {crmNav.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            const cls = cn(
-              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm",
-              active
-                ? "bg-secondary font-medium text-foreground"
-                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-              item.soon && "cursor-default opacity-60 hover:bg-transparent hover:text-muted-foreground"
-            );
-            const inner = (
-              <>
-                <Icon size={16} className="shrink-0" />
-                <span className="flex-1">{item.label}</span>
-                {item.soon && (
-                  <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    soon
+        <nav className="mt-1 flex-1 space-y-3 overflow-y-auto pr-0.5">
+          {crmNav.map((group, gi) => (
+            <div key={group.title ?? gi} className="space-y-0.5">
+              {group.title && (
+                <p className="px-2.5 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {group.title}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                const Icon = item.icon;
+                const cls = cn(
+                  "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm",
+                  active
+                    ? "bg-secondary font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                  item.soon && "cursor-default opacity-60 hover:bg-transparent hover:text-muted-foreground"
+                );
+                const inner = (
+                  <>
+                    <Icon size={15} className="shrink-0" />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.soon && (
+                      <span className="rounded bg-secondary px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        soon
+                      </span>
+                    )}
+                  </>
+                );
+                return item.soon ? (
+                  <span key={item.href} className={cls} title="Coming in a later phase">
+                    {inner}
                   </span>
-                )}
-              </>
-            );
-            return item.soon ? (
-              <span key={item.href} className={cls} title="Coming in a later stage">
-                {inner}
-              </span>
-            ) : (
-              <Link key={item.href} href={item.href} className={cls}>
-                {inner}
-              </Link>
-            );
-          })}
+                ) : (
+                  <Link key={item.href} href={item.href} className={cls}>
+                    {inner}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="mt-2 border-t border-border px-2 py-2 text-[11px] text-muted-foreground">
           <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", connected ? "bg-emerald" : "bg-warning")} />

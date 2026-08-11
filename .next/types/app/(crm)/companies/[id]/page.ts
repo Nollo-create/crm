@@ -1,4 +1,4 @@
-// File: D:\cms\src\app\(crm)\companies\[id]\page.tsx
+// File: D:\crm\src\app\(crm)\companies\[id]\page.tsx
 import * as entry from '../../../../../../src/app/(crm)/companies/[id]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
