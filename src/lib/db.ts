@@ -2,6 +2,7 @@ import "server-only";
 import mysql from "mysql2/promise";
 import { leadScore } from "@/lib/crm/pipeline";
 import { buildCompanyOrderBy, pageBounds } from "@/lib/crm/company-query";
+import { buildContactOrderBy } from "@/lib/crm/contact-query";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -410,6 +411,51 @@ export async function listContacts(orgId: number, companyId: number): Promise<Co
 export async function deleteContact(orgId: number, id: number): Promise<void> {
   await ensureSchema();
   await getPool().query("DELETE FROM crm_contacts WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export interface ContactStatsRow extends ContactRow {
+  company_name: string;
+}
+
+export interface ContactsPageResult {
+  rows: ContactStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/** One page of the cross-company contacts directory, joined to the company,
+ *  filtered/sorted/counted server-side. Sort is allowlisted (buildContactOrderBy). */
+export async function listContactsPage(
+  orgId: number,
+  opts: { q?: string; influence?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<ContactsPageResult> {
+  await ensureSchema();
+  const where: string[] = ["ct.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("(ct.name LIKE ? OR ct.email LIKE ? OR ct.role LIKE ? OR co.name LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like, like, like);
+  }
+  if (opts.influence) {
+    where.push("ct.influence = ?");
+    params.push(opts.influence);
+  }
+  const joinSql = "FROM crm_contacts ct JOIN crm_companies co ON co.id = ct.company_id AND co.organization_id = ct.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildContactOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<ContactStatsRow[]>(
+    `SELECT ct.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return { rows, total, page, pageCount };
 }
 
 // -------------------------------------------------------------------- deals

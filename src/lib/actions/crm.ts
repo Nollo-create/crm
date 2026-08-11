@@ -17,7 +17,9 @@ import {
   type CompanyStatsRow,
   addContact,
   listContacts,
+  listContactsPage,
   deleteContact,
+  type ContactStatsRow,
   createDeal,
   listDeals,
   updateDeal,
@@ -288,6 +290,61 @@ export async function deleteContactAction(id: number, companyId: number): Promis
   const { organizationId } = await requireSession();
   await deleteContact(organizationId, id);
   revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/contacts");
+}
+
+export interface ContactListItem {
+  id: number;
+  companyId: number;
+  companyName: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  department: string;
+  influence: string;
+}
+
+export interface ContactsPage {
+  rows: ContactListItem[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function contactsPageAction(opts: {
+  q?: string;
+  influence?: string;
+  sortKey: string;
+  sortDir: 1 | -1;
+  page: number;
+  pageSize: number;
+}): Promise<ContactsPage> {
+  const { organizationId } = await requireSession();
+  const res = await listContactsPage(organizationId, {
+    q: opts.q?.trim() || undefined,
+    influence: opts.influence || undefined,
+    sortKey: opts.sortKey,
+    sortDir: opts.sortDir,
+    page: opts.page,
+    pageSize: opts.pageSize,
+  });
+  return {
+    rows: res.rows.map((r: ContactStatsRow) => ({
+      id: r.id,
+      companyId: r.company_id,
+      companyName: r.company_name,
+      name: r.name,
+      role: r.role,
+      email: r.email,
+      phone: r.phone,
+      department: r.department,
+      influence: r.influence,
+    })),
+    total: res.total,
+    page: res.page,
+    pageCount: res.pageCount,
+  };
 }
 
 // ---------------------------------------------------------------------- deals
