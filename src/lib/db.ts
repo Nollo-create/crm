@@ -1574,6 +1574,22 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_audit_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_api_keys (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          name VARCHAR(120) NOT NULL DEFAULT '',
+          key_hash CHAR(64) NOT NULL,
+          last4 VARCHAR(8) NOT NULL DEFAULT '',
+          created_by_email VARCHAR(190) NOT NULL DEFAULT '',
+          enabled TINYINT NOT NULL DEFAULT 1,
+          last_used_at TIMESTAMP NULL,
+          request_count INT UNSIGNED NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_apikey_hash (key_hash),
+          INDEX idx_apikey_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -1689,6 +1705,72 @@ export async function getUsageCounts(orgId: number): Promise<UsageCounts> {
     q("SELECT COUNT(*) AS n FROM crm_deals WHERE organization_id = ?"),
   ]);
   return { users, companies, contacts, deals };
+}
+
+// -------- API keys (read-only, org-scoped; only the SHA-256 is stored)
+
+export interface ApiKeyRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  name: string;
+  key_hash: string;
+  last4: string;
+  created_by_email: string;
+  enabled: number;
+  last_used_at: Date | null;
+  request_count: number;
+  created_at: Date;
+}
+
+export async function listApiKeys(orgId: number): Promise<ApiKeyRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<ApiKeyRow[]>(
+    "SELECT * FROM crm_api_keys WHERE organization_id = ? ORDER BY id DESC",
+    [orgId]
+  );
+  return rows;
+}
+
+export async function createApiKey(
+  orgId: number,
+  input: { name: string; keyHash: string; last4: string; createdByEmail: string }
+): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_api_keys (organization_id, name, key_hash, last4, created_by_email) VALUES (?, ?, ?, ?, ?)",
+    [orgId, input.name.slice(0, 120), input.keyHash.slice(0, 64), input.last4.slice(0, 8), input.createdByEmail.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+export async function setApiKeyEnabled(orgId: number, id: number, enabled: boolean): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_api_keys SET enabled = ? WHERE id = ? AND organization_id = ?", [enabled ? 1 : 0, id, orgId]);
+}
+
+export async function deleteApiKey(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_api_keys WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+/** Resolve an incoming key hash to its org — the API auth lookup. NOT org-scoped
+ *  (the key *is* the identity). Only enabled keys authenticate. */
+export async function findEnabledApiKeyByHash(hash: string): Promise<{ id: number; organizationId: number } | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<ApiKeyRow[]>(
+    "SELECT id, organization_id FROM crm_api_keys WHERE key_hash = ? AND enabled = 1 LIMIT 1",
+    [hash]
+  );
+  const r = rows[0];
+  return r ? { id: r.id, organizationId: r.organization_id } : null;
+}
+
+/** Best-effort usage stamp; never blocks a request. */
+export async function touchApiKey(id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool()
+    .query("UPDATE crm_api_keys SET last_used_at = CURRENT_TIMESTAMP, request_count = request_count + 1 WHERE id = ?", [id])
+    .catch(() => {});
 }
 
 export interface NewUser {

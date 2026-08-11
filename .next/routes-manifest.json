@@ -218,6 +218,12 @@
       "namedRegex": "^/quotes(?:/)?$"
     },
     {
+      "page": "/settings/api",
+      "regex": "^/settings/api(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/api(?:/)?$"
+    },
+    {
       "page": "/settings/billing",
       "regex": "^/settings/billing(?:/)?$",
       "routeKeys": {},
