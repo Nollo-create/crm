@@ -26,30 +26,6 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/pipeline": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/pipeline",
-      "dataRoute": "/pipeline.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/companies": {
       "experimentalBypassFor": [
         {
@@ -73,13 +49,37 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
+    },
+    "/pipeline": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/pipeline",
+      "dataRoute": "/pipeline.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "3b9ccf9f5329b838af875e0fa5db44b5",
-    "previewModeSigningKey": "643c5d8cec02ab5366496ac5216abc15e3f69288d54e48e26847d98ecf6b79b1",
-    "previewModeEncryptionKey": "829211eecf679d274201166ed6e04affe374f161cdae2e6cc6afdf008582e674"
+    "previewModeId": "8c0a7713c314655204593a2cfa372dd1",
+    "previewModeSigningKey": "657cb0a669adeb6e33a4d8017069f14c704a8894a7160356c7d96d4317111e7c",
+    "previewModeEncryptionKey": "eb408fe68baf58e727b57eec6f35c35156c026f1847036b6ddaf2a4b805a3d9b"
   }
 }

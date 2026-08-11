@@ -8,9 +8,13 @@ import { revalidatePath } from "next/cache";
 import {
   createCompany,
   listCompanies,
+  listCompaniesWithStats,
+  bulkDeleteCompanies,
+  bulkSetCompanyStatus,
   getCompany,
   updateCompany,
   deleteCompany,
+  type CompanyStatsRow,
   addContact,
   listContacts,
   deleteContact,
@@ -126,6 +130,40 @@ function toActivity(r: ActivityRow): Activity {
 export async function listCompaniesAction(q = "", status = ""): Promise<Company[]> {
   const rows = await listCompanies({ q: q.trim() || undefined, status: status || undefined });
   return rows.map(toCompany);
+}
+
+export interface CompanyRowView extends Company {
+  contacts: number;
+  openDeals: number;
+  openValue: number;
+  lastActivity: string | null;
+}
+
+const STATUSES = ["lead", "active", "customer", "at_risk", "lost"];
+
+export async function listCompaniesTableAction(q = "", status = ""): Promise<CompanyRowView[]> {
+  const rows = await listCompaniesWithStats({ q: q.trim() || undefined, status: status || undefined });
+  return rows.map((r: CompanyStatsRow) => ({
+    ...toCompany(r),
+    contacts: Number(r.contacts),
+    openDeals: Number(r.open_deals),
+    openValue: Number(r.open_value),
+    lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : null,
+  }));
+}
+
+export async function bulkDeleteCompaniesAction(ids: number[]): Promise<void> {
+  await bulkDeleteCompanies(ids);
+  revalidatePath("/companies");
+  revalidatePath("/");
+}
+
+export async function bulkSetStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
+  if (!STATUSES.includes(status)) return { error: "Unknown status." };
+  await bulkSetCompanyStatus(ids, status);
+  revalidatePath("/companies");
+  revalidatePath("/");
+  return {};
 }
 
 export async function createCompanyAction(input: CompanyInput): Promise<{ id?: number; error?: string }> {

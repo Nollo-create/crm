@@ -240,6 +240,63 @@ export async function deleteCompany(id: number): Promise<void> {
   await pool.query("DELETE FROM crm_companies WHERE id = ?", [id]);
 }
 
+export interface CompanyStatsRow extends CompanyRow {
+  contacts: number;
+  open_deals: number;
+  open_value: number;
+  last_activity: Date | null;
+}
+
+/** Companies + per-row aggregates for the table (contacts, open deals + value,
+ *  last activity). Subqueries are fine at this scale (≤500 rows); server-side
+ *  pagination is a scale-up item. */
+export async function listCompaniesWithStats(opts: { q?: string; status?: string } = {}): Promise<CompanyStatsRow[]> {
+  await ensureSchema();
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.q) {
+    where.push("(c.name LIKE ? OR c.industry LIKE ? OR c.city LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like, like);
+  }
+  if (opts.status) {
+    where.push("c.status = ?");
+    params.push(opts.status);
+  }
+  const [rows] = await getPool().query<CompanyStatsRow[]>(
+    `SELECT c.*,
+       (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.company_id = c.id) AS contacts,
+       (SELECT COUNT(*) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) AS open_deals,
+       (SELECT COALESCE(SUM(d.value),0) FROM crm_deals d WHERE d.company_id = c.id AND d.stage NOT IN ('won','lost')) AS open_value,
+       (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.company_id = c.id) AS last_activity
+       FROM crm_companies c
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY c.updated_at DESC LIMIT 500`,
+    params
+  );
+  return rows;
+}
+
+export async function bulkDeleteCompanies(ids: number[]): Promise<void> {
+  const clean = ids.filter((n) => Number.isInteger(n)).slice(0, 500);
+  if (!clean.length) return;
+  await ensureSchema();
+  const ph = clean.map(() => "?").join(",");
+  const pool = getPool();
+  await pool.query(`DELETE FROM crm_activities WHERE company_id IN (${ph})`, clean);
+  await pool.query(`DELETE FROM crm_deals WHERE company_id IN (${ph})`, clean);
+  await pool.query(`DELETE FROM crm_contacts WHERE company_id IN (${ph})`, clean);
+  await pool.query(`DELETE FROM crm_companies WHERE id IN (${ph})`, clean);
+}
+
+export async function bulkSetCompanyStatus(ids: number[], status: string): Promise<void> {
+  const clean = ids.filter((n) => Number.isInteger(n)).slice(0, 500);
+  if (!clean.length) return;
+  await ensureSchema();
+  const ph = clean.map(() => "?").join(",");
+  await getPool().query(`UPDATE crm_companies SET status = ? WHERE id IN (${ph})`, [status.slice(0, 20), ...clean]);
+}
+
 // ----------------------------------------------------------------- contacts
 
 export interface ContactInput {

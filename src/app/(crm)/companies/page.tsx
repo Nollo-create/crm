@@ -1,105 +1,166 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Plus, Search, Loader2, Building2, X } from "lucide-react";
-import { listCompaniesAction, createCompanyAction, type Company } from "@/lib/actions/crm";
+import { useRouter } from "next/navigation";
+import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2 } from "lucide-react";
+import {
+  listCompaniesTableAction,
+  createCompanyAction,
+  bulkDeleteCompaniesAction,
+  bulkSetStatusAction,
+  type CompanyRowView,
+} from "@/lib/actions/crm";
 import { leadScore } from "@/lib/crm/pipeline";
+import { Card } from "@/components/ui/card";
+import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { eur } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const STATUS_LABEL: Record<string, string> = {
-  lead: "Lead",
-  active: "Active",
-  customer: "Customer",
-  at_risk: "At risk",
-  lost: "Lost",
-};
-const STATUS_CLS: Record<string, string> = {
-  lead: "bg-warning/10 text-warning",
-  active: "bg-electric/10 text-electric",
-  customer: "bg-emerald/10 text-emerald",
-  at_risk: "bg-danger/10 text-danger",
-  lost: "bg-secondary text-muted-foreground",
-};
-
+const STATUS_LABEL: Record<string, string> = { lead: "Lead", active: "Active", customer: "Customer", at_risk: "At risk", lost: "Lost" };
+const STATUS_TONE: Record<string, Tone> = { lead: "warning", active: "electric", customer: "emerald", at_risk: "danger", lost: "neutral" };
 const empty = { name: "", industry: "", city: "", website: "", employees: "", annualValue: "", status: "lead", accountManager: "", industryMatch: false };
 
-function score(c: Company): number {
+function score(c: CompanyRowView) {
   return leadScore({ hasWebsite: !!c.website, employees: c.employees, industryMatch: c.industryMatch, annualValue: c.annualValue });
 }
+function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } {
+  if (!c.lastActivity) return { tone: "neutral", label: "New", rank: 2 };
+  const days = (Date.now() - new Date(c.lastActivity).getTime()) / 86_400_000;
+  if (days > 30) return { tone: "danger", label: "At risk", rank: 0 };
+  if (c.openValue > 0 && days <= 14) return { tone: "emerald", label: "Healthy", rank: 3 };
+  return { tone: "warning", label: "Attention", rank: 1 };
+}
+
+type SortKey = "name" | "industry" | "contacts" | "openValue" | "score" | "health" | "lastActivity";
 
 export default function CompaniesPage() {
-  const [all, setAll] = useState<Company[]>([]);
+  const router = useRouter();
+  const [all, setAll] = useState<CompanyRowView[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [status, setStatus] = useState("");
+  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      setAll(await listCompaniesAction());
+      setAll(await listCompaniesTableAction());
     } catch {
-      setErr("Could not load — is the database connected?");
+      /* no db */
     }
     setLoading(false);
+    setSelected(new Set());
   }
   useEffect(() => {
+    setDensity((localStorage.getItem("crm-density") as "comfortable" | "compact") || "comfortable");
     void load();
   }, []);
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (s ? all.filter((c) => `${c.name} ${c.industry} ${c.city}`.toLowerCase().includes(s)) : all).sort(
-      (a, b) => score(b) - score(a)
+    const filtered = all.filter(
+      (c) => (!status || c.status === status) && (!s || `${c.name} ${c.industry} ${c.city}`.toLowerCase().includes(s))
     );
-  }, [all, q]);
+    const val = (c: CompanyRowView): number | string =>
+      sort.key === "name" ? c.name.toLowerCase()
+      : sort.key === "industry" ? c.industry.toLowerCase()
+      : sort.key === "contacts" ? c.contacts
+      : sort.key === "openValue" ? c.openValue
+      : sort.key === "score" ? score(c)
+      : sort.key === "health" ? health(c).rank
+      : c.lastActivity ? new Date(c.lastActivity).getTime() : 0;
+    return filtered.sort((a, b) => {
+      const av = val(a), bv = val(b);
+      return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
+    });
+  }, [all, q, status, sort]);
+
+  function toggleSort(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "name" || key === "industry" ? 1 : -1 }));
+  }
+  function setDens(d: "comfortable" | "compact") {
+    setDensity(d);
+    localStorage.setItem("crm-density", d);
+  }
+  function toggleRow(id: number) {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+  const allShownSelected = shown.length > 0 && shown.every((c) => selected.has(c.id));
 
   async function create() {
     if (!form.name.trim()) return;
     setBusy(true);
     const res = await createCompanyAction({
-      name: form.name,
-      industry: form.industry,
-      city: form.city,
-      website: form.website,
-      employees: form.employees ? Number(form.employees) : null,
-      annualValue: form.annualValue ? Number(form.annualValue) : 0,
-      status: form.status,
-      accountManager: form.accountManager,
-      industryMatch: form.industryMatch,
+      name: form.name, industry: form.industry, city: form.city, website: form.website,
+      employees: form.employees ? Number(form.employees) : null, annualValue: form.annualValue ? Number(form.annualValue) : 0,
+      status: form.status, accountManager: form.accountManager, industryMatch: form.industryMatch,
     });
     setBusy(false);
-    if (res.error) {
-      setErr(res.error);
-      return;
-    }
+    if (res.error) return;
     setForm(empty);
-    setShowForm(false);
+    setShowCreate(false);
     void load();
   }
 
+  async function bulkDelete() {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${selected.size} companies and all their records?`)) return;
+    setBulkBusy(true);
+    await bulkDeleteCompaniesAction([...selected]);
+    setBulkBusy(false);
+    void load();
+  }
+  async function bulkStatus(s: string) {
+    if (!s) return;
+    setBulkBusy(true);
+    await bulkSetStatusAction([...selected], s);
+    setBulkBusy(false);
+    void load();
+  }
+  function exportCsv() {
+    const rows = selected.size ? shown.filter((c) => selected.has(c.id)) : shown;
+    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const head = ["Name", "Industry", "City", "Status", "Contacts", "Open deals", "Open pipeline", "Lead score", "Last activity"];
+    const csv = [head.map(cell).join(","), ...rows.map((c) => [c.name, c.industry, c.city, c.status, c.contacts, c.openDeals, c.openValue, score(c), c.lastActivity ?? ""].map(cell).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "companies.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const pad = density === "compact" ? "py-1.5" : "py-2.5";
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Companies</h1>
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Companies</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{shown.length} of {all.length} accounts</p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
           <Plus size={15} /> New company
         </Button>
       </div>
 
-      {showForm && (
-        <div className="glass-strong space-y-3 rounded-2xl p-4">
+      {showCreate && (
+        <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New company</p>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground">
-              <X size={16} />
-            </button>
+            <button onClick={() => setShowCreate(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <Input placeholder="Company name *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -110,72 +171,140 @@ export default function CompaniesPage() {
             <Input type="number" placeholder="Annual value (€)" value={form.annualValue} onChange={(e) => setForm({ ...form, annualValue: e.target.value })} />
             <Input placeholder="Account manager" value={form.accountManager} onChange={(e) => setForm({ ...form, accountManager: e.target.value })} />
             <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
+              {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" checked={form.industryMatch} onChange={(e) => setForm({ ...form, industryMatch: e.target.checked })} className="h-4 w-4 accent-electric" />
-              Industry fit
+              <input type="checkbox" checked={form.industryMatch} onChange={(e) => setForm({ ...form, industryMatch: e.target.checked })} className="h-4 w-4 accent-electric" /> Industry fit
             </label>
           </div>
-          {err && <p className="text-xs text-danger">{err}</p>}
           <div className="flex justify-end">
             <Button size="sm" onClick={create} disabled={busy || !form.name.trim()}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create
             </Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="relative max-w-sm">
-        <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input placeholder="Search companies…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
-      </div>
-
-      {loading ? (
-        <div className="grid place-items-center py-16 text-muted-foreground">
-          <Loader2 className="animate-spin" />
+      {/* Toolbar / bulk bar */}
+      {selected.size > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Select onChange={(e) => { bulkStatus(e.target.value); e.currentTarget.value = ""; }} defaultValue="" className="h-8 w-auto text-xs" disabled={bulkBusy}>
+              <option value="" disabled>Set status…</option>
+              {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Button size="sm" variant="outline" onClick={exportCsv}><Download size={13} /> Export</Button>
+            <Button size="sm" variant="danger" onClick={bulkDelete} disabled={bulkBusy}>
+              {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}><X size={13} /> Clear</Button>
+          </div>
         </div>
-      ) : shown.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-          {all.length === 0 ? "No companies yet — add your first one." : "No matches."}
-        </p>
       ) : (
-        <div className="space-y-2">
-          {shown.map((c) => {
-            const sc = score(c);
-            return (
-              <Link key={c.id} href={`/companies/${c.id}`} className="glass flex items-center gap-3 rounded-xl p-3.5 hover:border-electric/40">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-secondary text-muted-foreground">
-                  <Building2 size={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{c.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {[c.industry, c.city, c.employees ? `${c.employees} emp.` : ""].filter(Boolean).join(" · ") || "—"}
-                  </p>
-                </div>
-                {c.annualValue > 0 && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{eur(c.annualValue)}/yr</span>}
-                <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium", STATUS_CLS[c.status] ?? STATUS_CLS.lost)}>
-                  {STATUS_LABEL[c.status] ?? c.status}
-                </span>
-                <span
-                  className={cn(
-                    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-semibold",
-                    sc >= 75 ? "bg-emerald/10 text-emerald" : sc >= 50 ? "bg-warning/10 text-warning" : "bg-secondary text-muted-foreground"
-                  )}
-                  title="Lead score"
-                >
-                  {sc}
-                </span>
-              </Link>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Search companies…" value={q} onChange={(e) => setQ(e.target.value)} className="h-9 pl-8" />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {["", ...Object.keys(STATUS_LABEL)].map((s) => (
+              <button key={s || "all"} onClick={() => setStatus(s)} className={cn("rounded-lg px-2.5 py-1 text-xs font-medium transition-colors", status === s ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60")}>
+                {s ? STATUS_LABEL[s] : "All"}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+            <button onClick={() => setDens("comfortable")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "comfortable" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Comfortable"><Rows3 size={14} /></button>
+            <button onClick={() => setDens("compact")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "compact" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Compact"><Rows2 size={14} /></button>
+          </div>
         </div>
       )}
+
+      {/* Table */}
+      <Card className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-sm">
+            <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="w-9 px-3 py-2">
+                  <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((c) => c.id)) : new Set())} className="h-3.5 w-3.5 accent-electric" />
+                </th>
+                <Th label="Company" k="name" sort={sort} onSort={toggleSort} />
+                <Th label="Industry" k="industry" sort={sort} onSort={toggleSort} />
+                <Th label="Contacts" k="contacts" sort={sort} onSort={toggleSort} align="right" />
+                <Th label="Pipeline" k="openValue" sort={sort} onSort={toggleSort} align="right" />
+                <Th label="Score" k="score" sort={sort} onSort={toggleSort} align="right" />
+                <Th label="Health" k="health" sort={sort} onSort={toggleSort} />
+                <Th label="Last activity" k="lastActivity" sort={sort} onSort={toggleSort} align="right" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-3" colSpan={8}><Skeleton className="h-4 w-full" /></td>
+                  </tr>
+                ))
+              ) : shown.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                    {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
+                  </td>
+                </tr>
+              ) : (
+                shown.map((c) => {
+                  const h = health(c);
+                  const sc = score(c);
+                  return (
+                    <tr
+                      key={c.id}
+                      onClick={() => router.push(`/companies/${c.id}`)}
+                      className={cn("cursor-pointer transition-colors hover:bg-secondary/50", selected.has(c.id) && "bg-electric/[0.05]")}
+                    >
+                      <td className={cn("px-3", pad)} onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleRow(c.id)} className="h-3.5 w-3.5 accent-electric" />
+                      </td>
+                      <td className={cn("px-3", pad)}>
+                        <p className="font-medium">{c.name}</p>
+                        {c.city && <p className="text-2xs text-muted-foreground">{c.city}</p>}
+                      </td>
+                      <td className={cn("px-3 text-muted-foreground", pad)}>{c.industry || "—"}</td>
+                      <td className={cn("px-3 text-right tabular text-muted-foreground", pad)}>{c.contacts || "—"}</td>
+                      <td className={cn("px-3 text-right", pad)}>
+                        {c.openValue ? <span className="font-medium tabular">{eur(c.openValue)}</span> : <span className="text-muted-foreground">—</span>}
+                        {c.openDeals > 0 && <span className="ml-1 text-2xs text-muted-foreground">· {c.openDeals}</span>}
+                      </td>
+                      <td className={cn("px-3 text-right", pad)}>
+                        <span className={cn("inline-block min-w-[26px] rounded px-1.5 py-0.5 text-2xs font-semibold tabular", sc >= 75 ? "bg-emerald/10 text-emerald" : sc >= 50 ? "bg-warning/10 text-warning" : "bg-secondary text-muted-foreground")}>{sc}</span>
+                      </td>
+                      <td className={cn("px-3", pad)}>
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span className={cn("h-2 w-2 rounded-full", h.tone === "emerald" ? "bg-emerald" : h.tone === "danger" ? "bg-danger" : h.tone === "warning" ? "bg-warning" : "bg-muted-foreground")} />
+                          {h.label}
+                        </span>
+                      </td>
+                      <td className={cn("px-3 text-right text-2xs text-muted-foreground", pad)}>{c.lastActivity ? timeAgo(c.lastActivity) : "—"}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function Th({ label, k, sort, onSort, align }: { label: string; k: SortKey; sort: { key: SortKey; dir: 1 | -1 }; onSort: (k: SortKey) => void; align?: "right" }) {
+  const active = sort.key === k;
+  return (
+    <th className={cn("px-3 py-2 font-medium", align === "right" ? "text-right" : "text-left")}>
+      <button onClick={() => onSort(k)} className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground", align === "right" && "flex-row-reverse")}>
+        {label}
+        {active ? sort.dir === 1 ? <ArrowUp size={11} /> : <ArrowDown size={11} /> : <ChevronsUpDown size={11} className="opacity-40" />}
+      </button>
+    </th>
   );
 }
