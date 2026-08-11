@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   listCompaniesTableAction,
   createCompanyAction,
@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { CompanyDrawer } from "@/components/crm/company-drawer";
 import { BUILTIN_VIEWS, activeViewId, makeView, normalizeViews, type CompanyView, type CompanySortKey, type ViewState } from "@/lib/crm/views";
+import { paginate } from "@/lib/crm/paginate";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +69,8 @@ export default function CompaniesPage() {
   const [peek, setPeek] = useState<number | null>(null);
   const [cols, setCols] = useState<Record<ColKey, boolean>>(allColsVisible);
   const [colMenu, setColMenu] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [userViews, setUserViews] = useState<CompanyView[]>([]);
   const [savingView, setSavingView] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -165,6 +168,12 @@ export default function CompaniesPage() {
       return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
     });
   }, [all, q, status, sort]);
+
+  // Reset to the first page whenever the result set or page size changes.
+  useEffect(() => {
+    setPage(1);
+  }, [q, status, sort, pageSize]);
+  const pageInfo = paginate(shown, page, pageSize);
 
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "name" || key === "industry" ? 1 : -1 }));
@@ -424,7 +433,7 @@ export default function CompaniesPage() {
                   </td>
                 </tr>
               ) : (
-                shown.map((c) => {
+                pageInfo.rows.map((c) => {
                   const h = health(c);
                   const sc = score(c);
                   return (
@@ -463,7 +472,7 @@ export default function CompaniesPage() {
             {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
           </p>
         ) : (
-          shown.map((c) => {
+          pageInfo.rows.map((c) => {
             const h = health(c);
             const sc = score(c);
             return (
@@ -498,6 +507,31 @@ export default function CompaniesPage() {
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {!loading && pageInfo.total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-muted-foreground">
+          <span>
+            {pageInfo.from}–{pageInfo.to} of {pageInfo.total}
+          </span>
+          <div className="flex items-center gap-3">
+            <Select value={String(pageSize)} onChange={(e) => setPageSize(Number(e.target.value))} className="h-8 w-auto text-xs">
+              {[25, 50, 100].map((n) => (
+                <option key={n} value={n}>{n} / page</option>
+              ))}
+            </Select>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" disabled={pageInfo.page <= 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+                <ChevronLeft size={14} />
+              </Button>
+              <span className="px-1 tabular">{pageInfo.page} / {pageInfo.pageCount}</span>
+              <Button size="sm" variant="outline" disabled={pageInfo.page >= pageInfo.pageCount} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+                <ChevronRight size={14} />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile FAB — primary create action */}
       <button
