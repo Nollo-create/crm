@@ -33,6 +33,7 @@ import {
   type DealInput,
 } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { isStageId, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
@@ -171,11 +172,13 @@ export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
   return rows.slice(0, 8).map((r) => ({ id: r.id, name: r.name, city: r.city, status: r.status }));
 }
 
-export async function bulkDeleteCompaniesAction(ids: number[]): Promise<void> {
-  const { organizationId } = await requireSession();
+export async function bulkDeleteCompaniesAction(ids: number[]): Promise<{ error?: string }> {
+  const { organizationId, role } = await requireSession();
+  if (!can(role, "company:delete")) return { error: "Only admins can delete companies." };
   await bulkDeleteCompanies(organizationId, ids);
   revalidatePath("/companies");
   revalidatePath("/");
+  return {};
 }
 
 export async function bulkSetStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
@@ -205,11 +208,13 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
   return {};
 }
 
-export async function deleteCompanyAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
+export async function deleteCompanyAction(id: number): Promise<{ error?: string }> {
+  const { organizationId, role } = await requireSession();
+  if (!can(role, "company:delete")) return { error: "Only admins can delete companies." };
   await deleteCompany(organizationId, id);
   revalidatePath("/companies");
   revalidatePath("/");
+  return {};
 }
 
 export interface CompanyDetail {

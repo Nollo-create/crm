@@ -198,7 +198,10 @@ export function CompanyDetail({ id }: { id: number }) {
               title="Delete company"
               onClick={() => {
                 if (typeof window !== "undefined" && window.confirm(`Delete ${c.name} and all its records?`))
-                  deleteCompanyAction(c.id).then(() => (window.location.href = "/companies"));
+                  deleteCompanyAction(c.id).then((r) => {
+                    if (r?.error) window.alert(r.error);
+                    else window.location.href = "/companies";
+                  });
               }}
             >
               <Trash2 size={15} />

@@ -1,10 +1,10 @@
 {
   "/_not-found/page": "/_not-found",
   "/api/health/route": "/api/health",
-  "/setup/page": "/setup",
   "/login/page": "/login",
+  "/setup/page": "/setup",
   "/(crm)/companies/page": "/companies",
   "/(crm)/pipeline/page": "/pipeline",
-  "/(crm)/page": "/",
-  "/(crm)/companies/[id]/page": "/companies/[id]"
+  "/(crm)/companies/[id]/page": "/companies/[id]",
+  "/(crm)/page": "/"
 }

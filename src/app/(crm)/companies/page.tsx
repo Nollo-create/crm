@@ -214,8 +214,12 @@ export default function CompaniesPage() {
     const n = selected.size;
     if (typeof window !== "undefined" && !window.confirm(`Delete ${n} ${n === 1 ? "company" : "companies"} and all their records?`)) return;
     setBulkBusy(true);
-    await bulkDeleteCompaniesAction([...selected]);
+    const r = await bulkDeleteCompaniesAction([...selected]);
     setBulkBusy(false);
+    if (r?.error) {
+      toast(r.error, { tone: "error" });
+      return;
+    }
     toast(`${n} ${n === 1 ? "company" : "companies"} deleted`, { tone: "success" });
     void load();
   }
