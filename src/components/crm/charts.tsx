@@ -21,7 +21,7 @@ export interface BarItem {
 }
 
 export function BarList({ items, empty }: { items: BarItem[]; empty?: string }) {
-  const shown = items.filter((i) => i.display !== undefined || i.value > 0 || true);
+  const shown = items;
   if (!shown.length) return <p className="py-6 text-center text-2xs text-muted-foreground">{empty ?? "No data yet."}</p>;
   const max = Math.max(1, ...shown.map((i) => i.value));
   return (

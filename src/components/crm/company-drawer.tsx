@@ -29,7 +29,8 @@ function health(d: CompanyDetail): { tone: Tone; label: string; reason: string }
   const days = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86_400_000) : Infinity;
   if (days === Infinity) return { tone: "neutral", label: "New", reason: "No activity logged yet." };
   if (days > 30) return { tone: "danger", label: "At risk", reason: `No activity for ${days} days.` };
-  if (d.summary.open > 0 || d.summary.won > 0)
+  // Matches the list + SQL `health_rank`: Healthy needs open pipeline + activity ≤14d.
+  if (d.summary.open > 0)
     return days <= 14
       ? { tone: "emerald", label: "Healthy", reason: "Active, with pipeline in play." }
       : { tone: "warning", label: "Attention", reason: `Last activity ${days} days ago.` };

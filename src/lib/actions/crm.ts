@@ -418,12 +418,15 @@ export async function updateDealAction(
   return {};
 }
 
-export async function deleteDealAction(id: number, companyId: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteDeal(organizationId, id);
+export async function deleteDealAction(id: number, companyId: number): Promise<{ error?: string }> {
+  const session = await requireSession();
+  if (!can(session.role, "deal:delete")) return { error: "Only admins can delete deals." };
+  await deleteDeal(session.organizationId, id);
+  await recordAudit(session, "delete", "deal", id);
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
+  return {};
 }
 
 // ----------------------------------------------------------------- activities

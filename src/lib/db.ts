@@ -1501,7 +1501,7 @@ export async function openTaskExists(orgId: number, title: string): Promise<bool
 /** Orgs with at least one enabled automation — the cron tick iterates these. */
 export async function distinctAutomationOrgs(): Promise<number[]> {
   await ensureSchema();
-  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT DISTINCT organization_id FROM crm_automations WHERE enabled = 1");
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT DISTINCT organization_id FROM crm_automations WHERE enabled = 1 ORDER BY organization_id");
   return rows.map((r) => Number(r.organization_id));
 }
 

@@ -135,7 +135,9 @@ export async function deleteQuoteAction(id: number): Promise<void> {
 export async function addQuoteItemAction(quoteId: number, item: { productId?: number | null; name: string; unitPrice: number; quantity: number }): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (!item?.name?.trim()) return { error: "The line needs a name." };
-  if (!(await getQuote(organizationId, quoteId))) return { error: "Quote not found." };
+  const q = await getQuote(organizationId, quoteId);
+  if (!q) return { error: "Quote not found." };
+  if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };
   await addQuoteItem(organizationId, quoteId, {
     productId: item.productId ?? null,
     name: item.name.trim(),
@@ -149,15 +151,22 @@ export async function addQuoteItemAction(quoteId: number, item: { productId?: nu
 
 export async function setQuoteItemQuantityAction(quoteId: number, itemId: number, quantity: number): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
+  const q = await getQuote(organizationId, quoteId);
+  if (!q) return { error: "Quote not found." };
+  if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };
   await setQuoteItemQuantity(organizationId, quoteId, itemId, quantity);
   revalidatePath(`/quotes/${quoteId}`);
   return {};
 }
 
-export async function deleteQuoteItemAction(quoteId: number, itemId: number): Promise<void> {
+export async function deleteQuoteItemAction(quoteId: number, itemId: number): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
+  const q = await getQuote(organizationId, quoteId);
+  if (!q) return { error: "Quote not found." };
+  if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };
   await deleteQuoteItem(organizationId, quoteId, itemId);
   revalidatePath(`/quotes/${quoteId}`);
+  return {};
 }
 
 export interface ProductHit {

@@ -128,7 +128,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
             >
               <Plus size={16} />
             </Link>
-            <button className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Notifications — soon">
+            <button disabled className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-lg text-muted-foreground/40" title="Notifications — coming soon" aria-label="Notifications (coming soon)">
               <Bell size={16} />
             </button>
             <ThemeToggle />
