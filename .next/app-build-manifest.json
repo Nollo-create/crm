@@ -12,7 +12,7 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-87552e6e05b8e3aa.js",
       "static/chunks/main-app-207263de9e94fa79.js",
-      "static/css/9fbc7bd919db3703.css",
+      "static/css/4d7607d4fbf878ed.css",
       "static/chunks/app/layout-e9bbe0d1939c8caf.js"
     ],
     "/api/health/route": [
@@ -30,7 +30,7 @@
       "static/chunks/108-e5e58894cf986762.js",
       "static/chunks/619-ba102abea3e3d0e4.js",
       "static/chunks/963-2be75b291e88b595.js",
-      "static/chunks/app/(crm)/layout-21d11bf420d9d3b2.js"
+      "static/chunks/app/(crm)/layout-0e900e56a083ef31.js"
     ],
     "/(crm)/companies/page": [
       "static/chunks/webpack-3de6f890412c68e5.js",
@@ -38,7 +38,7 @@
       "static/chunks/255-87552e6e05b8e3aa.js",
       "static/chunks/main-app-207263de9e94fa79.js",
       "static/chunks/108-e5e58894cf986762.js",
-      "static/chunks/app/(crm)/companies/page-165ff9b8cbde0e41.js"
+      "static/chunks/app/(crm)/companies/page-9750728f37e3d055.js"
     ],
     "/(crm)/pipeline/page": [
       "static/chunks/webpack-3de6f890412c68e5.js",
@@ -46,15 +46,7 @@
       "static/chunks/255-87552e6e05b8e3aa.js",
       "static/chunks/main-app-207263de9e94fa79.js",
       "static/chunks/108-e5e58894cf986762.js",
-      "static/chunks/app/(crm)/pipeline/page-4719ec2202107c95.js"
-    ],
-    "/(crm)/page": [
-      "static/chunks/webpack-3de6f890412c68e5.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-87552e6e05b8e3aa.js",
-      "static/chunks/main-app-207263de9e94fa79.js",
-      "static/chunks/619-ba102abea3e3d0e4.js",
-      "static/chunks/app/(crm)/page-5e2fe692df84741d.js"
+      "static/chunks/app/(crm)/pipeline/page-48023f7bae8ab868.js"
     ],
     "/(crm)/companies/[id]/page": [
       "static/chunks/webpack-3de6f890412c68e5.js",
@@ -63,7 +55,15 @@
       "static/chunks/main-app-207263de9e94fa79.js",
       "static/chunks/108-e5e58894cf986762.js",
       "static/chunks/619-ba102abea3e3d0e4.js",
-      "static/chunks/app/(crm)/companies/[id]/page-26809e84f9ea1ca6.js"
+      "static/chunks/app/(crm)/companies/[id]/page-08f4f42651b3686c.js"
+    ],
+    "/(crm)/page": [
+      "static/chunks/webpack-3de6f890412c68e5.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-87552e6e05b8e3aa.js",
+      "static/chunks/main-app-207263de9e94fa79.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/app/(crm)/page-5e2fe692df84741d.js"
     ]
   }
 }

@@ -3,6 +3,6 @@
   "/api/health/route": "app/api/health/route.js",
   "/(crm)/companies/page": "app/(crm)/companies/page.js",
   "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
-  "/(crm)/page": "app/(crm)/page.js",
-  "/(crm)/companies/[id]/page": "app/(crm)/companies/[id]/page.js"
+  "/(crm)/companies/[id]/page": "app/(crm)/companies/[id]/page.js",
+  "/(crm)/page": "app/(crm)/page.js"
 }

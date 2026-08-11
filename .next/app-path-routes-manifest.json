@@ -3,6 +3,6 @@
   "/api/health/route": "/api/health",
   "/(crm)/companies/page": "/companies",
   "/(crm)/pipeline/page": "/pipeline",
-  "/(crm)/page": "/",
-  "/(crm)/companies/[id]/page": "/companies/[id]"
+  "/(crm)/companies/[id]/page": "/companies/[id]",
+  "/(crm)/page": "/"
 }

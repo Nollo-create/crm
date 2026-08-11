@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2 } from "lucide-react";
+import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check } from "lucide-react";
 import {
   listCompaniesTableAction,
   createCompanyAction,
@@ -16,8 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompanyDrawer } from "@/components/crm/company-drawer";
+import { BUILTIN_VIEWS, activeViewId, makeView, normalizeViews, type CompanyView, type CompanySortKey, type ViewState } from "@/lib/crm/views";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+const VIEWS_KEY = "crm-company-views";
 
 const STATUS_LABEL: Record<string, string> = { lead: "Lead", active: "Active", customer: "Customer", at_risk: "At risk", lost: "Lost" };
 const STATUS_TONE: Record<string, Tone> = { lead: "warning", active: "electric", customer: "emerald", at_risk: "danger", lost: "neutral" };
@@ -34,7 +37,7 @@ function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } 
   return { tone: "warning", label: "Attention", rank: 1 };
 }
 
-type SortKey = "name" | "industry" | "contacts" | "openValue" | "score" | "health" | "lastActivity";
+type SortKey = CompanySortKey;
 
 export default function CompaniesPage() {
   const [all, setAll] = useState<CompanyRowView[]>([]);
@@ -46,6 +49,9 @@ export default function CompaniesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [peek, setPeek] = useState<number | null>(null);
+  const [userViews, setUserViews] = useState<CompanyView[]>([]);
+  const [savingView, setSavingView] = useState(false);
+  const [viewName, setViewName] = useState("");
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -62,8 +68,42 @@ export default function CompaniesPage() {
   }
   useEffect(() => {
     setDensity((localStorage.getItem("crm-density") as "comfortable" | "compact") || "comfortable");
+    try {
+      setUserViews(normalizeViews(JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]")));
+    } catch {
+      /* ignore malformed storage */
+    }
     void load();
   }, []);
+
+  const allViews = useMemo(() => [...BUILTIN_VIEWS, ...userViews], [userViews]);
+  const viewState: ViewState = { status, sortKey: sort.key, sortDir: sort.dir };
+  const activeId = activeViewId(allViews, viewState);
+
+  function persistViews(next: CompanyView[]) {
+    setUserViews(next);
+    try {
+      localStorage.setItem(VIEWS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore quota errors */
+    }
+  }
+  function applyView(v: CompanyView) {
+    setStatus(v.status);
+    setSort({ key: v.sortKey, dir: v.sortDir });
+    setSelected(new Set());
+  }
+  function saveCurrentView() {
+    const name = viewName.trim();
+    if (!name) return;
+    const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `v${Date.now().toString(36)}`;
+    persistViews([...userViews, makeView(id, name, viewState)]);
+    setViewName("");
+    setSavingView(false);
+  }
+  function deleteView(id: string) {
+    persistViews(userViews.filter((v) => v.id !== id));
+  }
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -154,6 +194,64 @@ export default function CompaniesPage() {
         <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
           <Plus size={15} /> New company
         </Button>
+      </div>
+
+      {/* Saved views */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
+        {allViews.map((v) => {
+          const isBuiltin = BUILTIN_VIEWS.some((b) => b.id === v.id);
+          const active = activeId === v.id;
+          const base = cn(
+            "flex items-center rounded-lg text-xs font-medium transition-colors",
+            active ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+          );
+          return isBuiltin ? (
+            <button key={v.id} onClick={() => applyView(v)} className={cn(base, "px-2.5 py-1")}>
+              {v.name}
+            </button>
+          ) : (
+            <div key={v.id} className={cn(base, "group pl-2.5 pr-1")}>
+              <button onClick={() => applyView(v)} className="py-1">{v.name}</button>
+              <button
+                onClick={() => deleteView(v.id)}
+                title="Delete view"
+                className="ml-1 rounded p-0.5 opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          );
+        })}
+
+        <span className="mx-0.5 h-4 w-px bg-border" />
+
+        {savingView ? (
+          <div className="flex items-center gap-1">
+            <Input
+              autoFocus
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveCurrentView();
+                if (e.key === "Escape") { setSavingView(false); setViewName(""); }
+              }}
+              placeholder="View name…"
+              className="h-7 w-36 text-xs"
+            />
+            <Button size="sm" onClick={saveCurrentView} disabled={!viewName.trim()}><Check size={13} /></Button>
+            <Button size="sm" variant="ghost" onClick={() => { setSavingView(false); setViewName(""); }}><X size={13} /></Button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSavingView(true)}
+            title="Save the current filter + sort as a view"
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+          >
+            <Bookmark size={12} />
+            Save view
+            {activeId === null && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-electric" title="Unsaved changes" />}
+          </button>
+        )}
       </div>
 
       {showCreate && (
