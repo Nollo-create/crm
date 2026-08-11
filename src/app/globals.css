@@ -12,7 +12,8 @@
 @layer base {
   :root {
     /* Light — soft neutral page, white surfaces */
-    --background: 220 24% 98%;
+    /* Dimmed for eye comfort. Previous (brighter) value: 220 24% 98% — restore that to revert. */
+    --background: 220 20% 95%;
     --foreground: 222 32% 12%;
     --card: 0 0% 100%;
     --card-foreground: 222 32% 12%;
