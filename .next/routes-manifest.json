@@ -56,6 +56,36 @@
       "namedRegex": "^/activities(?:/)?$"
     },
     {
+      "page": "/analytics/conversion",
+      "regex": "^/analytics/conversion(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/conversion(?:/)?$"
+    },
+    {
+      "page": "/analytics/forecast",
+      "regex": "^/analytics/forecast(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/forecast(?:/)?$"
+    },
+    {
+      "page": "/analytics/pipeline",
+      "regex": "^/analytics/pipeline(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/pipeline(?:/)?$"
+    },
+    {
+      "page": "/analytics/sales",
+      "regex": "^/analytics/sales(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/sales(?:/)?$"
+    },
+    {
+      "page": "/analytics/team",
+      "regex": "^/analytics/team(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/team(?:/)?$"
+    },
+    {
       "page": "/calls",
       "regex": "^/calls(?:/)?$",
       "routeKeys": {},

@@ -1266,6 +1266,83 @@ export async function searchProducts(orgId: number, q: string): Promise<ProductR
   return rows;
 }
 
+// ---------------------------------------------------------------- analytics
+
+export interface StatusCount {
+  status: string;
+  n: number;
+  value: number;
+}
+
+async function groupCount(sql: string, orgId: number): Promise<StatusCount[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(sql, [orgId]);
+  return rows.map((r) => ({ status: String(r.k), n: Number(r.n), value: Number(r.v ?? 0) }));
+}
+
+export const analyticsCompanies = (orgId: number) =>
+  groupCount("SELECT status AS k, COUNT(*) AS n, COALESCE(SUM(annual_value),0) AS v FROM crm_companies WHERE organization_id = ? GROUP BY status", orgId);
+
+export const analyticsDealsByStage = (orgId: number) =>
+  groupCount("SELECT stage AS k, COUNT(*) AS n, COALESCE(SUM(value),0) AS v FROM crm_deals WHERE organization_id = ? GROUP BY stage", orgId);
+
+export const analyticsLeadsByStatus = (orgId: number) =>
+  groupCount("SELECT status AS k, COUNT(*) AS n FROM crm_leads WHERE organization_id = ? GROUP BY status", orgId);
+
+export const analyticsLeadsBySource = (orgId: number) =>
+  groupCount("SELECT source AS k, COUNT(*) AS n FROM crm_leads WHERE organization_id = ? GROUP BY source", orgId);
+
+export const analyticsActivitiesByType = (orgId: number) =>
+  groupCount("SELECT type AS k, COUNT(*) AS n FROM crm_activities WHERE organization_id = ? GROUP BY type", orgId);
+
+export const analyticsQuotesByStatus = (orgId: number) =>
+  groupCount("SELECT status AS k, COUNT(*) AS n, COALESCE(SUM(total_cents),0) AS v FROM crm_quotes WHERE organization_id = ? GROUP BY status", orgId);
+
+export interface OwnerRow {
+  owner: string;
+  won: number;
+  open: number;
+  n: number;
+}
+export async function analyticsDealsByOwner(orgId: number): Promise<OwnerRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT COALESCE(NULLIF(owner, ''), 'Unassigned') AS owner,
+       COALESCE(SUM(CASE WHEN stage = 'won' THEN value ELSE 0 END), 0) AS won,
+       COALESCE(SUM(CASE WHEN stage NOT IN ('won','lost') THEN value ELSE 0 END), 0) AS open,
+       COUNT(*) AS n
+     FROM crm_deals WHERE organization_id = ? GROUP BY owner ORDER BY won DESC, open DESC LIMIT 20`,
+    [orgId]
+  );
+  return rows.map((r) => ({ owner: String(r.owner), won: Number(r.won), open: Number(r.open), n: Number(r.n) }));
+}
+
+export interface ForecastRow {
+  month: string;
+  stage: string;
+  value: number;
+}
+export async function analyticsDealForecast(orgId: number): Promise<ForecastRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT DATE_FORMAT(expected_close, '%Y-%m') AS month, stage, COALESCE(SUM(value),0) AS value
+     FROM crm_deals
+     WHERE organization_id = ? AND stage NOT IN ('won','lost') AND expected_close IS NOT NULL
+     GROUP BY month, stage ORDER BY month ASC`,
+    [orgId]
+  );
+  return rows.map((r) => ({ month: String(r.month), stage: String(r.stage), value: Number(r.value) }));
+}
+
+export async function analyticsActivitiesLast30(orgId: number): Promise<number> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM crm_activities WHERE organization_id = ? AND created_at >= NOW() - INTERVAL 30 DAY",
+    [orgId]
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
 // ====================================================================
 // Auth & tenancy storage (organizations, users, sessions)
 //

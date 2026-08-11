@@ -56,6 +56,51 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/(crm)/analytics/conversion/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/analytics/conversion">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/analytics/conversion/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/analytics/forecast/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/analytics/forecast">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/analytics/forecast/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/analytics/pipeline/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/analytics/pipeline">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/analytics/pipeline/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/analytics/sales/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/analytics/sales">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/analytics/sales/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/analytics/team/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/analytics/team">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/analytics/team/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/(crm)/calls/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/calls">> = Specific

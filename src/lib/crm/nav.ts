@@ -104,11 +104,11 @@ export const crmNav: CrmNavGroup[] = [
   {
     title: "Analytics",
     items: [
-      { label: "Sales Dashboard", href: "/analytics/sales", icon: BarChart3, soon: true },
-      { label: "Pipeline Analytics", href: "/analytics/pipeline", icon: PieChart, soon: true },
-      { label: "Revenue Forecast", href: "/analytics/forecast", icon: TrendingUp, soon: true },
-      { label: "Team Performance", href: "/analytics/team", icon: Users2, soon: true },
-      { label: "Conversion", href: "/analytics/conversion", icon: BarChart3, soon: true },
+      { label: "Sales Dashboard", href: "/analytics/sales", icon: BarChart3 },
+      { label: "Pipeline Analytics", href: "/analytics/pipeline", icon: PieChart },
+      { label: "Revenue Forecast", href: "/analytics/forecast", icon: TrendingUp },
+      { label: "Team Performance", href: "/analytics/team", icon: Users2 },
+      { label: "Conversion", href: "/analytics/conversion", icon: BarChart3 },
     ],
   },
   {
