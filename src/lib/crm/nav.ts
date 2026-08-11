@@ -95,10 +95,10 @@ export const crmNav: CrmNavGroup[] = [
   {
     title: "Automation",
     items: [
-      { label: "Workflows", href: "/automation/workflows", icon: Workflow, soon: true },
-      { label: "Follow-ups", href: "/automation/followups", icon: Repeat, soon: true },
-      { label: "Lead Routing", href: "/automation/routing", icon: Route, soon: true },
-      { label: "Notifications", href: "/automation/notifications", icon: Bell, soon: true },
+      { label: "Workflows", href: "/automation/workflows", icon: Workflow },
+      { label: "Follow-ups", href: "/automation/followups", icon: Repeat },
+      { label: "Lead Routing", href: "/automation/routing", icon: Route },
+      { label: "Notifications", href: "/automation/notifications", icon: Bell },
     ],
   },
   {

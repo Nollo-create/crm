@@ -155,6 +155,42 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/(crm)/automation/followups/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/automation/followups">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/automation/followups/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/automation/notifications/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/automation/notifications">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/automation/notifications/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/automation/routing/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/automation/routing">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/automation/routing/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/(crm)/automation/workflows/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/automation/workflows">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/automation/workflows/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/(crm)/calls/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/calls">> = Specific
@@ -348,6 +384,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends AppPageConfig<"/setup">> = Specific
   const handler = {} as typeof import("../../src/app/setup/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/api/cron/tick/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/cron/tick">> = Specific
+  const handler = {} as typeof import("../../src/app/api/cron/tick/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

@@ -208,6 +208,32 @@ export function ensureSchema(): Promise<void> {
           INDEX idx_qitem_quote (quote_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_automations (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          template_key VARCHAR(40) NOT NULL DEFAULT '',
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          params TEXT NULL,
+          enabled TINYINT(1) NOT NULL DEFAULT 1,
+          last_run_at TIMESTAMP NULL,
+          created_count INT UNSIGNED NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_automation_org (organization_id, enabled)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_automation_runs (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          automation_id INT UNSIGNED NOT NULL,
+          created_count INT UNSIGNED NOT NULL DEFAULT 0,
+          summary VARCHAR(255) NOT NULL DEFAULT '',
+          ran_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_arun_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
       // prod DB). New installs already have it from the CREATE statements above.
       await ensureColumn(pool, "crm_companies", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
@@ -1397,6 +1423,86 @@ export async function nbaAgingQuotes(orgId: number, days: number, limit: number)
     [orgId, Number(limit) || 5]
   );
   return rows.map((r) => ({ id: Number(r.id), companyName: String(r.company_name), days: Number(r.days) }));
+}
+
+// --------------------------------------------------------------- automations
+
+export interface AutomationRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  template_key: string;
+  name: string;
+  params: string | null;
+  enabled: number;
+  last_run_at: Date | null;
+  created_count: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export interface AutomationRunRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  automation_id: number;
+  created_count: number;
+  summary: string;
+  ran_at: Date;
+  name: string; // joined automation name
+}
+
+export async function listAutomations(orgId: number): Promise<AutomationRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<AutomationRow[]>("SELECT * FROM crm_automations WHERE organization_id = ? ORDER BY id ASC", [orgId]);
+  return rows;
+}
+export async function listEnabledAutomations(orgId: number): Promise<AutomationRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<AutomationRow[]>("SELECT * FROM crm_automations WHERE organization_id = ? AND enabled = 1 ORDER BY id ASC", [orgId]);
+  return rows;
+}
+export async function createAutomation(orgId: number, a: { templateKey: string; name: string; params: Record<string, unknown> }): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_automations (organization_id, template_key, name, params) VALUES (?, ?, ?, ?)",
+    [orgId, a.templateKey.slice(0, 40), a.name.slice(0, 190), JSON.stringify(a.params ?? {})]
+  );
+  return res.insertId;
+}
+export async function toggleAutomation(orgId: number, id: number, enabled: boolean): Promise<void> {
+  await ensureSchema();
+  await getPool().query("UPDATE crm_automations SET enabled = ? WHERE id = ? AND organization_id = ?", [enabled ? 1 : 0, id, orgId]);
+}
+export async function deleteAutomation(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_automations WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+export async function logAutomationRun(orgId: number, automationId: number, created: number, summary: string): Promise<void> {
+  await ensureSchema();
+  const pool = getPool();
+  await pool.query("INSERT INTO crm_automation_runs (organization_id, automation_id, created_count, summary) VALUES (?, ?, ?, ?)", [orgId, automationId, created, summary.slice(0, 255)]);
+  await pool.query("UPDATE crm_automations SET last_run_at = CURRENT_TIMESTAMP, created_count = created_count + ? WHERE id = ? AND organization_id = ?", [created, automationId, orgId]);
+}
+export async function listAutomationRuns(orgId: number, limit = 50): Promise<AutomationRunRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<AutomationRunRow[]>(
+    `SELECT r.*, COALESCE(a.name, 'Automation') AS name FROM crm_automation_runs r
+     LEFT JOIN crm_automations a ON a.id = r.automation_id AND a.organization_id = r.organization_id
+     WHERE r.organization_id = ? ORDER BY r.id DESC LIMIT ?`,
+    [orgId, limit]
+  );
+  return rows;
+}
+/** True if an open (not-done) task with this exact title already exists — the
+ *  runner's dedup so it doesn't recreate the same task on every tick. */
+export async function openTaskExists(orgId: number, title: string): Promise<boolean> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT 1 FROM crm_tasks WHERE organization_id = ? AND title = ? AND done = 0 LIMIT 1", [orgId, title]);
+  return rows.length > 0;
+}
+/** Orgs with at least one enabled automation — the cron tick iterates these. */
+export async function distinctAutomationOrgs(): Promise<number[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT DISTINCT organization_id FROM crm_automations WHERE enabled = 1");
+  return rows.map((r) => Number(r.organization_id));
 }
 
 // ====================================================================

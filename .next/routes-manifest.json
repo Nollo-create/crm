@@ -122,6 +122,30 @@
       "namedRegex": "^/analytics/team(?:/)?$"
     },
     {
+      "page": "/automation/followups",
+      "regex": "^/automation/followups(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/automation/followups(?:/)?$"
+    },
+    {
+      "page": "/automation/notifications",
+      "regex": "^/automation/notifications(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/automation/notifications(?:/)?$"
+    },
+    {
+      "page": "/automation/routing",
+      "regex": "^/automation/routing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/automation/routing(?:/)?$"
+    },
+    {
+      "page": "/automation/workflows",
+      "regex": "^/automation/workflows(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/automation/workflows(?:/)?$"
+    },
+    {
       "page": "/calls",
       "regex": "^/calls(?:/)?$",
       "routeKeys": {},
