@@ -14,6 +14,7 @@ const SORT_EXPR: Record<CompanySortKey, string> = {
   industry: "c.industry",
   contacts: "contacts",
   openValue: "open_value",
+  annualValue: "c.annual_value",
   score: "c.lead_score",
   health: "health_rank",
   lastActivity: "last_activity",

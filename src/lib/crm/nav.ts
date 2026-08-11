@@ -66,7 +66,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Contacts", href: "/contacts", icon: Users },
       { label: "Leads", href: "/leads", icon: Target },
       { label: "Deals", href: "/deals", icon: Handshake },
-      { label: "Customers", href: "/customers", icon: UserCheck, soon: true },
+      { label: "Customers", href: "/customers", icon: UserCheck },
     ],
   },
   {

@@ -5,10 +5,10 @@
 // auth + multi-tenant land (Etapa 2) these move to per-user rows unchanged.
 
 export type CompanySortKey =
-  | "name" | "industry" | "contacts" | "openValue" | "score" | "health" | "lastActivity";
+  | "name" | "industry" | "contacts" | "openValue" | "annualValue" | "score" | "health" | "lastActivity";
 
 export const COMPANY_SORT_KEYS: CompanySortKey[] = [
-  "name", "industry", "contacts", "openValue", "score", "health", "lastActivity",
+  "name", "industry", "contacts", "openValue", "annualValue", "score", "health", "lastActivity",
 ];
 
 export interface CompanyView {

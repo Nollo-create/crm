@@ -9,6 +9,8 @@ import {
   createCompany,
   listCompanies,
   listCompaniesPage,
+  customerStats,
+  type CustomerStats,
   bulkDeleteCompanies,
   bulkSetCompanyStatus,
   getCompany,
@@ -184,6 +186,34 @@ export async function companiesPageAction(opts: {
     pageSize: opts.pageSize,
   });
   return { rows: res.rows.map(toRowView), total: res.total, page: res.page, pageCount: res.pageCount };
+}
+
+// -------- customers (companies at the won lifecycle: customer + at_risk)
+
+export async function customersPageAction(opts: {
+  q?: string;
+  status?: string; // "" = customer + at_risk, or a single one
+  sortKey: string;
+  sortDir: 1 | -1;
+  page: number;
+  pageSize: number;
+}): Promise<CompaniesPage> {
+  const { organizationId } = await requireSession();
+  const statuses = opts.status ? [opts.status] : ["customer", "at_risk"];
+  const res = await listCompaniesPage(organizationId, {
+    q: opts.q?.trim() || undefined,
+    statuses,
+    sortKey: opts.sortKey,
+    sortDir: opts.sortDir,
+    page: opts.page,
+    pageSize: opts.pageSize,
+  });
+  return { rows: res.rows.map(toRowView), total: res.total, page: res.page, pageCount: res.pageCount };
+}
+
+export async function customerStatsAction(): Promise<CustomerStats> {
+  const { organizationId } = await requireSession();
+  return customerStats(organizationId);
 }
 
 export interface SearchHit {

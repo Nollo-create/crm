@@ -349,7 +349,7 @@ export interface CompaniesPageResult {
  *  heuristic in companies/page.tsx — keep the two buckets in sync. */
 export async function listCompaniesPage(
   orgId: number,
-  opts: { q?: string; status?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+  opts: { q?: string; status?: string; statuses?: string[]; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
 ): Promise<CompaniesPageResult> {
   await ensureSchema();
   const where: string[] = ["c.organization_id = ?"];
@@ -362,6 +362,10 @@ export async function listCompaniesPage(
   if (opts.status) {
     where.push("c.status = ?");
     params.push(opts.status);
+  }
+  if (opts.statuses && opts.statuses.length) {
+    where.push(`c.status IN (${opts.statuses.map(() => "?").join(", ")})`);
+    params.push(...opts.statuses);
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const pool = getPool();
@@ -391,6 +395,38 @@ export async function listCompaniesPage(
     [...params, pageSize, offset]
   );
   return { rows, total, page, pageCount };
+}
+
+export interface CustomerStats {
+  customers: number;
+  atRisk: number;
+  arr: number;
+  won: number;
+}
+
+/** Aggregates for the Customers header: active + at-risk counts, recurring
+ *  annual value of the base, and total won revenue. */
+export async function customerStats(orgId: number): Promise<CustomerStats> {
+  await ensureSchema();
+  const pool = getPool();
+  const [c] = await pool.query<mysql.RowDataPacket[]>(
+    `SELECT
+       COALESCE(SUM(status = 'customer'), 0) AS customers,
+       COALESCE(SUM(status = 'at_risk'), 0) AS at_risk,
+       COALESCE(SUM(CASE WHEN status IN ('customer', 'at_risk') THEN annual_value ELSE 0 END), 0) AS arr
+     FROM crm_companies WHERE organization_id = ?`,
+    [orgId]
+  );
+  const [d] = await pool.query<mysql.RowDataPacket[]>(
+    `SELECT COALESCE(SUM(value), 0) AS won FROM crm_deals WHERE organization_id = ? AND stage = 'won'`,
+    [orgId]
+  );
+  return {
+    customers: Number(c[0]?.customers ?? 0),
+    atRisk: Number(c[0]?.at_risk ?? 0),
+    arr: Number(c[0]?.arr ?? 0),
+    won: Number(d[0]?.won ?? 0),
+  };
 }
 
 export async function bulkDeleteCompanies(orgId: number, ids: number[]): Promise<void> {

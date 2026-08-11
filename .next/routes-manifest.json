@@ -54,6 +54,12 @@
       "namedRegex": "^/contacts(?:/)?$"
     },
     {
+      "page": "/customers",
+      "regex": "^/customers(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customers(?:/)?$"
+    },
+    {
       "page": "/deals",
       "regex": "^/deals(?:/)?$",
       "routeKeys": {},
