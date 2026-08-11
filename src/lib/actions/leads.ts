@@ -5,6 +5,7 @@ import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getL
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
 import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
+import { isStageId } from "@/lib/crm/pipeline";
 
 export interface Lead {
   id: number;
@@ -143,13 +144,23 @@ export async function deleteLeadAction(id: number): Promise<void> {
   revalidatePath("/leads");
 }
 
-export async function convertLeadAction(id: number): Promise<{ companyId?: number; error?: string }> {
+export async function convertLeadAction(
+  id: number,
+  opts?: { companyId?: number | null; deal?: { title: string; value?: number; stage?: string } | null }
+): Promise<{ companyId?: number; dealId?: number | null; createdCompany?: boolean; error?: string }> {
   const session = await requireSession();
-  const companyId = await convertLead(session.organizationId, id);
-  if (!companyId) return { error: "Lead not found." };
-  await recordAudit(session, "convert", "lead", id, `-> company #${companyId}`);
+  let deal = opts?.deal ?? null;
+  if (deal) {
+    const title = (deal.title ?? "").trim();
+    deal = title ? { title, value: deal.value ?? 0, stage: deal.stage && isStageId(deal.stage) ? deal.stage : "new" } : null;
+  }
+  const res = await convertLead(session.organizationId, id, { companyId: opts?.companyId ?? null, deal });
+  if (!res) return { error: "Lead not found." };
+  await recordAudit(session, "convert", "lead", id, `-> company #${res.companyId}${res.dealId ? ` + deal #${res.dealId}` : ""}`);
   revalidatePath("/leads");
+  revalidatePath(`/leads/${id}`);
   revalidatePath("/companies");
+  revalidatePath(`/companies/${res.companyId}`);
   revalidatePath("/");
-  return { companyId };
+  return { companyId: res.companyId, dealId: res.dealId, createdCompany: res.createdCompany };
 }

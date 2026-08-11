@@ -19,7 +19,8 @@ import {
   LEAD_PRIORITIES,
   LEAD_PRIORITY_LABEL,
 } from "@/lib/crm/leads";
-import { leadScoreBreakdown } from "@/lib/crm/pipeline";
+import { leadScoreBreakdown, STAGES } from "@/lib/crm/pipeline";
+import { searchCompaniesAction, type SearchHit } from "@/lib/actions/crm";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,26 @@ export function LeadDetail({ id }: { id: number }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form | null>(null);
+
+  // convert dialog
+  const [showConvert, setShowConvert] = useState(false);
+  const [companyMode, setCompanyMode] = useState<"new" | "existing">("new");
+  const [companyPick, setCompanyPick] = useState<{ id: number; name: string } | null>(null);
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [companyResults, setCompanyResults] = useState<SearchHit[]>([]);
+  const [dealOn, setDealOn] = useState(false);
+  const [dealForm, setDealForm] = useState({ title: "", value: "", stage: "new" });
+
+  useEffect(() => {
+    if (!showConvert || companyMode !== "existing") return;
+    const s = companyQuery.trim();
+    if (!s) {
+      setCompanyResults([]);
+      return;
+    }
+    const t = setTimeout(async () => setCompanyResults(await searchCompaniesAction(s).catch(() => [])), 200);
+    return () => clearTimeout(t);
+  }, [companyQuery, showConvert, companyMode]);
 
   async function load() {
     const res = await getLeadAction(id).catch(() => null);
@@ -97,10 +118,12 @@ export function LeadDetail({ id }: { id: number }) {
 
   async function convert() {
     setBusy(true);
-    const r = await convertLeadAction(id);
+    const companyId = companyMode === "existing" ? companyPick?.id ?? null : null;
+    const deal = dealOn && dealForm.title.trim() ? { title: dealForm.title, value: dealForm.value ? Number(dealForm.value) : 0, stage: dealForm.stage } : null;
+    const r = await convertLeadAction(id, { companyId, deal });
     setBusy(false);
     if (r.error) return toast(r.error, { tone: "error" });
-    toast("Lead converted to a company", { tone: "success" });
+    toast(r.createdCompany ? "Converted to a new company" : "Converted into the company", { tone: "success" });
     if (r.companyId && typeof window !== "undefined") window.location.href = `/companies/${r.companyId}`;
     else await load();
   }
@@ -265,13 +288,66 @@ export function LeadDetail({ id }: { id: number }) {
                   <Link href={`/companies/${l.convertedCompanyId}`} className="mt-2 block text-xs text-electric hover:underline">Open the company →</Link>
                 )}
               </div>
-            ) : (
+            ) : !showConvert ? (
               <>
-                <p className="mt-1 text-xs text-muted-foreground">Turn this qualified lead into a company (and a contact) you can run deals against.</p>
-                <Button size="sm" className="mt-2 w-full" onClick={convert} disabled={busy}>
-                  <Sparkles size={13} /> Convert to company <ArrowRight size={12} />
+                <p className="mt-1 text-xs text-muted-foreground">Turn this qualified lead into a company (and a contact), optionally with a deal.</p>
+                <Button size="sm" className="mt-2 w-full" onClick={() => setShowConvert(true)}>
+                  <Sparkles size={13} /> Convert lead
                 </Button>
               </>
+            ) : (
+              <div className="mt-2 space-y-2.5">
+                <div className="flex gap-1 rounded-lg bg-secondary p-0.5 text-xs">
+                  {(["new", "existing"] as const).map((m) => (
+                    <button key={m} onClick={() => setCompanyMode(m)} className={cn("flex-1 rounded-md px-2 py-1 transition-colors", companyMode === m ? "bg-card font-medium text-foreground" : "text-muted-foreground")}>
+                      {m === "new" ? "New company" : "Existing company"}
+                    </button>
+                  ))}
+                </div>
+
+                {companyMode === "existing" &&
+                  (companyPick ? (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5 text-sm">
+                      <span className="truncate"><Building2 size={12} className="mr-1 inline text-muted-foreground" />{companyPick.name}</span>
+                      <button onClick={() => { setCompanyPick(null); setCompanyQuery(""); }} className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Input placeholder="Search companies…" value={companyQuery} onChange={(e) => setCompanyQuery(e.target.value)} className="h-9" />
+                      {companyResults.length > 0 && (
+                        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-pop">
+                          {companyResults.map((cc) => (
+                            <button key={cc.id} onClick={() => { setCompanyPick({ id: cc.id, name: cc.name }); setCompanyResults([]); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-secondary">
+                              <Building2 size={13} className="shrink-0 text-muted-foreground" /><span className="flex-1 truncate">{cc.name}</span>{cc.city && <span className="text-2xs text-muted-foreground">{cc.city}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" checked={dealOn} onChange={(e) => setDealOn(e.target.checked)} className="h-3.5 w-3.5 accent-electric" /> Also create a deal
+                </label>
+                {dealOn && (
+                  <div className="space-y-2">
+                    <Input placeholder="Deal title" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} className="h-9" />
+                    <div className="flex gap-2">
+                      <Input type="number" placeholder="Value (€)" value={dealForm.value} onChange={(e) => setDealForm({ ...dealForm, value: e.target.value })} className="h-9" />
+                      <Select value={dealForm.stage} onChange={(e) => setDealForm({ ...dealForm, stage: e.target.value })} className="h-9 w-auto">
+                        {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setShowConvert(false)}>Cancel</Button>
+                  <Button size="sm" className="flex-1" onClick={convert} disabled={busy || (companyMode === "existing" && !companyPick) || (dealOn && !dealForm.title.trim())}>
+                    <ArrowRight size={13} /> Convert
+                  </Button>
+                </div>
+              </div>
             )}
           </Card>
 

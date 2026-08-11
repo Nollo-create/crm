@@ -1066,9 +1066,22 @@ export async function deleteLead(orgId: number, id: number): Promise<void> {
   await getPool().query("DELETE FROM crm_leads WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
-/** Convert a lead into a company (+ a contact if it has a person), atomically.
- *  Returns the new (or already-converted) company id, or null if not found. */
-export async function convertLead(orgId: number, id: number): Promise<number | null> {
+export interface ConvertLeadOptions {
+  /** Convert into this existing company (verified in-org). Omit/null => create a new one. */
+  companyId?: number | null;
+  /** Optionally open a deal on the resulting company. */
+  deal?: { title: string; value?: number; stage?: string } | null;
+}
+export interface ConvertLeadResult {
+  companyId: number;
+  dealId: number | null;
+  createdCompany: boolean;
+}
+
+/** Convert a lead into a company (+ a contact if it has a person, + an optional
+ *  deal), atomically. Uses an existing company when one is given (no duplicate —
+ *  Rule 8); otherwise creates one. Returns null if the lead isn't found. */
+export async function convertLead(orgId: number, id: number, opts: ConvertLeadOptions = {}): Promise<ConvertLeadResult | null> {
   await ensureSchema();
   const conn = await getPool().getConnection();
   try {
@@ -1081,28 +1094,55 @@ export async function convertLead(orgId: number, id: number): Promise<number | n
     }
     if (lead.converted_company_id) {
       await conn.commit();
-      return lead.converted_company_id;
+      return { companyId: lead.converted_company_id, dealId: null, createdCompany: false };
     }
 
-    const score = leadScoreOf({ website: lead.website, employees: lead.employees, industryMatch: !!lead.industry_match, annualValue: lead.annual_value });
-    const [companyRes] = await conn.query<mysql.ResultSetHeader>(
-      `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match, lead_score)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', '', ?, ?)`,
-      [orgId, (lead.company || lead.name).slice(0, 190), lead.industry.slice(0, 120), "", lead.website.slice(0, 300), lead.employees, lead.annual_value, lead.industry_match, score]
-    );
-    const companyId = companyRes.insertId;
-
-    if (lead.name.trim()) {
-      await conn.query(
-        `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence)
-           VALUES (?, ?, ?, ?, ?, ?, '', 'none')`,
-        [orgId, companyId, lead.name.slice(0, 190), lead.title.slice(0, 120), lead.email.slice(0, 190), lead.phone.slice(0, 60)]
+    // Target company: an existing one (verified in this org) or a fresh one.
+    let companyId = 0;
+    if (opts.companyId) {
+      const [existing] = await conn.query<mysql.RowDataPacket[]>("SELECT id FROM crm_companies WHERE id = ? AND organization_id = ? LIMIT 1", [opts.companyId, orgId]);
+      if (existing[0]) companyId = Number(existing[0].id);
+    }
+    const createdCompany = companyId === 0;
+    if (createdCompany) {
+      const score = leadScoreOf({ website: lead.website, employees: lead.employees, industryMatch: !!lead.industry_match, annualValue: lead.annual_value });
+      const [companyRes] = await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO crm_companies (organization_id, name, industry, city, website, employees, annual_value, status, account_manager, industry_match, lead_score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', '', ?, ?)`,
+        [orgId, (lead.company || lead.name).slice(0, 190), lead.industry.slice(0, 120), "", lead.website.slice(0, 300), lead.employees, lead.annual_value, lead.industry_match, score]
       );
+      companyId = companyRes.insertId;
+    }
+
+    // Add the lead's person as a contact, unless that company already has one with the same email.
+    if (lead.name.trim()) {
+      let dupe = false;
+      if (lead.email.trim()) {
+        const [c] = await conn.query<mysql.RowDataPacket[]>("SELECT id FROM crm_contacts WHERE company_id = ? AND organization_id = ? AND email = ? LIMIT 1", [companyId, orgId, lead.email]);
+        dupe = !!c[0];
+      }
+      if (!dupe) {
+        await conn.query(
+          `INSERT INTO crm_contacts (organization_id, company_id, name, role, email, phone, department, influence)
+             VALUES (?, ?, ?, ?, ?, ?, '', 'none')`,
+          [orgId, companyId, lead.name.slice(0, 190), lead.title.slice(0, 120), lead.email.slice(0, 190), lead.phone.slice(0, 60)]
+        );
+      }
+    }
+
+    // Optional deal on the resulting company.
+    let dealId: number | null = null;
+    if (opts.deal && opts.deal.title.trim()) {
+      const [dealRes] = await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner) VALUES (?, ?, ?, ?, ?, NULL, NULL, '')`,
+        [orgId, companyId, opts.deal.title.slice(0, 190), opts.deal.value ?? 0, (opts.deal.stage ?? "new").slice(0, 20)]
+      );
+      dealId = dealRes.insertId;
     }
 
     await conn.query("UPDATE crm_leads SET status = 'converted', converted_company_id = ? WHERE id = ? AND organization_id = ?", [companyId, id, orgId]);
     await conn.commit();
-    return companyId;
+    return { companyId, dealId, createdCompany };
   } catch (err) {
     await conn.rollback();
     throw err;
