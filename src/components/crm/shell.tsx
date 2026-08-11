@@ -147,7 +147,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
           >
             <Search size={15} />
             <span className="flex-1 text-left">Search or jump to…</span>
-            <kbd className="hidden rounded border border-border bg-secondary px-1.5 py-0.5 text-2xs sm:inline">⌘K</kbd>
+            <kbd className="hidden rounded border border-border bg-secondary px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground sm:inline">⌘K</kbd>
           </button>
           <div className="flex-1 md:hidden" />
           {/* Mobile search icon */}

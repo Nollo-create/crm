@@ -93,6 +93,13 @@
     font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 0.9rem;
   }
+  /* Keyboard-hint chips (⌘K, esc, …). The app's web font renders symbols like ⌘
+     faintly/ambiguously, so use a stack with real symbol + mono coverage so the
+     shortcut is legible. */
+  kbd {
+    font-family: ui-monospace, "Cascadia Code", "Segoe UI Symbol", "Segoe UI", Consolas, Menlo, monospace;
+    font-feature-settings: normal;
+  }
   /* Tabular figures for money/metrics */
   .tabular {
     font-variant-numeric: tabular-nums;
