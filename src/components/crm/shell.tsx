@@ -81,18 +81,54 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
         </nav>
 
         <div className="border-t border-border p-2">
-          <button
-            onClick={toggle}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-2xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
-              collapsed && "justify-center"
-            )}
-            title={connected ? "Connected to Sajtpress" : "Standalone"}
-          >
-            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", connected ? "bg-emerald" : "bg-warning")} />
-            {!collapsed && <span className="flex-1 text-left">{connected ? "Connected" : "Standalone"}</span>}
-            <PanelLeft size={14} className={cn("transition-transform", collapsed && "rotate-180")} />
-          </button>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-1">
+              <Link
+                href="/settings/org"
+                className="relative grid h-8 w-8 place-items-center rounded-full bg-royal/15 text-2xs font-semibold text-royal"
+                title={`${user.name || user.email} — account & settings`}
+              >
+                {initial}
+                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-card", connected ? "bg-emerald" : "bg-muted-foreground/40")} />
+              </Link>
+              <button
+                onClick={toggle}
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Expand sidebar"
+                aria-label="Expand sidebar"
+              >
+                <PanelLeft size={15} className="rotate-180" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <Link
+                href="/settings/org"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
+                title="Account & settings"
+              >
+                <span className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-royal/15 text-2xs font-semibold text-royal">
+                  {initial}
+                  <span
+                    className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-card", connected ? "bg-emerald" : "bg-muted-foreground/40")}
+                    title={connected ? "Connected to Sajtpress" : "Independent workspace (not linked to Sajtpress)"}
+                  />
+                </span>
+                <span className="min-w-0 leading-tight">
+                  <span className="block truncate text-sm font-medium">{user.name || "Account"}</span>
+                  <span className="block truncate text-2xs capitalize text-muted-foreground">{user.role}</span>
+                </span>
+              </Link>
+              <button
+                onClick={toggle}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeft size={15} />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
