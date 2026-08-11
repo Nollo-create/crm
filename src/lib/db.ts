@@ -1527,6 +1527,12 @@ export function ensureAuthSchema(): Promise<void> {
           UNIQUE KEY uq_org_slug (slug)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Billing columns (added post-multi-tenancy; idempotent for the existing prod DB).
+      await ensureColumn(pool, "crm_organizations", "plan", "plan VARCHAR(24) NOT NULL DEFAULT 'pro'");
+      await ensureColumn(pool, "crm_organizations", "billing_email", "billing_email VARCHAR(190) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_organizations", "billing_name", "billing_name VARCHAR(190) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_organizations", "billing_address", "billing_address VARCHAR(500) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_organizations", "tax_id", "tax_id VARCHAR(40) NOT NULL DEFAULT ''");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_users (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1581,6 +1587,11 @@ export interface OrganizationRow extends mysql.RowDataPacket {
   name: string;
   slug: string;
   created_at: Date;
+  plan: string;
+  billing_email: string;
+  billing_name: string;
+  billing_address: string;
+  tax_id: string;
 }
 export interface UserRow extends mysql.RowDataPacket {
   id: number;
@@ -1634,6 +1645,50 @@ export async function countOrgUsers(orgId: number): Promise<number> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ?", [orgId]);
   return Number(rows[0]?.n ?? 0);
+}
+
+// -------- billing (plan + billing details on the organization; usage is measured)
+
+export async function updateOrgPlan(orgId: number, plan: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_organizations SET plan = ? WHERE id = ?", [plan.slice(0, 24), orgId]);
+}
+
+export interface BillingInfoInput {
+  billingEmail: string;
+  billingName: string;
+  billingAddress: string;
+  taxId: string;
+}
+
+export async function updateBillingInfo(orgId: number, b: BillingInfoInput): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_organizations SET billing_email = ?, billing_name = ?, billing_address = ?, tax_id = ? WHERE id = ?",
+    [b.billingEmail.slice(0, 190), b.billingName.slice(0, 190), b.billingAddress.slice(0, 500), b.taxId.slice(0, 40), orgId]
+  );
+}
+
+export interface UsageCounts {
+  users: number;
+  companies: number;
+  contacts: number;
+  deals: number;
+}
+
+/** Real row counts for the org, for the billing usage meter. */
+export async function getUsageCounts(orgId: number): Promise<UsageCounts> {
+  await ensureSchema();
+  await ensureAuthSchema();
+  const pool = getPool();
+  const q = (sql: string) => pool.query<mysql.RowDataPacket[]>(sql, [orgId]).then(([r]) => Number(r[0]?.n ?? 0));
+  const [users, companies, contacts, deals] = await Promise.all([
+    q("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ?"),
+    q("SELECT COUNT(*) AS n FROM crm_companies WHERE organization_id = ?"),
+    q("SELECT COUNT(*) AS n FROM crm_contacts WHERE organization_id = ?"),
+    q("SELECT COUNT(*) AS n FROM crm_deals WHERE organization_id = ?"),
+  ]);
+  return { users, companies, contacts, deals };
 }
 
 export interface NewUser {
