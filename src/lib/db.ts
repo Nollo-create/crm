@@ -247,6 +247,15 @@ export function ensureSchema(): Promise<void> {
       await ensureColumn(pool, "crm_contacts", "mobile", "mobile VARCHAR(40) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_contacts", "linkedin", "linkedin VARCHAR(200) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_contacts", "notes", "notes TEXT NULL");
+      // Company account fields (Phase 1B — descriptive; patched via updateCompanyDetails,
+      // isolated from the scoring/status path so lead_score never recomputes off them).
+      await ensureColumn(pool, "crm_companies", "legal_name", "legal_name VARCHAR(190) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "phone", "phone VARCHAR(60) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "email", "email VARCHAR(190) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "country", "country VARCHAR(120) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "address", "address VARCHAR(300) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "vat_id", "vat_id VARCHAR(40) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_companies", "description", "description TEXT NULL");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -268,6 +277,13 @@ export interface CompanyRow extends mysql.RowDataPacket {
   status: string;
   account_manager: string;
   industry_match: number;
+  legal_name: string;
+  phone: string;
+  email: string;
+  country: string;
+  address: string;
+  vat_id: string;
+  description: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -392,6 +408,36 @@ export async function updateCompany(orgId: number, id: number, c: CompanyInput):
       (c.accountManager ?? "").slice(0, 120),
       c.industryMatch ? 1 : 0,
       scoreOf(c),
+      id,
+      orgId,
+    ]
+  );
+}
+
+export interface CompanyDetailsInput {
+  legalName: string;
+  phone: string;
+  email: string;
+  country: string;
+  address: string;
+  vatId: string;
+  description: string;
+}
+
+/** Patches only the descriptive account fields — deliberately separate from
+ *  updateCompany so it never touches status or recomputes lead_score. */
+export async function updateCompanyDetails(orgId: number, id: number, d: CompanyDetailsInput): Promise<void> {
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_companies SET legal_name=?, phone=?, email=?, country=?, address=?, vat_id=?, description=? WHERE id=? AND organization_id=?`,
+    [
+      d.legalName.slice(0, 190),
+      d.phone.slice(0, 60),
+      d.email.slice(0, 190),
+      d.country.slice(0, 120),
+      d.address.slice(0, 300),
+      d.vatId.slice(0, 40),
+      (d.description ?? "").slice(0, 2000),
       id,
       orgId,
     ]

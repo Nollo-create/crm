@@ -15,8 +15,10 @@ import {
   bulkSetCompanyStatus,
   getCompany,
   updateCompany,
+  updateCompanyDetails,
   deleteCompany,
   type CompanyStatsRow,
+  type CompanyDetailsInput,
   addContact,
   listContacts,
   listContactsPage,
@@ -62,6 +64,13 @@ export interface Company {
   status: string;
   accountManager: string;
   industryMatch: boolean;
+  legalName: string;
+  phone: string;
+  email: string;
+  country: string;
+  address: string;
+  vatId: string;
+  description: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,6 +120,13 @@ function toCompany(r: CompanyRow): Company {
     status: r.status,
     accountManager: r.account_manager,
     industryMatch: !!r.industry_match,
+    legalName: r.legal_name ?? "",
+    phone: r.phone ?? "",
+    email: r.email ?? "",
+    country: r.country ?? "",
+    address: r.address ?? "",
+    vatId: r.vat_id ?? "",
+    description: r.description ?? "",
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
   };
@@ -279,6 +295,16 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
   await updateCompany(organizationId, id, { ...input, name: input.name.trim() });
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
+  return {};
+}
+
+/** Patch the descriptive account fields (legal name, contact details, VAT, etc.)
+ *  without touching status/score — see db.updateCompanyDetails. */
+export async function updateCompanyDetailsAction(id: number, input: CompanyDetailsInput): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  if (!(await getCompany(organizationId, id))) return { error: "Company not found." };
+  await updateCompanyDetails(organizationId, id, input);
+  revalidatePath(`/companies/${id}`);
   return {};
 }
 

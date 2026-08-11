@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Plus,
+  Pencil,
   Trash2,
   Sparkles,
   Users,
@@ -20,6 +21,7 @@ import {
 import {
   getCompanyAction,
   updateCompanyAction,
+  updateCompanyDetailsAction,
   deleteCompanyAction,
   addContactAction,
   deleteContactAction,
@@ -76,6 +78,8 @@ export function CompanyDetail({ id }: { id: number }) {
   const [contact, setContact] = useState({ name: "", role: "", email: "", phone: "", department: "", influence: "none" });
   const [deal, setDeal] = useState({ title: "", value: "", stage: "new", expectedClose: "" });
   const [note, setNote] = useState({ type: "note", summary: "" });
+  const [editDetails, setEditDetails] = useState(false);
+  const [details, setDetails] = useState({ legalName: "", phone: "", email: "", country: "", address: "", vatId: "", description: "" });
 
   async function load() {
     const res = await getCompanyAction(id).catch(() => null);
@@ -248,6 +252,56 @@ export function CompanyDetail({ id }: { id: number }) {
                 <Fact label="Account manager" value={c.accountManager || "—"} />
                 <Fact label="Industry fit" value={c.industryMatch ? "Yes" : "No"} />
               </div>
+
+              {/* Account details (Phase 1B — patched independently of status/score) */}
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">Account details</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      if (!editDetails) setDetails({ legalName: c.legalName, phone: c.phone, email: c.email, country: c.country, address: c.address, vatId: c.vatId, description: c.description });
+                      setEditDetails((v) => !v);
+                    }}
+                  >
+                    {editDetails ? <X size={14} /> : <Pencil size={14} />} {editDetails ? "Close" : "Edit"}
+                  </Button>
+                </div>
+                {editDetails ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <DetailInput label="Legal name" value={details.legalName} onChange={(v) => setDetails({ ...details, legalName: v })} />
+                    <DetailInput label="VAT / Tax ID" value={details.vatId} onChange={(v) => setDetails({ ...details, vatId: v })} />
+                    <DetailInput label="Phone" value={details.phone} onChange={(v) => setDetails({ ...details, phone: v })} />
+                    <DetailInput label="Email" value={details.email} onChange={(v) => setDetails({ ...details, email: v })} />
+                    <DetailInput label="Country" value={details.country} onChange={(v) => setDetails({ ...details, country: v })} />
+                    <DetailInput label="Address" value={details.address} onChange={(v) => setDetails({ ...details, address: v })} />
+                    <label className="block text-2xs uppercase tracking-wide text-muted-foreground sm:col-span-2">
+                      Description
+                      <textarea
+                        value={details.description}
+                        onChange={(e) => setDetails({ ...details, description: e.target.value })}
+                        className="mt-1 min-h-[70px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-electric"
+                      />
+                    </label>
+                    <div className="flex justify-end sm:col-span-2">
+                      <Button size="sm" disabled={busy} onClick={() => run(async () => { const r = await updateCompanyDetailsAction(c.id, details); if (!r.error) setEditDetails(false); return r; })}>
+                        Save details
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                    <Fact label="Legal name" value={c.legalName || "—"} />
+                    <Fact label="VAT / Tax ID" value={c.vatId || "—"} />
+                    <Fact label="Phone" value={c.phone || "—"} />
+                    <Fact label="Email" value={c.email || "—"} />
+                    <Fact label="Country" value={c.country || "—"} />
+                    <Fact label="Address" value={c.address || "—"} />
+                    {c.description && <p className="whitespace-pre-wrap text-muted-foreground sm:col-span-2">{c.description}</p>}
+                  </div>
+                )}
+              </div>
             </Card>
           )}
 
@@ -416,6 +470,14 @@ function Fact({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium">{value}</span>
     </div>
+  );
+}
+function DetailInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block text-2xs uppercase tracking-wide text-muted-foreground">
+      {label}
+      <Input value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 h-9" />
+    </label>
   );
 }
 function SectionHead({ title, Icon, onAdd, adding }: { title: string; Icon: typeof Users; onAdd: () => void; adding: boolean }) {
