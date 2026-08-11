@@ -1,8 +1,10 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/api/health/route": "app/api/health/route.js",
-  "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
+  "/login/page": "app/login/page.js",
+  "/setup/page": "app/setup/page.js",
   "/(crm)/companies/page": "app/(crm)/companies/page.js",
+  "/(crm)/pipeline/page": "app/(crm)/pipeline/page.js",
   "/(crm)/companies/[id]/page": "app/(crm)/companies/[id]/page.js",
   "/(crm)/page": "app/(crm)/page.js"
 }

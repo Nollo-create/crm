@@ -48,10 +48,22 @@
       "namedRegex": "^/companies(?:/)?$"
     },
     {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
       "page": "/pipeline",
       "regex": "^/pipeline(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/pipeline(?:/)?$"
+    },
+    {
+      "page": "/setup",
+      "regex": "^/setup(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/setup(?:/)?$"
     }
   ],
   "dataRoutes": [],
