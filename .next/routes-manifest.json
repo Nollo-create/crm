@@ -198,6 +198,12 @@
       "namedRegex": "^/emails(?:/)?$"
     },
     {
+      "page": "/icon.svg",
+      "regex": "^/icon\\.svg(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/icon\\.svg(?:/)?$"
+    },
+    {
       "page": "/leads",
       "regex": "^/leads(?:/)?$",
       "routeKeys": {},

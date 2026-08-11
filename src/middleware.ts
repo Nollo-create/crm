@@ -14,7 +14,11 @@ export function middleware(req: NextRequest) {
     PUBLIC.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico";
+    pathname === "/favicon.ico" ||
+    // App Router metadata assets (favicon, apple icon, manifest) must load on the
+    // public /login page too, so never gate them behind auth.
+    /^\/(icon|apple-icon|opengraph-image|twitter-image)\.\w+$/.test(pathname) ||
+    pathname === "/manifest.webmanifest";
 
   if (isPublic) return NextResponse.next();
 

@@ -119,18 +119,28 @@
   }
 }
 
-/* Slim, unobtrusive scrollbars */
+/* Modern, creative scrollbars — a slim floating pill tinted with the brand
+   gradient that lights up on hover. Firefox gets the thin native variant. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 92, 255, 0.45) transparent;
+}
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 6px;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  background-image: linear-gradient(180deg, rgba(79, 140, 255, 0.5), rgba(124, 92, 255, 0.5));
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background-image: linear-gradient(180deg, #4f8cff, #7c5cff);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
