@@ -108,6 +108,12 @@
       "namedRegex": "^/pipeline(?:/)?$"
     },
     {
+      "page": "/products",
+      "regex": "^/products(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/products(?:/)?$"
+    },
+    {
       "page": "/settings/security",
       "regex": "^/settings/security(?:/)?$",
       "routeKeys": {},

@@ -7,6 +7,7 @@ import { buildLeadOrderBy } from "@/lib/crm/leads";
 import { buildDealOrderBy } from "@/lib/crm/deal-query";
 import { buildTaskOrderBy } from "@/lib/crm/tasks";
 import { buildActivityOrderBy } from "@/lib/crm/activities";
+import { buildProductOrderBy } from "@/lib/crm/products";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -160,6 +161,21 @@ export function ensureSchema(): Promise<void> {
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_task_org (organization_id, done, due_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_products (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          sku VARCHAR(60) NOT NULL DEFAULT '',
+          description VARCHAR(500) NOT NULL DEFAULT '',
+          price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          billing VARCHAR(20) NOT NULL DEFAULT 'onetime',
+          active TINYINT(1) NOT NULL DEFAULT 1,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_product_org (organization_id, name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
@@ -974,6 +990,96 @@ export async function setTaskDone(orgId: number, id: number, done: boolean): Pro
 export async function deleteTask(orgId: number, id: number): Promise<void> {
   await ensureSchema();
   await getPool().query("DELETE FROM crm_tasks WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+// ----------------------------------------------------------------- products
+
+export interface ProductRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  name: string;
+  sku: string;
+  description: string;
+  price_cents: number;
+  billing: string;
+  active: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ProductInput {
+  name: string;
+  sku?: string;
+  description?: string;
+  priceCents?: number;
+  billing?: string;
+  active?: boolean;
+}
+
+export async function createProduct(orgId: number, p: ProductInput): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_products (organization_id, name, sku, description, price_cents, billing, active) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, p.name.slice(0, 190), (p.sku ?? "").slice(0, 60), (p.description ?? "").slice(0, 500), Math.max(0, Math.round(p.priceCents ?? 0)), (p.billing ?? "onetime").slice(0, 20), p.active === false ? 0 : 1]
+  );
+  return res.insertId;
+}
+
+export async function updateProduct(orgId: number, id: number, p: ProductInput): Promise<void> {
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_products SET name=?, sku=?, description=?, price_cents=?, billing=?, active=? WHERE id=? AND organization_id=?`,
+    [p.name.slice(0, 190), (p.sku ?? "").slice(0, 60), (p.description ?? "").slice(0, 500), Math.max(0, Math.round(p.priceCents ?? 0)), (p.billing ?? "onetime").slice(0, 20), p.active === false ? 0 : 1, id, orgId]
+  );
+}
+
+export async function setProductActive(orgId: number, id: number, active: boolean): Promise<void> {
+  await ensureSchema();
+  await getPool().query("UPDATE crm_products SET active = ? WHERE id = ? AND organization_id = ?", [active ? 1 : 0, id, orgId]);
+}
+
+export async function deleteProduct(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_products WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export interface ProductsPageResult {
+  rows: ProductRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function listProductsPage(
+  orgId: number,
+  opts: { q?: string; active?: boolean; billing?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<ProductsPageResult> {
+  await ensureSchema();
+  const where: string[] = ["p.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("(p.name LIKE ? OR p.sku LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like);
+  }
+  if (opts.active !== undefined) {
+    where.push("p.active = ?");
+    params.push(opts.active ? 1 : 0);
+  }
+  if (opts.billing) {
+    where.push("p.billing = ?");
+    params.push(opts.billing);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM crm_products p ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildProductOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<ProductRow[]>(`SELECT p.* FROM crm_products p ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  return { rows, total, page, pageCount };
 }
 
 // ====================================================================
