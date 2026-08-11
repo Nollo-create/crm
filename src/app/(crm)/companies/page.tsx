@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check } from "lucide-react";
+import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal } from "lucide-react";
 import {
   listCompaniesTableAction,
   createCompanyAction,
@@ -40,6 +40,21 @@ function health(c: CompanyRowView): { tone: Tone; label: string; rank: number } 
 
 type SortKey = CompanySortKey;
 
+// Toggleable columns (Company name is always shown). Drives the header, the
+// row cells and the visibility menu, so nothing can drift out of sync.
+type ColKey = "industry" | "contacts" | "openValue" | "score" | "health" | "lastActivity";
+const COL_KEYS: ColKey[] = ["industry", "contacts", "openValue", "score", "health", "lastActivity"];
+const COLUMNS: { key: ColKey; label: string; align?: "right"; tdClass?: string }[] = [
+  { key: "industry", label: "Industry", tdClass: "text-muted-foreground" },
+  { key: "contacts", label: "Contacts", align: "right", tdClass: "tabular text-muted-foreground" },
+  { key: "openValue", label: "Pipeline", align: "right" },
+  { key: "score", label: "Score", align: "right" },
+  { key: "health", label: "Health" },
+  { key: "lastActivity", label: "Last activity", align: "right", tdClass: "text-2xs text-muted-foreground" },
+];
+const COLUMNS_KEY = "crm-company-columns";
+const allColsVisible = () => Object.fromEntries(COL_KEYS.map((k) => [k, true])) as Record<ColKey, boolean>;
+
 export default function CompaniesPage() {
   const { toast } = useToast();
   const [all, setAll] = useState<CompanyRowView[]>([]);
@@ -51,6 +66,8 @@ export default function CompaniesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [peek, setPeek] = useState<number | null>(null);
+  const [cols, setCols] = useState<Record<ColKey, boolean>>(allColsVisible);
+  const [colMenu, setColMenu] = useState(false);
   const [userViews, setUserViews] = useState<CompanyView[]>([]);
   const [savingView, setSavingView] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -75,8 +92,31 @@ export default function CompaniesPage() {
     } catch {
       /* ignore malformed storage */
     }
+    try {
+      const raw = JSON.parse(localStorage.getItem(COLUMNS_KEY) || "{}");
+      setCols((prev) => {
+        const next = { ...prev };
+        for (const k of COL_KEYS) if (typeof raw[k] === "boolean") next[k] = raw[k];
+        return next;
+      });
+    } catch {
+      /* ignore malformed storage */
+    }
     void load();
   }, []);
+
+  const visibleCols = COLUMNS.filter((c) => cols[c.key]);
+  function toggleCol(key: ColKey) {
+    setCols((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(COLUMNS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota errors */
+      }
+      return next;
+    });
+  }
 
   const allViews = useMemo(() => [...BUILTIN_VIEWS, ...userViews], [userViews]);
   const viewState: ViewState = { status, sortKey: sort.key, sortDir: sort.dir };
@@ -323,9 +363,34 @@ export default function CompaniesPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-            <button onClick={() => setDens("comfortable")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "comfortable" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Comfortable"><Rows3 size={14} /></button>
-            <button onClick={() => setDens("compact")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "compact" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Compact"><Rows2 size={14} /></button>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative hidden md:block">
+              <button
+                onClick={() => setColMenu((v) => !v)}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                title="Show or hide columns"
+              >
+                <SlidersHorizontal size={14} /> Columns
+              </button>
+              {colMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setColMenu(false)} />
+                  <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-popover p-1 shadow-pop">
+                    <p className="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground/60">Columns</p>
+                    {COLUMNS.map((col) => (
+                      <label key={col.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-secondary">
+                        <input type="checkbox" checked={cols[col.key]} onChange={() => toggleCol(col.key)} className="h-3.5 w-3.5 accent-electric" />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+              <button onClick={() => setDens("comfortable")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "comfortable" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Comfortable"><Rows3 size={14} /></button>
+              <button onClick={() => setDens("compact")} className={cn("grid h-7 w-7 place-items-center rounded-md", density === "compact" ? "bg-secondary text-foreground" : "text-muted-foreground")} title="Compact"><Rows2 size={14} /></button>
+            </div>
           </div>
         </div>
       )}
@@ -340,24 +405,21 @@ export default function CompaniesPage() {
                   <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((c) => c.id)) : new Set())} className="h-3.5 w-3.5 accent-electric" />
                 </th>
                 <Th label="Company" k="name" sort={sort} onSort={toggleSort} />
-                <Th label="Industry" k="industry" sort={sort} onSort={toggleSort} />
-                <Th label="Contacts" k="contacts" sort={sort} onSort={toggleSort} align="right" />
-                <Th label="Pipeline" k="openValue" sort={sort} onSort={toggleSort} align="right" />
-                <Th label="Score" k="score" sort={sort} onSort={toggleSort} align="right" />
-                <Th label="Health" k="health" sort={sort} onSort={toggleSort} />
-                <Th label="Last activity" k="lastActivity" sort={sort} onSort={toggleSort} align="right" />
+                {visibleCols.map((col) => (
+                  <Th key={col.key} label={col.label} k={col.key} sort={sort} onSort={toggleSort} align={col.align} />
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-3 py-3" colSpan={8}><Skeleton className="h-4 w-full" /></td>
+                    <td className="px-3 py-3" colSpan={2 + visibleCols.length}><Skeleton className="h-4 w-full" /></td>
                   </tr>
                 ))
               ) : shown.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={2 + visibleCols.length} className="px-3 py-12 text-center text-sm text-muted-foreground">
                     {all.length === 0 ? "No companies yet — add your first account." : "No matches."}
                   </td>
                 </tr>
@@ -378,22 +440,11 @@ export default function CompaniesPage() {
                         <p className="font-medium">{c.name}</p>
                         {c.city && <p className="text-2xs text-muted-foreground">{c.city}</p>}
                       </td>
-                      <td className={cn("px-3 text-muted-foreground", pad)}>{c.industry || "—"}</td>
-                      <td className={cn("px-3 text-right tabular text-muted-foreground", pad)}>{c.contacts || "—"}</td>
-                      <td className={cn("px-3 text-right", pad)}>
-                        {c.openValue ? <span className="font-medium tabular">{eur(c.openValue)}</span> : <span className="text-muted-foreground">—</span>}
-                        {c.openDeals > 0 && <span className="ml-1 text-2xs text-muted-foreground">· {c.openDeals}</span>}
-                      </td>
-                      <td className={cn("px-3 text-right", pad)}>
-                        <span className={cn("inline-block min-w-[26px] rounded px-1.5 py-0.5 text-2xs font-semibold tabular", sc >= 75 ? "bg-emerald/10 text-emerald" : sc >= 50 ? "bg-warning/10 text-warning" : "bg-secondary text-muted-foreground")}>{sc}</span>
-                      </td>
-                      <td className={cn("px-3", pad)}>
-                        <span className="inline-flex items-center gap-1.5 text-xs">
-                          <span className={cn("h-2 w-2 rounded-full", h.tone === "emerald" ? "bg-emerald" : h.tone === "danger" ? "bg-danger" : h.tone === "warning" ? "bg-warning" : "bg-muted-foreground")} />
-                          {h.label}
-                        </span>
-                      </td>
-                      <td className={cn("px-3 text-right text-2xs text-muted-foreground", pad)}>{c.lastActivity ? timeAgo(c.lastActivity) : "—"}</td>
+                      {visibleCols.map((col) => (
+                        <td key={col.key} className={cn("px-3", pad, col.align === "right" && "text-right", col.tdClass)}>
+                          {cellContent(col.key, c, h, sc)}
+                        </td>
+                      ))}
                     </tr>
                   );
                 })
@@ -461,6 +512,35 @@ export default function CompaniesPage() {
       <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={load} />
     </div>
   );
+}
+
+function cellContent(key: ColKey, c: CompanyRowView, h: { tone: Tone; label: string }, sc: number) {
+  switch (key) {
+    case "industry":
+      return c.industry || "—";
+    case "contacts":
+      return c.contacts || "—";
+    case "openValue":
+      return (
+        <>
+          {c.openValue ? <span className="font-medium tabular">{eur(c.openValue)}</span> : <span className="text-muted-foreground">—</span>}
+          {c.openDeals > 0 && <span className="ml-1 text-2xs text-muted-foreground">· {c.openDeals}</span>}
+        </>
+      );
+    case "score":
+      return (
+        <span className={cn("inline-block min-w-[26px] rounded px-1.5 py-0.5 text-2xs font-semibold tabular", sc >= 75 ? "bg-emerald/10 text-emerald" : sc >= 50 ? "bg-warning/10 text-warning" : "bg-secondary text-muted-foreground")}>{sc}</span>
+      );
+    case "health":
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs">
+          <span className={cn("h-2 w-2 rounded-full", h.tone === "emerald" ? "bg-emerald" : h.tone === "danger" ? "bg-danger" : h.tone === "warning" ? "bg-warning" : "bg-muted-foreground")} />
+          {h.label}
+        </span>
+      );
+    case "lastActivity":
+      return c.lastActivity ? timeAgo(c.lastActivity) : "—";
+  }
 }
 
 function Th({ label, k, sort, onSort, align }: { label: string; k: SortKey; sort: { key: SortKey; dir: 1 | -1 }; onSort: (k: SortKey) => void; align?: "right" }) {
