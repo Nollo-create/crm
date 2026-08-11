@@ -6,7 +6,7 @@ import mysql from "mysql2/promise";
 // the Sajtpress client (sajtpress.ts). Self-healing schema: CREATE IF NOT EXISTS
 // on first use, memoised for the process.
 
-const globalForDb = globalThis as unknown as { __cmsPool?: mysql.Pool; __crmSchema?: Promise<void> };
+const globalForDb = globalThis as unknown as { __cmsPool?: mysql.Pool; __crmSchema?: Promise<void>; __crmAuthSchema?: Promise<void> };
 
 export function getPool(): mysql.Pool {
   if (!globalForDb.__cmsPool) {
@@ -428,4 +428,177 @@ export async function listActivities(companyId: number, limit = 50): Promise<Act
     [companyId, limit]
   );
   return rows;
+}
+
+// ====================================================================
+// Auth & tenancy storage (organizations, users, sessions)
+//
+// Kept in its OWN memoised init, isolated from the CRM schema: a fresh process
+// (every deploy restarts Passenger) re-runs these CREATE IF NOT EXISTS, and an
+// issue in one schema half never blocks the other. Passwords are hashed by
+// lib/auth/password; sessions store only the SHA-256 of the token.
+// ====================================================================
+
+export function ensureAuthSchema(): Promise<void> {
+  if (!globalForDb.__crmAuthSchema) {
+    globalForDb.__crmAuthSchema = (async () => {
+      const pool = getPool();
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_organizations (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          slug VARCHAR(120) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_org_slug (slug)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_users (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          email VARCHAR(190) NOT NULL,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          password_hash VARCHAR(255) NOT NULL DEFAULT '',
+          role VARCHAR(20) NOT NULL DEFAULT 'member',
+          status VARCHAR(20) NOT NULL DEFAULT 'active',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_login_at TIMESTAMP NULL,
+          UNIQUE KEY uq_user_email (email),
+          INDEX idx_user_org (organization_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_sessions (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          user_id INT UNSIGNED NOT NULL,
+          organization_id INT UNSIGNED NOT NULL,
+          token_hash CHAR(64) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expires_at TIMESTAMP NOT NULL,
+          UNIQUE KEY uq_session_token (token_hash),
+          INDEX idx_session_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+    })().catch((err) => {
+      globalForDb.__crmAuthSchema = undefined;
+      throw err;
+    });
+  }
+  return globalForDb.__crmAuthSchema;
+}
+
+export interface OrganizationRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  slug: string;
+  created_at: Date;
+}
+export interface UserRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  role: string;
+  status: string;
+  created_at: Date;
+  last_login_at: Date | null;
+}
+export interface SessionRow extends mysql.RowDataPacket {
+  id: number;
+  user_id: number;
+  organization_id: number;
+  token_hash: string;
+  created_at: Date;
+  expires_at: Date;
+}
+
+// -------- organizations & users
+
+export async function countUsers(): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_users");
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function createOrganization(name: string, slug: string): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_organizations (name, slug) VALUES (?, ?)",
+    [name.slice(0, 190), slug.slice(0, 120)]
+  );
+  return res.insertId;
+}
+
+export interface NewUser {
+  organizationId: number;
+  email: string;
+  name?: string;
+  passwordHash: string;
+  role?: string;
+}
+
+export async function createUser(u: NewUser): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_users (organization_id, email, name, password_hash, role) VALUES (?, ?, ?, ?, ?)",
+    [u.organizationId, u.email.toLowerCase().slice(0, 190), (u.name ?? "").slice(0, 190), u.passwordHash.slice(0, 255), (u.role ?? "member").slice(0, 20)]
+  );
+  return res.insertId;
+}
+
+export async function getUserByEmail(email: string): Promise<UserRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<UserRow[]>(
+    "SELECT * FROM crm_users WHERE email = ? AND status = 'active' LIMIT 1",
+    [email.toLowerCase()]
+  );
+  return rows[0] ?? null;
+}
+
+export async function getUserById(id: number): Promise<UserRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<UserRow[]>("SELECT * FROM crm_users WHERE id = ? LIMIT 1", [id]);
+  return rows[0] ?? null;
+}
+
+export async function setUserLastLogin(id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
+}
+
+// -------- sessions
+
+export interface NewSession {
+  userId: number;
+  organizationId: number;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+export async function createSession(s: NewSession): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "INSERT INTO crm_sessions (user_id, organization_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+    [s.userId, s.organizationId, s.tokenHash, s.expiresAt]
+  );
+}
+
+export async function getSessionByTokenHash(tokenHash: string): Promise<SessionRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SessionRow[]>(
+    "SELECT * FROM crm_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP LIMIT 1",
+    [tokenHash]
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteSessionByTokenHash(tokenHash: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_sessions WHERE token_hash = ?", [tokenHash]);
+}
+
+export async function deleteExpiredSessions(): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_sessions WHERE expires_at <= CURRENT_TIMESTAMP");
 }
