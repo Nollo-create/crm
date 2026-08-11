@@ -8,6 +8,7 @@ import { buildDealOrderBy } from "@/lib/crm/deal-query";
 import { buildTaskOrderBy } from "@/lib/crm/tasks";
 import { buildActivityOrderBy } from "@/lib/crm/activities";
 import { buildProductOrderBy } from "@/lib/crm/products";
+import { buildQuoteOrderBy } from "@/lib/crm/quotes";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -176,6 +177,35 @@ export function ensureSchema(): Promise<void> {
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_product_org (organization_id, name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_quotes (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          company_id INT UNSIGNED NOT NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'draft',
+          notes VARCHAR(500) NOT NULL DEFAULT '',
+          valid_until DATE NULL,
+          total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_quote_org (organization_id, status),
+          INDEX idx_quote_company (company_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_quote_items (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          quote_id INT UNSIGNED NOT NULL,
+          product_id INT UNSIGNED NULL,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          unit_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          quantity INT UNSIGNED NOT NULL DEFAULT 1,
+          line_total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_qitem_quote (quote_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
@@ -1080,6 +1110,160 @@ export async function listProductsPage(
 
   const [rows] = await pool.query<ProductRow[]>(`SELECT p.* FROM crm_products p ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
   return { rows, total, page, pageCount };
+}
+
+// ------------------------------------------------------------------- quotes
+
+export interface QuoteRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  company_id: number;
+  status: string;
+  notes: string;
+  valid_until: Date | null;
+  total_cents: number;
+  created_at: Date;
+  updated_at: Date;
+}
+export interface QuoteStatsRow extends QuoteRow {
+  company_name: string;
+}
+export interface QuoteItemRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  quote_id: number;
+  product_id: number | null;
+  name: string;
+  unit_price_cents: number;
+  quantity: number;
+  line_total_cents: number;
+  created_at: Date;
+}
+
+export async function createQuote(orgId: number, companyId: number, opts: { notes?: string; validUntil?: string | null } = {}): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_quotes (organization_id, company_id, notes, valid_until) VALUES (?, ?, ?, ?)`,
+    [orgId, companyId, (opts.notes ?? "").slice(0, 500), opts.validUntil || null]
+  );
+  return res.insertId;
+}
+
+export interface QuotesPageResult {
+  rows: QuoteStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export async function listQuotesPage(
+  orgId: number,
+  opts: { q?: string; status?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<QuotesPageResult> {
+  await ensureSchema();
+  const where: string[] = ["q.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("co.name LIKE ?");
+    params.push(`%${opts.q}%`);
+  }
+  if (opts.status) {
+    where.push("q.status = ?");
+    params.push(opts.status);
+  }
+  const joinSql = "FROM crm_quotes q JOIN crm_companies co ON co.id = q.company_id AND co.organization_id = q.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildQuoteOrderBy(opts.sortKey, opts.sortDir);
+
+  const [rows] = await pool.query<QuoteStatsRow[]>(`SELECT q.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  return { rows, total, page, pageCount };
+}
+
+export async function getQuote(orgId: number, id: number): Promise<{ quote: QuoteStatsRow; items: QuoteItemRow[] } | null> {
+  await ensureSchema();
+  const pool = getPool();
+  const [qRows] = await pool.query<QuoteStatsRow[]>(
+    "SELECT q.*, co.name AS company_name FROM crm_quotes q JOIN crm_companies co ON co.id = q.company_id AND co.organization_id = q.organization_id WHERE q.id = ? AND q.organization_id = ? LIMIT 1",
+    [id, orgId]
+  );
+  const quote = qRows[0];
+  if (!quote) return null;
+  const [items] = await pool.query<QuoteItemRow[]>("SELECT * FROM crm_quote_items WHERE quote_id = ? AND organization_id = ? ORDER BY id ASC", [id, orgId]);
+  return { quote, items };
+}
+
+export async function updateQuote(orgId: number, id: number, patch: { status?: string; notes?: string; validUntil?: string | null }): Promise<void> {
+  await ensureSchema();
+  const sets: string[] = [];
+  const vals: (string | number | null)[] = [];
+  if (patch.status !== undefined) { sets.push("status=?"); vals.push(patch.status.slice(0, 20)); }
+  if (patch.notes !== undefined) { sets.push("notes=?"); vals.push(patch.notes.slice(0, 500)); }
+  if (patch.validUntil !== undefined) { sets.push("valid_until=?"); vals.push(patch.validUntil || null); }
+  if (!sets.length) return;
+  vals.push(id, orgId);
+  await getPool().query(`UPDATE crm_quotes SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`, vals);
+}
+
+export async function deleteQuote(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  const pool = getPool();
+  await pool.query("DELETE FROM crm_quote_items WHERE quote_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("DELETE FROM crm_quotes WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+/** Recompute a quote's stored total from its line items. */
+async function recomputeQuoteTotal(orgId: number, quoteId: number): Promise<void> {
+  await getPool().query(
+    "UPDATE crm_quotes SET total_cents = (SELECT COALESCE(SUM(line_total_cents), 0) FROM crm_quote_items WHERE quote_id = ? AND organization_id = ?) WHERE id = ? AND organization_id = ?",
+    [quoteId, orgId, quoteId, orgId]
+  );
+}
+
+export async function addQuoteItem(
+  orgId: number,
+  quoteId: number,
+  item: { productId?: number | null; name: string; unitPriceCents: number; quantity: number }
+): Promise<void> {
+  await ensureSchema();
+  const qty = Math.max(1, Math.round(item.quantity || 1));
+  const unit = Math.max(0, Math.round(item.unitPriceCents || 0));
+  await getPool().query(
+    `INSERT INTO crm_quote_items (organization_id, quote_id, product_id, name, unit_price_cents, quantity, line_total_cents) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, quoteId, item.productId ?? null, item.name.slice(0, 190), unit, qty, qty * unit]
+  );
+  await recomputeQuoteTotal(orgId, quoteId);
+}
+
+export async function setQuoteItemQuantity(orgId: number, quoteId: number, itemId: number, quantity: number): Promise<void> {
+  await ensureSchema();
+  const qty = Math.max(1, Math.round(quantity));
+  await getPool().query(
+    "UPDATE crm_quote_items SET quantity = ?, line_total_cents = unit_price_cents * ? WHERE id = ? AND quote_id = ? AND organization_id = ?",
+    [qty, qty, itemId, quoteId, orgId]
+  );
+  await recomputeQuoteTotal(orgId, quoteId);
+}
+
+export async function deleteQuoteItem(orgId: number, quoteId: number, itemId: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_quote_items WHERE id = ? AND quote_id = ? AND organization_id = ?", [itemId, quoteId, orgId]);
+  await recomputeQuoteTotal(orgId, quoteId);
+}
+
+/** Active-product search for the quote line-item picker. */
+export async function searchProducts(orgId: number, q: string): Promise<ProductRow[]> {
+  await ensureSchema();
+  const like = `%${q}%`;
+  const [rows] = await getPool().query<ProductRow[]>(
+    "SELECT * FROM crm_products WHERE organization_id = ? AND active = 1 AND (name LIKE ? OR sku LIKE ?) ORDER BY name ASC LIMIT 8",
+    [orgId, like, like]
+  );
+  return rows;
 }
 
 // ====================================================================

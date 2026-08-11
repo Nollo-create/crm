@@ -26,6 +26,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/companies/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/quotes/[id]",
+      "regex": "^/quotes/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/quotes/(?<nxtPid>[^/]+?)(?:/)?$"
     }
   ],
   "staticRoutes": [
@@ -112,6 +120,12 @@
       "regex": "^/products(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/products(?:/)?$"
+    },
+    {
+      "page": "/quotes",
+      "regex": "^/quotes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/quotes(?:/)?$"
     },
     {
       "page": "/settings/security",

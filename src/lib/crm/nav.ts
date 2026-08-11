@@ -77,7 +77,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Meetings", href: "/meetings", icon: CalendarDays },
       { label: "Calls", href: "/calls", icon: Phone },
       { label: "Emails", href: "/emails", icon: Mail },
-      { label: "Quotes", href: "/quotes", icon: FileText, soon: true },
+      { label: "Quotes", href: "/quotes", icon: FileText },
       { label: "Products", href: "/products", icon: Package },
     ],
   },
