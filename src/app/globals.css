@@ -11,23 +11,27 @@
 
 @layer base {
   :root {
-    /* Light — soft neutral page, white surfaces */
-    /* Dimmed for eye comfort. Previous (brighter) value: 220 24% 98% — restore that to revert. */
-    --background: 220 20% 95%;
+    /* Light — dimmed/softened for eye comfort (user preference; page + surfaces).
+       ORIGINAL (bright) values — restore these to fully revert:
+         --background 220 24% 98%;  --card 0 0% 100%;   --popover 0 0% 100%;
+         --secondary  220 16% 95%;  --muted 220 16% 95%; --accent 220 16% 94%;
+         --border 220 16% 90%;      --input 220 16% 88%;
+       (An intermediate step used --background 220 20% 95%.) */
+    --background: 220 16% 90%;
     --foreground: 222 32% 12%;
-    --card: 0 0% 100%;
+    --card: 216 22% 96%;
     --card-foreground: 222 32% 12%;
-    --popover: 0 0% 100%;
+    --popover: 216 22% 96%;
     --primary: 222 47% 14%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 95%;
+    --secondary: 220 14% 89%;
     --secondary-foreground: 222 32% 16%;
-    --muted: 220 16% 95%;
+    --muted: 220 14% 89%;
     --muted-foreground: 220 10% 44%;
-    --accent: 220 16% 94%;
+    --accent: 220 14% 87%;
     --accent-foreground: 222 32% 14%;
-    --border: 220 16% 90%;
-    --input: 220 16% 88%;
+    --border: 220 14% 85%;
+    --input: 220 14% 85%;
     --ring: 222 90% 58%;
 
     /* Brand + semantic (RGB triplets, alpha-value ready) */
