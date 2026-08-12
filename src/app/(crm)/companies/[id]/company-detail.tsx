@@ -362,7 +362,7 @@ export function CompanyDetail({ id }: { id: number }) {
                 {d.deals.map((dl) => (
                   <div key={dl.id} className="rounded-lg border border-border p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="min-w-0 truncate text-sm font-medium">{dl.title}</p>
+                      <Link href={`/deals/${dl.id}`} className="min-w-0 truncate text-sm font-medium hover:text-electric hover:underline">{dl.title}</Link>
                       <button onClick={() => run(() => deleteDealAction(dl.id, c.id))} className="shrink-0 text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">

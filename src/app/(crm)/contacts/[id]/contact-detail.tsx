@@ -14,6 +14,7 @@ import {
   Smartphone,
   Linkedin,
   Activity as ActivityIcon,
+  Handshake,
   Compass,
 } from "lucide-react";
 import {
@@ -29,7 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { timeAgo } from "@/lib/format";
+import { eur, timeAgo } from "@/lib/format";
+import { stageLabel } from "@/lib/crm/pipeline";
 import { cn } from "@/lib/utils";
 
 const INFLUENCE: Record<string, { label: string; stars: number; tone: Tone }> = {
@@ -214,6 +216,24 @@ export function ContactDetail({ id }: { id: number }) {
               </>
             )}
           </Card>
+
+          {/* Deals where this person is the primary contact */}
+          {d.deals.length > 0 && (
+            <Card className="p-4 sm:p-5">
+              <p className="flex items-center gap-2 text-sm font-semibold"><Handshake size={15} className="text-electric" /> Deals</p>
+              <div className="mt-3 space-y-2">
+                {d.deals.map((dl) => (
+                  <Link key={dl.id} href={`/deals/${dl.id}`} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 transition-colors hover:bg-secondary/50">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{dl.title}</span>
+                      <span className="block text-2xs text-muted-foreground">{stageLabel(dl.stage)}</span>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular">{eur(dl.value)}</span>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Timeline */}
           <Card className="p-4 sm:p-5">

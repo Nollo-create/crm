@@ -251,7 +251,7 @@ export default function DealsPage() {
                   const close = dealCloseInfo(d.expectedClose);
                   return (
                     <tr key={d.id} className="transition-colors hover:bg-secondary/40">
-                      <td className="px-3 py-2.5 cursor-pointer" onClick={() => router.push(`/companies/${d.companyId}`)}>
+                      <td className="px-3 py-2.5 cursor-pointer" onClick={() => router.push(`/deals/${d.id}`)}>
                         <p className="font-medium">{d.title}</p>
                         {d.owner && <p className="text-2xs text-muted-foreground">{d.owner}</p>}
                       </td>
@@ -300,7 +300,7 @@ export default function DealsPage() {
             return (
               <div key={d.id} className="rounded-xl border border-border bg-card p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <button onClick={() => router.push(`/companies/${d.companyId}`)} className="min-w-0 text-left">
+                  <button onClick={() => router.push(`/deals/${d.id}`)} className="min-w-0 text-left">
                     <p className="truncate font-medium">{d.title}</p>
                     <p className="truncate text-2xs text-muted-foreground">{d.companyName}</p>
                   </button>

@@ -33,7 +33,11 @@ import {
   listDealsPage,
   updateDeal,
   deleteDeal,
+  getDeal,
+  listDealActivities,
+  listDealsForContact,
   type DealStatsRow,
+  type DealWithRefsRow,
   addActivity,
   listActivities,
   listActivitiesPage,
@@ -96,6 +100,8 @@ export interface Deal {
   probability: number | null;
   expectedClose: string | null;
   owner: string;
+  contactId: number | null;
+  notes: string;
 }
 export interface Activity {
   id: number;
@@ -156,6 +162,8 @@ function toDeal(r: DealRow): Deal {
     probability: r.probability,
     expectedClose: ymd(r.expected_close),
     owner: r.owner,
+    contactId: r.contact_id ?? null,
+    notes: r.notes ?? "",
   };
 }
 function toActivity(r: ActivityRow): Activity {
@@ -366,16 +374,21 @@ export async function deleteContactAction(id: number, companyId: number): Promis
 export interface ContactDetail {
   contact: Contact & { companyName: string };
   activities: Activity[];
+  deals: Deal[];
 }
 
 export async function getContactAction(id: number): Promise<ContactDetail | null> {
   const { organizationId } = await requireSession();
   const row: ContactWithCompanyRow | null = await getContact(organizationId, id);
   if (!row) return null;
-  const activities = await listContactActivities(organizationId, id).catch(() => []);
+  const [activities, deals] = await Promise.all([
+    listContactActivities(organizationId, id).catch(() => []),
+    listDealsForContact(organizationId, id).catch(() => []),
+  ]);
   return {
     contact: { ...toContact(row), companyName: row.company_name },
     activities: activities.map(toActivity),
+    deals: deals.map(toDeal),
   };
 }
 
@@ -469,11 +482,13 @@ export async function updateDealStageAction(id: number, stage: string): Promise<
 export async function updateDealAction(
   id: number,
   companyId: number,
-  patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string }
+  patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string; contactId?: number | null; notes?: string }
 ): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
   await updateDeal(organizationId, id, patch);
+  revalidatePath(`/deals/${id}`);
+  revalidatePath("/deals");
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -486,9 +501,31 @@ export async function deleteDealAction(id: number, companyId: number): Promise<{
   await deleteDeal(session.organizationId, id);
   await recordAudit(session, "delete", "deal", id);
   revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/deals");
   revalidatePath("/pipeline");
   revalidatePath("/");
   return {};
+}
+
+export interface DealDetail {
+  deal: Deal & { companyName: string; contactName: string | null };
+  contacts: Contact[]; // the company's contacts — for the primary-contact picker
+  activities: Activity[];
+}
+
+export async function getDealAction(id: number): Promise<DealDetail | null> {
+  const { organizationId } = await requireSession();
+  const row: DealWithRefsRow | null = await getDeal(organizationId, id);
+  if (!row) return null;
+  const [contacts, activities] = await Promise.all([
+    listContacts(organizationId, row.company_id).catch(() => []),
+    listDealActivities(organizationId, id).catch(() => []),
+  ]);
+  return {
+    deal: { ...toDeal(row), companyName: row.company_name, contactName: row.contact_name },
+    contacts: contacts.map(toContact),
+    activities: activities.map(toActivity),
+  };
 }
 
 // ----------------------------------------------------------------- activities
@@ -498,13 +535,15 @@ export async function addActivityAction(input: {
   type?: string;
   summary: string;
   contactId?: number | null;
+  dealId?: number | null;
 }): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (!input?.summary?.trim()) return { error: "Write what happened." };
   if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
-  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim(), contactId: input.contactId ?? null });
+  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim(), contactId: input.contactId ?? null, dealId: input.dealId ?? null });
   revalidatePath(`/companies/${input.companyId}`);
   if (input.contactId) revalidatePath(`/contacts/${input.contactId}`);
+  if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
   revalidatePath("/activities");
   return {};
 }

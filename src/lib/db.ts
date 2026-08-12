@@ -259,6 +259,11 @@ export function ensureSchema(): Promise<void> {
       // Lead management fields (Phase 2A — priority + owner on the lead profile).
       await ensureColumn(pool, "crm_leads", "priority", "priority VARCHAR(12) NOT NULL DEFAULT 'normal'");
       await ensureColumn(pool, "crm_leads", "owner", "owner VARCHAR(120) NOT NULL DEFAULT ''");
+      // Deal fields (Phase 3A — primary contact + notes on the deal profile).
+      await ensureColumn(pool, "crm_deals", "contact_id", "contact_id INT UNSIGNED NULL");
+      await ensureColumn(pool, "crm_deals", "notes", "notes TEXT NULL");
+      // Deal-scoped activities (Phase 3A — a deal's own timeline).
+      await ensureColumn(pool, "crm_activities", "deal_id", "deal_id INT UNSIGNED NULL");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -313,6 +318,8 @@ export interface DealRow extends mysql.RowDataPacket {
   probability: number | null;
   expected_close: Date | null;
   owner: string;
+  contact_id: number | null;
+  notes: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -729,12 +736,15 @@ export interface DealInput {
   probability?: number | null;
   expectedClose?: string | null;
   owner?: string;
+  contactId?: number | null;
+  notes?: string;
 }
 
 export async function createDeal(orgId: number, companyId: number, d: DealInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner, contact_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       companyId,
@@ -744,6 +754,8 @@ export async function createDeal(orgId: number, companyId: number, d: DealInput)
       d.probability ?? null,
       d.expectedClose || null,
       (d.owner ?? "").slice(0, 120),
+      d.contactId ?? null,
+      (d.notes ?? "").slice(0, 2000),
     ]
   );
   return res.insertId;
@@ -768,7 +780,7 @@ export async function listDeals(orgId: number, opts: { companyId?: number } = {}
 export async function updateDeal(
   orgId: number,
   id: number,
-  patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string }
+  patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string; contactId?: number | null; notes?: string }
 ): Promise<void> {
   await ensureSchema();
   const sets: string[] = [];
@@ -779,9 +791,50 @@ export async function updateDeal(
   if (patch.probability !== undefined) { sets.push("probability=?"); vals.push(patch.probability); }
   if (patch.expectedClose !== undefined) { sets.push("expected_close=?"); vals.push(patch.expectedClose || null); }
   if (patch.owner !== undefined) { sets.push("owner=?"); vals.push(patch.owner.slice(0, 120)); }
+  if (patch.contactId !== undefined) { sets.push("contact_id=?"); vals.push(patch.contactId ?? null); }
+  if (patch.notes !== undefined) { sets.push("notes=?"); vals.push((patch.notes ?? "").slice(0, 2000)); }
   if (!sets.length) return;
   vals.push(id, orgId);
   await getPool().query(`UPDATE crm_deals SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`, vals);
+}
+
+/** One deal joined to its company + (optional) primary-contact name, for the
+ *  deal profile. Org-scoped. */
+export interface DealWithRefsRow extends DealRow {
+  company_name: string;
+  contact_name: string | null;
+}
+export async function getDeal(orgId: number, id: number): Promise<DealWithRefsRow | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<DealWithRefsRow[]>(
+    `SELECT d.*, COALESCE(co.name, '') AS company_name, ct.name AS contact_name
+       FROM crm_deals d
+       LEFT JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id
+       LEFT JOIN crm_contacts ct ON ct.id = d.contact_id AND ct.organization_id = d.organization_id
+      WHERE d.id = ? AND d.organization_id = ? LIMIT 1`,
+    [id, orgId]
+  );
+  return rows[0] ?? null;
+}
+
+/** Activities logged against a specific deal (its own timeline). Org-scoped. */
+export async function listDealActivities(orgId: number, dealId: number, limit = 50): Promise<ActivityRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ActivityRow[]>(
+    "SELECT * FROM crm_activities WHERE deal_id = ? AND organization_id = ? ORDER BY id DESC LIMIT ?",
+    [dealId, orgId, limit]
+  );
+  return rows;
+}
+
+/** Deals whose primary contact is this person — for the contact profile. */
+export async function listDealsForContact(orgId: number, contactId: number): Promise<DealRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<DealRow[]>(
+    "SELECT * FROM crm_deals WHERE contact_id = ? AND organization_id = ? ORDER BY updated_at DESC LIMIT 50",
+    [contactId, orgId]
+  );
+  return rows;
 }
 
 export async function deleteDeal(orgId: number, id: number): Promise<void> {
@@ -839,6 +892,7 @@ export async function listDealsPage(
 export interface ActivityInput {
   companyId: number;
   contactId?: number | null;
+  dealId?: number | null;
   type?: string;
   summary: string;
 }
@@ -846,8 +900,8 @@ export interface ActivityInput {
 export async function addActivity(orgId: number, a: ActivityInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_activities (organization_id, company_id, contact_id, type, summary) VALUES (?, ?, ?, ?, ?)`,
-    [orgId, a.companyId, a.contactId ?? null, (a.type ?? "note").slice(0, 20), a.summary.slice(0, 500)]
+    `INSERT INTO crm_activities (organization_id, company_id, contact_id, deal_id, type, summary) VALUES (?, ?, ?, ?, ?, ?)`,
+    [orgId, a.companyId, a.contactId ?? null, a.dealId ?? null, (a.type ?? "note").slice(0, 20), a.summary.slice(0, 500)]
   );
   return res.insertId;
 }
