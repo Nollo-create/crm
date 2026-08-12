@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Sparkles, TrendingUp, Trophy, Percent, Building2, Target, ArrowRight, Database, Wallet, Users } from "lucide-react";
 import { dashboardAction, type DashboardData } from "@/lib/actions/crm";
-import { OPEN_STAGES, stageLabel, weightedValue } from "@/lib/crm/pipeline";
+import { notificationsAction, type Notification } from "@/lib/actions/notifications";
+import { OPEN_STAGES, stageLabel } from "@/lib/crm/pipeline";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { eur } from "@/lib/format";
@@ -23,8 +24,10 @@ function Tile({ label, value, Icon, tone }: { label: string; value: string; Icon
 
 export default async function Dashboard() {
   let data: DashboardData | null = null;
+  let priorities: Notification[] = [];
   try {
     data = await dashboardAction();
+    priorities = (await notificationsAction().catch(() => ({ items: [], count: 0 }))).items;
   } catch {
     data = null;
   }
@@ -49,15 +52,8 @@ export default async function Dashboard() {
   const s = data.summary;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const nearClose = s.byStage.negotiation.count + s.byStage.quote.count;
   const maxStage = Math.max(1, ...OPEN_STAGES.map((st) => s.byStage[st.id].value));
-
-  // Honest, data-driven priorities (the smart AI prioritisation arrives later).
-  const priorities: { text: string; href: string; cta: string; dot: string }[] = [];
-  if (s.openCount) priorities.push({ text: `${s.openCount} open deals worth ${eur(s.open)} in play`, href: "/pipeline", cta: "Open pipeline", dot: "bg-electric" });
-  if (nearClose) priorities.push({ text: `${nearClose} deals near close (quote / negotiation)`, href: "/pipeline", cta: "Review", dot: "bg-emerald" });
-  if (data.leads) priorities.push({ text: `${data.leads} leads waiting to be qualified`, href: "/companies", cta: "Qualify", dot: "bg-warning" });
-  if (!data.companies) priorities.push({ text: "No companies yet — add your first account to get started", href: "/companies", cta: "Add company", dot: "bg-muted-foreground" });
+  const PRIORITY_DOT: Record<string, string> = { deal: "bg-danger", quote: "bg-warning", lead: "bg-emerald", account: "bg-royal" };
 
   return (
     <div className="space-y-5">
@@ -87,25 +83,34 @@ export default async function Dashboard() {
           <p className="flex items-center gap-2 text-sm font-semibold">
             <Sparkles size={15} className="text-royal" /> Priorities
           </p>
-          <span className="soon-badge">AI · soon</span>
+          <Link href="/ai/next-action" className="text-2xs text-electric hover:underline">Next best action →</Link>
         </div>
         <div className="mt-3 space-y-1.5">
           {priorities.length === 0 ? (
-            <p className="text-sm text-muted-foreground">You&apos;re all caught up.</p>
+            s.openCount ? (
+              <Link href="/pipeline" className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-electric/40">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-electric" />
+                <span className="flex-1 text-sm">{s.openCount} open deals worth {eur(s.open)} in play</span>
+                <ArrowRight size={13} className="shrink-0 text-muted-foreground" />
+              </Link>
+            ) : (
+              <p className="text-sm text-muted-foreground">You&apos;re all caught up. 🎉</p>
+            )
           ) : (
-            priorities.map((p, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", p.dot)} />
-                <span className="flex-1 text-sm">{p.text}</span>
-                <Link href={p.href} className="shrink-0 text-xs font-medium text-electric hover:underline">
-                  {p.cta}
-                </Link>
-              </div>
+            priorities.map((n) => (
+              <Link key={n.id} href={n.href} className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-electric/40">
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[n.kind] ?? "bg-muted-foreground")} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{n.title}</span>
+                  <span className="block truncate text-2xs text-muted-foreground">{n.sub}</span>
+                </span>
+                <ArrowRight size={13} className="shrink-0 text-muted-foreground" />
+              </Link>
             ))
           )}
         </div>
         <p className="mt-2.5 text-2xs text-muted-foreground">
-          Smart prioritisation — opened proposals, buying intent, next best action — arrives with the AI phase.
+          Rule-based signals from your pipeline — overdue deals, aging quotes, hot leads, quiet accounts. AI-refined prioritisation arrives with the Sajtpress connection.
         </p>
       </div>
 
@@ -122,7 +127,7 @@ export default async function Dashboard() {
             {OPEN_STAGES.map((st) => {
               const b = s.byStage[st.id];
               return (
-                <Link key={st.id} href="/pipeline" className="flex items-center gap-3 text-xs hover:opacity-80">
+                <Link key={st.id} href={`/deals?stage=${st.id}`} className="flex items-center gap-3 text-xs hover:opacity-80">
                   <span className="w-24 shrink-0 text-muted-foreground">{st.label}</span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
                     <div className="h-2 rounded-full bg-electric/80" style={{ width: `${(b.value / maxStage) * 100}%` }} />
@@ -145,7 +150,7 @@ export default async function Dashboard() {
               <p className="text-xs text-muted-foreground">No open deals to show.</p>
             ) : (
               data.focusDeals.map((d) => (
-                <Link key={d.id} href={`/companies/${d.companyId}`} className="block rounded-lg px-2 py-1.5 hover:bg-secondary">
+                <Link key={d.id} href={`/deals/${d.id}`} className="block rounded-lg px-2 py-1.5 hover:bg-secondary">
                   <div className="flex items-center justify-between gap-2">
                     <p className="min-w-0 truncate text-sm font-medium">{d.companyName}</p>
                     <span className="shrink-0 text-sm font-semibold tabular">{eur(d.value)}</span>

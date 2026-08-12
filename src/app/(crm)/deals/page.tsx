@@ -13,7 +13,7 @@ import {
   type BoardDeal,
   type SearchHit,
 } from "@/lib/actions/crm";
-import { STAGES, stageLabel, weightedValue, dealCloseInfo, type StageId } from "@/lib/crm/pipeline";
+import { STAGES, stageLabel, weightedValue, dealCloseInfo, isStageId, type StageId } from "@/lib/crm/pipeline";
 import { STAGE_TONE } from "@/components/crm/deal-card";
 import type { DealSortKey } from "@/lib/crm/deal-query";
 import { Card } from "@/components/ui/card";
@@ -47,7 +47,11 @@ export default function DealsPage() {
 
   const [showAdd, setShowAdd] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowAdd(true);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") setShowAdd(true);
+    const st = params.get("stage");
+    if (st && isStageId(st)) setStage(st); // deep-link from the dashboard pipeline
   }, []);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
