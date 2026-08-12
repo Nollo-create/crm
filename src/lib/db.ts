@@ -262,6 +262,9 @@ export function ensureSchema(): Promise<void> {
       // Deal fields (Phase 3A — primary contact + notes on the deal profile).
       await ensureColumn(pool, "crm_deals", "contact_id", "contact_id INT UNSIGNED NULL");
       await ensureColumn(pool, "crm_deals", "notes", "notes TEXT NULL");
+      // Won/Lost workflow (Phase 3B — close date + loss reason).
+      await ensureColumn(pool, "crm_deals", "closed_at", "closed_at TIMESTAMP NULL");
+      await ensureColumn(pool, "crm_deals", "loss_reason", "loss_reason VARCHAR(40) NOT NULL DEFAULT ''");
       // Deal-scoped activities (Phase 3A — a deal's own timeline).
       await ensureColumn(pool, "crm_activities", "deal_id", "deal_id INT UNSIGNED NULL");
     })().catch((err) => {
@@ -320,6 +323,8 @@ export interface DealRow extends mysql.RowDataPacket {
   owner: string;
   contact_id: number | null;
   notes: string | null;
+  closed_at: Date | null;
+  loss_reason: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -835,6 +840,57 @@ export async function listDealsForContact(orgId: number, contactId: number): Pro
     [contactId, orgId]
   );
   return rows;
+}
+
+/** Mark a deal Won: stamp the close, and (Rule 6) flip its company to Customer —
+ *  atomically. Idempotent: re-winning, or a company with multiple won deals, stays
+ *  one customer. Returns the company id (for revalidation) or null if not found. */
+export async function closeDealWon(orgId: number, id: number): Promise<{ companyId: number } | null> {
+  await ensureSchema();
+  const conn = await getPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query<DealRow[]>("SELECT company_id FROM crm_deals WHERE id = ? AND organization_id = ? FOR UPDATE", [id, orgId]);
+    const deal = rows[0];
+    if (!deal) {
+      await conn.rollback();
+      return null;
+    }
+    await conn.query("UPDATE crm_deals SET stage = 'won', probability = 100, closed_at = CURRENT_TIMESTAMP, loss_reason = '' WHERE id = ? AND organization_id = ?", [id, orgId]);
+    await conn.query("UPDATE crm_companies SET status = 'customer' WHERE id = ? AND organization_id = ? AND status <> 'customer'", [deal.company_id, orgId]);
+    await conn.commit();
+    return { companyId: deal.company_id };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/** Mark a deal Lost with a reason (for win/loss analytics). Does not change the
+ *  company (a lost deal doesn't demote a customer). */
+export async function closeDealLost(orgId: number, id: number, reason: string): Promise<{ companyId: number } | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<DealRow[]>("SELECT company_id FROM crm_deals WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  const deal = rows[0];
+  if (!deal) return null;
+  await getPool().query(
+    "UPDATE crm_deals SET stage = 'lost', probability = 0, closed_at = CURRENT_TIMESTAMP, loss_reason = ? WHERE id = ? AND organization_id = ?",
+    [reason.slice(0, 40), id, orgId]
+  );
+  return { companyId: deal.company_id };
+}
+
+/** Move a deal (back) to an open stage — clears the close stamp + loss reason.
+ *  Company status is left as-is (reopening doesn't un-customer them — Rule 7). */
+export async function setDealOpenStage(orgId: number, id: number, stage: string): Promise<{ companyId: number } | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<DealRow[]>("SELECT company_id FROM crm_deals WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  const deal = rows[0];
+  if (!deal) return null;
+  await getPool().query("UPDATE crm_deals SET stage = ?, closed_at = NULL, loss_reason = '' WHERE id = ? AND organization_id = ?", [stage.slice(0, 20), id, orgId]);
+  return { companyId: deal.company_id };
 }
 
 export async function deleteDeal(orgId: number, id: number): Promise<void> {

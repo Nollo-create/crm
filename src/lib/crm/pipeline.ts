@@ -37,6 +37,22 @@ export const STAGES: Stage[] = [
 export const OPEN_STAGES = STAGES.filter((s) => s.open);
 export const STAGE_IDS = STAGES.map((s) => s.id);
 
+// Loss reasons — captured when a deal is marked Lost, for win/loss analytics.
+export type LossReason = "price" | "competitor" | "no_budget" | "timing" | "no_response" | "wrong_fit" | "other";
+export const LOSS_REASONS: LossReason[] = ["price", "competitor", "no_budget", "timing", "no_response", "wrong_fit", "other"];
+export const LOSS_REASON_LABEL: Record<LossReason, string> = {
+  price: "Price",
+  competitor: "Competitor",
+  no_budget: "No budget",
+  timing: "Timing",
+  no_response: "No response",
+  wrong_fit: "Wrong fit",
+  other: "Other",
+};
+export function isLossReason(v: string): v is LossReason {
+  return (LOSS_REASONS as string[]).includes(v);
+}
+
 const STAGE_BY_ID = new Map(STAGES.map((s) => [s.id, s]));
 
 export function isStageId(v: string): v is StageId {

@@ -36,6 +36,9 @@ import {
   getDeal,
   listDealActivities,
   listDealsForContact,
+  closeDealWon,
+  closeDealLost,
+  setDealOpenStage,
   type DealStatsRow,
   type DealWithRefsRow,
   addActivity,
@@ -53,7 +56,7 @@ import {
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
-import { isStageId, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
+import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
 
@@ -102,6 +105,8 @@ export interface Deal {
   owner: string;
   contactId: number | null;
   notes: string;
+  closedAt: string | null;
+  lossReason: string;
 }
 export interface Activity {
   id: number;
@@ -164,6 +169,8 @@ function toDeal(r: DealRow): Deal {
     owner: r.owner,
     contactId: r.contact_id ?? null,
     notes: r.notes ?? "",
+    closedAt: ymd(r.closed_at),
+    lossReason: r.loss_reason ?? "",
   };
 }
 function toActivity(r: ActivityRow): Activity {
@@ -470,12 +477,54 @@ export async function createDealAction(companyId: number, input: DealInput): Pro
   return {};
 }
 
+function revalidateDeal(id: number, companyId?: number) {
+  revalidatePath("/deals");
+  revalidatePath(`/deals/${id}`);
+  revalidatePath("/pipeline");
+  revalidatePath("/companies");
+  revalidatePath("/customers");
+  if (companyId) revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/");
+}
+
+/** Any stage change routes through the workflow so Won flips the company to
+ *  Customer (Rule 6) and Won/Lost stamp the close — from the list, board, or
+ *  company profile alike. */
 export async function updateDealStageAction(id: number, stage: string): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (!isStageId(stage)) return { error: "Unknown stage." };
-  await updateDeal(organizationId, id, { stage });
-  revalidatePath("/pipeline");
-  revalidatePath("/");
+  if (stage === "won") await closeDealWon(organizationId, id);
+  else if (stage === "lost") await closeDealLost(organizationId, id, "");
+  else await setDealOpenStage(organizationId, id, stage);
+  revalidateDeal(id);
+  return {};
+}
+
+export async function markDealWonAction(id: number): Promise<{ companyId?: number; error?: string }> {
+  const session = await requireSession();
+  const r = await closeDealWon(session.organizationId, id);
+  if (!r) return { error: "Deal not found." };
+  await recordAudit(session, "deal_won", "deal", id, `company #${r.companyId} -> customer`);
+  revalidateDeal(id, r.companyId);
+  return { companyId: r.companyId };
+}
+
+export async function markDealLostAction(id: number, reason: string): Promise<{ error?: string }> {
+  const session = await requireSession();
+  if (!isLossReason(reason)) return { error: "Pick a loss reason." };
+  const r = await closeDealLost(session.organizationId, id, reason);
+  if (!r) return { error: "Deal not found." };
+  await recordAudit(session, "deal_lost", "deal", id, reason);
+  revalidateDeal(id, r.companyId);
+  return {};
+}
+
+export async function reopenDealAction(id: number, stage: string): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  const target = isStageId(stage) && stage !== "won" && stage !== "lost" ? stage : "negotiation";
+  const r = await setDealOpenStage(organizationId, id, target);
+  if (!r) return { error: "Deal not found." };
+  revalidateDeal(id, r.companyId);
   return {};
 }
 

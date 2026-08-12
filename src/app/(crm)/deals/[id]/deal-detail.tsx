@@ -2,15 +2,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass } from "lucide-react";
+import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass, CheckCircle2, XCircle, RotateCcw } from "lucide-react";
 import {
   getDealAction,
   updateDealAction,
+  updateDealStageAction,
+  markDealWonAction,
+  markDealLostAction,
+  reopenDealAction,
   deleteDealAction,
   addActivityAction,
   type DealDetail as Detail,
 } from "@/lib/actions/crm";
-import { STAGES, stageLabel, weightedValue } from "@/lib/crm/pipeline";
+import { OPEN_STAGES, stageLabel, weightedValue, LOSS_REASONS, LOSS_REASON_LABEL } from "@/lib/crm/pipeline";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +31,7 @@ function stageTone(stage: string): Tone {
   return "electric";
 }
 
-type Form = { title: string; value: string; stage: string; probability: string; expectedClose: string; owner: string; contactId: string; notes: string };
+type Form = { title: string; value: string; probability: string; expectedClose: string; owner: string; contactId: string; notes: string };
 
 export function DealDetail({ id }: { id: number }) {
   const { toast } = useToast();
@@ -38,6 +42,8 @@ export function DealDetail({ id }: { id: number }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form | null>(null);
   const [note, setNote] = useState({ type: "note", summary: "" });
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lossReason, setLossReason] = useState<string>(LOSS_REASONS[0]);
 
   async function load() {
     const res = await getDealAction(id).catch(() => null);
@@ -54,7 +60,7 @@ export function DealDetail({ id }: { id: number }) {
     if (!d) return;
     const dl = d.deal;
     setForm({
-      title: dl.title, value: dl.value ? String(dl.value) : "", stage: dl.stage, probability: dl.probability != null ? String(dl.probability) : "",
+      title: dl.title, value: dl.value ? String(dl.value) : "", probability: dl.probability != null ? String(dl.probability) : "",
       expectedClose: dl.expectedClose ?? "", owner: dl.owner, contactId: dl.contactId != null ? String(dl.contactId) : "", notes: dl.notes,
     });
     setEditing(true);
@@ -65,7 +71,7 @@ export function DealDetail({ id }: { id: number }) {
     if (!form.title.trim()) return;
     setBusy(true);
     const r = await updateDealAction(id, d.deal.companyId, {
-      title: form.title, value: form.value ? Number(form.value) : 0, stage: form.stage,
+      title: form.title, value: form.value ? Number(form.value) : 0,
       probability: form.probability ? Number(form.probability) : null, expectedClose: form.expectedClose || null,
       owner: form.owner, contactId: form.contactId ? Number(form.contactId) : null, notes: form.notes,
     });
@@ -79,11 +85,38 @@ export function DealDetail({ id }: { id: number }) {
   async function changeStage(stage: string) {
     if (!d) return;
     setD({ ...d, deal: { ...d.deal, stage: stage as Detail["deal"]["stage"] } });
-    const r = await updateDealAction(id, d.deal.companyId, { stage });
-    if (r.error) {
-      toast(r.error, { tone: "error" });
-      await load();
-    } else await load();
+    const r = await updateDealStageAction(id, stage);
+    if (r.error) toast(r.error, { tone: "error" });
+    await load();
+  }
+
+  async function markWon() {
+    if (typeof window !== "undefined" && !window.confirm("Mark this deal as Won? Its company becomes a Customer.")) return;
+    setBusy(true);
+    const r = await markDealWonAction(id);
+    setBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Deal won — company is now a Customer 🎉", { tone: "success" });
+    await load();
+  }
+
+  async function markLost() {
+    setBusy(true);
+    const r = await markDealLostAction(id, lossReason);
+    setBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Deal marked as Lost", { tone: "success" });
+    setLostOpen(false);
+    await load();
+  }
+
+  async function reopen() {
+    setBusy(true);
+    const r = await reopenDealAction(id, "negotiation");
+    setBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Deal reopened", { tone: "success" });
+    await load();
   }
 
   async function logActivity() {
@@ -124,6 +157,7 @@ export function DealDetail({ id }: { id: number }) {
     );
 
   const dl = d.deal;
+  const closed = dl.stage === "won" || dl.stage === "lost";
   const weighted = weightedValue({ value: dl.value, stage: dl.stage, probability: dl.probability });
 
   return (
@@ -154,9 +188,17 @@ export function DealDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Select value={dl.stage} onChange={(e) => changeStage(e.target.value)} className="h-8 w-auto text-xs">
-              {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </Select>
+            {closed ? (
+              <Button size="sm" variant="outline" onClick={reopen} disabled={busy}><RotateCcw size={13} /> Reopen</Button>
+            ) : (
+              <>
+                <Select value={dl.stage} onChange={(e) => changeStage(e.target.value)} className="h-8 w-auto text-xs">
+                  {OPEN_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </Select>
+                <Button size="sm" className="bg-emerald text-white hover:bg-emerald/90" onClick={markWon} disabled={busy}><CheckCircle2 size={14} /> Won</Button>
+                <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setLostOpen((v) => !v)} disabled={busy}><XCircle size={14} /> Lost</Button>
+              </>
+            )}
             <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
               {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
             </Button>
@@ -164,6 +206,21 @@ export function DealDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      {lostOpen && !closed && (
+        <Card className="flex flex-wrap items-end gap-2 border-danger/30 p-4">
+          <label className="text-2xs uppercase tracking-wide text-muted-foreground">
+            Loss reason
+            <Select value={lossReason} onChange={(e) => setLossReason(e.target.value)} className="mt-1 h-9 w-48">
+              {LOSS_REASONS.map((r) => <option key={r} value={r}>{LOSS_REASON_LABEL[r]}</option>)}
+            </Select>
+          </label>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setLostOpen(false)}>Cancel</Button>
+            <Button size="sm" className="bg-danger text-white hover:bg-danger/90" onClick={markLost} disabled={busy}>Mark Lost</Button>
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* Main */}
@@ -177,12 +234,6 @@ export function DealDetail({ id }: { id: number }) {
                   <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 h-9" />
                 </label>
                 <LabeledInput label="Value (€)" type="number" value={form.value} onChange={(v) => setForm({ ...form, value: v })} />
-                <label className="block text-2xs uppercase tracking-wide text-muted-foreground">
-                  Stage
-                  <Select value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value })} className="mt-1 h-9">
-                    {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                  </Select>
-                </label>
                 <LabeledInput label="Probability (%)" type="number" value={form.probability} onChange={(v) => setForm({ ...form, probability: v })} />
                 <LabeledInput label="Expected close" type="date" value={form.expectedClose} onChange={(v) => setForm({ ...form, expectedClose: v })} />
                 <LabeledInput label="Owner" value={form.owner} onChange={(v) => setForm({ ...form, owner: v })} />
@@ -212,6 +263,8 @@ export function DealDetail({ id }: { id: number }) {
                   <Fact label="Expected close" value={dl.expectedClose ?? "—"} />
                   <Fact label="Owner" value={dl.owner || "—"} />
                   <Fact label="Primary contact" value={dl.contactName || "—"} />
+                  {closed && <Fact label="Closed" value={dl.closedAt ?? "—"} />}
+                  {dl.stage === "lost" && <Fact label="Loss reason" value={dl.lossReason ? (LOSS_REASON_LABEL[dl.lossReason as keyof typeof LOSS_REASON_LABEL] ?? dl.lossReason) : "—"} />}
                 </div>
                 {dl.notes && <p className="mt-3 whitespace-pre-wrap border-t border-border pt-3 text-sm text-muted-foreground">{dl.notes}</p>}
               </>
