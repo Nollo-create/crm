@@ -16,6 +16,7 @@ import {
   Globe,
   Compass,
   HeartPulse,
+  BadgeCheck,
   X,
 } from "lucide-react";
 import {
@@ -38,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { eur, timeAgo } from "@/lib/format";
+import { customerMetrics, customerHealth } from "@/lib/crm/customer";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = { lead: "Lead", active: "Active", customer: "Customer", at_risk: "At risk", lost: "Lost" };
@@ -123,6 +125,11 @@ export function CompanyDetail({ id }: { id: number }) {
 
   const c = d.company;
   const health = accountHealth(d);
+  const cust = customerMetrics(d.deals);
+  const isCustomer = c.status === "customer" || cust.wonCount > 0;
+  const lastActivityDays = d.activities[0]?.createdAt ? Math.floor((Date.now() - new Date(d.activities[0].createdAt).getTime()) / 86_400_000) : null;
+  const daysSincePurchase = cust.lastPurchase ? Math.floor((Date.now() - new Date(cust.lastPurchase).getTime()) / 86_400_000) : null;
+  const custHealth = customerHealth({ lastActivityDays, openCount: cust.openCount, daysSincePurchase });
   const sc = leadScore({ hasWebsite: !!c.website, employees: c.employees, industryMatch: c.industryMatch, annualValue: c.annualValue });
   const primaryEmail = d.contacts.find((x) => x.email)?.email;
   const primaryPhone = d.contacts.find((x) => x.phone)?.phone;
@@ -302,6 +309,26 @@ export function CompanyDetail({ id }: { id: number }) {
                   </div>
                 )}
               </div>
+            </Card>
+          )}
+
+          {tab === "overview" && isCustomer && (
+            <Card className="p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-semibold"><BadgeCheck size={15} className="text-emerald" /> Customer</p>
+                <Badge tone={custHealth.state === "healthy" ? "emerald" : custHealth.state === "at_risk" ? "danger" : "warning"}>
+                  <HeartPulse size={11} /> {custHealth.label}
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <Metric label="Total revenue" value={eur(cust.totalRevenue)} tone="text-emerald" />
+                <Metric label="Won deals" value={String(cust.wonCount)} />
+                <Metric label="Avg deal" value={cust.avgDeal ? eur(cust.avgDeal) : "—"} />
+                <Metric label="Open deals" value={String(cust.openCount)} />
+                <Metric label="Customer since" value={cust.customerSince ?? "—"} />
+                <Metric label="Last purchase" value={cust.lastPurchase ?? "—"} />
+              </div>
+              <p className="mt-3 border-t border-border pt-2 text-2xs text-muted-foreground">{custHealth.reason}</p>
             </Card>
           )}
 
