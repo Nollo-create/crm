@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 export default function PipelinePage() {
   const [deals, setDeals] = useState<BoardDeal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<StageId | null>(null);
 
   async function load() {
     setDeals(await boardAction().catch(() => []));
@@ -45,10 +47,7 @@ export default function PipelinePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Pipeline</h1>
-          <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-            {summary.openCount} open deals
-            <span className="soon-badge">drag &amp; drop soon</span>
-          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{summary.openCount} open deals · drag cards between stages to move them</p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Kpi label="Open pipeline" value={eur(summary.open)} />
@@ -69,7 +68,26 @@ export default function PipelinePage() {
             const sum = list.reduce((t, d) => t + d.value, 0);
             const tone = STAGE_TONE[s.id];
             return (
-              <div key={s.id} className="flex w-[280px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-secondary/30">
+              <div
+                key={s.id}
+                onDragOver={(e) => {
+                  if (draggingId != null) {
+                    e.preventDefault();
+                    if (dragOverStage !== s.id) setDragOverStage(s.id);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = draggingId ?? Number(e.dataTransfer.getData("text/plain"));
+                  if (id) void move(id, s.id);
+                  setDragOverStage(null);
+                  setDraggingId(null);
+                }}
+                className={cn(
+                  "flex w-[280px] shrink-0 flex-col overflow-hidden rounded-xl border bg-secondary/30 transition-colors",
+                  dragOverStage === s.id ? "border-electric ring-1 ring-electric/40" : "border-border/60"
+                )}
+              >
                 <div className={cn("h-[3px]", TONE_TOP[tone])} />
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
@@ -82,7 +100,14 @@ export default function PipelinePage() {
 
                 <div className="flex-1 space-y-2 px-2 pb-2">
                   {list.map((d) => (
-                    <DealCard key={d.id} deal={d} onMove={move} />
+                    <DealCard
+                      key={d.id}
+                      deal={d}
+                      onMove={move}
+                      onDragStart={setDraggingId}
+                      onDragEnd={() => { setDraggingId(null); setDragOverStage(null); }}
+                      dragging={draggingId === d.id}
+                    />
                   ))}
                   {list.length === 0 && (
                     <div className="rounded-lg border border-dashed border-border/60 py-8 text-center text-2xs text-muted-foreground">

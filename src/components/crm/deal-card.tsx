@@ -26,14 +26,36 @@ export const TONE_TOP: Record<StageTone, string> = {
 
 /** One deal on the pipeline board: title, owner, account, value + weighted bar,
  *  a close-date signal and an inline stage move. Clicking opens the account. */
-export function DealCard({ deal: d, onMove }: { deal: BoardDeal; onMove: (id: number, stage: string) => void }) {
+export function DealCard({
+  deal: d,
+  onMove,
+  onDragStart,
+  onDragEnd,
+  dragging,
+}: {
+  deal: BoardDeal;
+  onMove: (id: number, stage: string) => void;
+  onDragStart?: (id: number) => void;
+  onDragEnd?: () => void;
+  dragging?: boolean;
+}) {
   const router = useRouter();
   const prob = d.probability != null ? d.probability : stage(d.stage).probability;
   const close = dealCloseInfo(d.expectedClose);
   return (
     <div
-      onClick={() => router.push(`/companies/${d.companyId}`)}
-      className="group cursor-pointer rounded-lg border border-border bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-electric/40 hover:shadow-card"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(d.id));
+        onDragStart?.(d.id);
+      }}
+      onDragEnd={() => onDragEnd?.()}
+      onClick={() => router.push(`/deals/${d.id}`)}
+      className={cn(
+        "group cursor-grab rounded-lg border border-border bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-electric/40 hover:shadow-card active:cursor-grabbing",
+        dragging && "opacity-40"
+      )}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{d.title}</p>
