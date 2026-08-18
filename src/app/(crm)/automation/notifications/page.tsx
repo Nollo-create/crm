@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { timeAgo } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export default function AutomationLogPage() {
   const [rows, setRows] = useState<AutomationRunItem[]>([]);
@@ -36,6 +37,21 @@ export default function AutomationLogPage() {
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Refresh
         </Button>
       </div>
+
+      {!loading && rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Runs shown", value: String(rows.length) },
+            { label: "Tasks created", value: String(rows.reduce((s, r) => s + r.created, 0)) },
+            { label: "Last run", value: timeAgo(rows[0].ranAt) },
+          ].map((k, i) => (
+            <Card key={i} className="p-3">
+              <p className="text-2xs text-muted-foreground">{k.label}</p>
+              <p className={cn("font-semibold tabular", k.label === "Last run" ? "text-sm" : "text-lg")}>{k.value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>

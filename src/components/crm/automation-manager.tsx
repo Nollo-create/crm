@@ -220,6 +220,29 @@ export function AutomationManager({ title, subtitle, category }: { title: string
           ))}
         </div>
       )}
+
+      {!showAdd && templates.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Add from a template</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {templates.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setTemplateKey(t.key); setShowAdd(true); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                className="group flex items-start gap-2 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-electric/40"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-royal/10 text-royal"><Zap size={14} /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{t.name}</p>
+                  <p className="mt-0.5 text-2xs text-muted-foreground">{t.description}</p>
+                </div>
+                <Plus size={14} className="mt-0.5 shrink-0 text-muted-foreground transition-colors group-hover:text-electric" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="text-2xs text-muted-foreground">Automations create Tasks on a schedule (needs the cron seam configured). Use “Run now” to trigger immediately.</p>
     </div>
   );
