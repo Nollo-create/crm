@@ -14,6 +14,7 @@ import {
   bulkDeleteCompanies,
   bulkSetCompanyStatus,
   getCompany,
+  findSimilarCompanies,
   updateCompany,
   updateCompanyDetails,
   deleteCompany,
@@ -286,6 +287,15 @@ export interface GlobalSearchResults {
   contacts: GlobalHit[];
   leads: GlobalHit[];
   deals: GlobalHit[];
+}
+
+/** Possible-duplicate check for the New Company form (§36). Returns existing
+ *  companies that look like the one being typed. */
+export async function checkCompanyDuplicatesAction(name: string, website: string): Promise<GlobalHit[]> {
+  const { organizationId } = await requireSession();
+  if ((name ?? "").trim().length < 2) return [];
+  const rows = await findSimilarCompanies(organizationId, name, website ?? "").catch(() => []);
+  return rows.map((r) => ({ id: r.id, name: r.name, sub: [r.city, r.website].filter(Boolean).join(" · ") }));
 }
 
 /** One-shot cross-entity search for the ⌘K palette — companies, contacts, leads

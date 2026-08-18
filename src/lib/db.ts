@@ -408,6 +408,26 @@ export async function getCompany(orgId: number, id: number): Promise<CompanyRow 
   return rows[0] ?? null;
 }
 
+/** Possible duplicates for a company about to be created — a fuzzy name match or
+ *  the same website domain (Rule 8 / spec §36). Org-scoped. */
+export async function findSimilarCompanies(orgId: number, name: string, website: string): Promise<CompanyRow[]> {
+  await ensureSchema();
+  const n = name.trim();
+  if (n.length < 2) return [];
+  const orParts: string[] = ["name LIKE ?"];
+  const params: (string | number)[] = [orgId, `%${n}%`];
+  const domain = website.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].toLowerCase();
+  if (domain.length > 3) {
+    orParts.push("(website <> '' AND LOWER(website) LIKE ?)");
+    params.push(`%${domain}%`);
+  }
+  const [rows] = await getPool().query<CompanyRow[]>(
+    `SELECT * FROM crm_companies WHERE organization_id = ? AND (${orParts.join(" OR ")}) ORDER BY name ASC LIMIT 5`,
+    params
+  );
+  return rows;
+}
+
 export async function updateCompany(orgId: number, id: number, c: CompanyInput): Promise<void> {
   await ensureSchema();
   await getPool().query(

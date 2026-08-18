@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import {
   companiesPageAction,
   createCompanyAction,
+  checkCompanyDuplicatesAction,
   bulkDeleteCompaniesAction,
   bulkSetStatusAction,
   type CompanyRowView,
+  type GlobalHit,
 } from "@/lib/actions/crm";
 import { leadScore } from "@/lib/crm/pipeline";
 import { Card } from "@/components/ui/card";
@@ -70,6 +73,7 @@ export default function CompaniesPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
+  const [dupes, setDupes] = useState<GlobalHit[]>([]);
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowCreate(true);
   }, []);
@@ -84,6 +88,17 @@ export default function CompaniesPage() {
   const [viewName, setViewName] = useState("");
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
+  // Possible-duplicate check while filling the New Company form (§36 — surface, never silently create).
+  useEffect(() => {
+    if (!showCreate || form.name.trim().length < 2) {
+      setDupes([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setDupes(await checkCompanyDuplicatesAction(form.name, form.website).catch(() => []));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [form.name, form.website, showCreate]);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   // Preferences (local only) — separate from the server data fetch.
@@ -221,6 +236,7 @@ export default function CompaniesPage() {
     }
     toast(`${form.name.trim()} added`, { tone: "success" });
     setForm(empty);
+    setDupes([]);
     setShowCreate(false);
     setPage(1);
     refetch();
@@ -370,9 +386,26 @@ export default function CompaniesPage() {
               <input type="checkbox" checked={form.industryMatch} onChange={(e) => setForm({ ...form, industryMatch: e.target.checked })} className="h-4 w-4 accent-electric" /> Industry fit
             </label>
           </div>
+          {dupes.length > 0 && (
+            <div className="rounded-lg border border-warning/40 bg-warning/[0.06] p-3">
+              <p className="flex items-center gap-1.5 text-2xs font-semibold text-warning"><AlertTriangle size={12} /> Possible duplicate — is it one of these?</p>
+              <div className="mt-1.5 space-y-1">
+                {dupes.map((dp) => (
+                  <Link key={dp.id} href={`/companies/${dp.id}`} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-sm transition-colors hover:border-electric/40">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{dp.name}</span>
+                      {dp.sub && <span className="block truncate text-2xs text-muted-foreground">{dp.sub}</span>}
+                    </span>
+                    <span className="shrink-0 text-2xs text-electric">Use existing →</span>
+                  </Link>
+                ))}
+              </div>
+              <p className="mt-1.5 text-2xs text-muted-foreground">Not a match? Create it anyway below.</p>
+            </div>
+          )}
           <div className="flex justify-end">
             <Button size="sm" onClick={create} disabled={busy || !form.name.trim()}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {dupes.length > 0 ? "Create anyway" : "Create"}
             </Button>
           </div>
         </Card>
