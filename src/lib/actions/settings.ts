@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getOrganization, updateOrganization, countOrgUsers } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { integration, isConnected } from "@/lib/config";
 import { webappReachable } from "@/lib/sajtpress";
 import { getPlan, DEFAULT_PLAN_KEY } from "@/lib/crm/billing";
@@ -46,6 +47,8 @@ function slugify(s: string): string {
 export async function updateOrgAction(input: { name: string; slug?: string }): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can manage the organization." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   const name = input.name.trim();
   if (!name) return { error: "The organization needs a name." };
   const slug = slugify(input.slug?.trim() || name);

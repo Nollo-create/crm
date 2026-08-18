@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getOrganization, updateOrgPlan, updateBillingInfo, getUsageCounts } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
 import {
   PLANS,
@@ -77,6 +78,8 @@ export async function getBillingAction(): Promise<BillingData | null> {
 export async function setPlanAction(planKey: string): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can change the plan." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   if (!isPlanKey(planKey)) return { error: "Unknown plan." };
   await updateOrgPlan(session.organizationId, planKey);
   await recordAudit(session, "plan_change", "organization", session.organizationId, `plan set to ${planKey}`);
@@ -92,6 +95,8 @@ export async function updateBillingInfoAction(input: {
 }): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can change billing details." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   const email = (input.email ?? "").trim();
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a valid billing email." };
   await updateBillingInfo(session.organizationId, {

@@ -2148,6 +2148,7 @@ export function ensureAuthSchema(): Promise<void> {
       await ensureColumn(pool, "crm_organizations", "automations_paused", "automations_paused TINYINT NOT NULL DEFAULT 0");
       // Record-level access: when on, members see only their own (or unassigned) records.
       await ensureColumn(pool, "crm_organizations", "restrict_member_visibility", "restrict_member_visibility TINYINT NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_organizations", "require_admin_mfa", "require_admin_mfa TINYINT NOT NULL DEFAULT 0");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_users (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2268,6 +2269,7 @@ export interface OrgFlags {
   aiPaused: boolean;
   automationsPaused: boolean;
   restrictMembers: boolean;
+  requireAdminMfa: boolean;
 }
 
 const ORG_FLAG_COLUMN: Record<string, string> = {
@@ -2275,12 +2277,13 @@ const ORG_FLAG_COLUMN: Record<string, string> = {
   ai: "ai_paused",
   automations: "automations_paused",
   restrict_members: "restrict_member_visibility",
+  require_admin_mfa: "require_admin_mfa",
 };
 
 export async function getOrgFlags(orgId: number): Promise<OrgFlags> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<mysql.RowDataPacket[]>(
-    "SELECT api_frozen, ai_paused, automations_paused, restrict_member_visibility FROM crm_organizations WHERE id = ? LIMIT 1",
+    "SELECT api_frozen, ai_paused, automations_paused, restrict_member_visibility, require_admin_mfa FROM crm_organizations WHERE id = ? LIMIT 1",
     [orgId]
   );
   const r = rows[0];
@@ -2289,6 +2292,7 @@ export async function getOrgFlags(orgId: number): Promise<OrgFlags> {
     aiPaused: !!r?.ai_paused,
     automationsPaused: !!r?.automations_paused,
     restrictMembers: !!r?.restrict_member_visibility,
+    requireAdminMfa: !!r?.require_admin_mfa,
   };
 }
 

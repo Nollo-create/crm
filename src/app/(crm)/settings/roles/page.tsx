@@ -1,10 +1,10 @@
 import { Check, Minus } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can, ROLES, type Permission } from "@/lib/auth/rbac";
-import { getRestrictMembersAction } from "@/lib/actions/access-policy";
+import { getPolicyStatusAction } from "@/lib/actions/access-policy";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { RestrictMembersToggle } from "./restrict-members-toggle";
+import { PolicySettings } from "./policy-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export default async function RolesPage() {
   }
 
   const me = session.role;
-  const restrict = await getRestrictMembersAction();
+  const policy = await getPolicyStatusAction();
 
   return (
     <div className="space-y-4">
@@ -87,13 +87,13 @@ export default async function RolesPage() {
         </div>
       </Card>
 
-      {restrict.canManage && (
+      {policy.canManage && (
         <div className="space-y-2 pt-1">
           <div>
-            <h2 className="text-sm font-semibold">Record visibility</h2>
-            <p className="mt-0.5 text-2xs text-muted-foreground">An optional, stricter policy for the member role. Enforced server-side on every list and write.</p>
+            <h2 className="text-sm font-semibold">Organization security policy</h2>
+            <p className="mt-0.5 text-2xs text-muted-foreground">Optional, stricter controls. Enforced server-side; changing one asks you to confirm it&apos;s you.</p>
           </div>
-          <RestrictMembersToggle initialOn={restrict.on} />
+          <PolicySettings initial={policy} />
         </div>
       )}
     </div>

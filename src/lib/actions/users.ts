@@ -10,6 +10,7 @@ import {
   countActiveOwners,
   type UserRow,
 } from "@/lib/db";
+import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { requireSession } from "@/lib/auth/session";
 import { can, isRole } from "@/lib/auth/rbac";
 import { inviteRoleError, roleChangeError, statusChangeError } from "@/lib/auth/user-admin";
@@ -50,6 +51,8 @@ export async function listUsersAction(): Promise<OrgUser[]> {
 export async function inviteUserAction(input: { name: string; email: string; role: string; password: string }): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "member:manage")) return { error: "You don't have permission to add users." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
 
   const email = input.email.trim().toLowerCase();
   const role = isRole(input.role) ? input.role : "member";
@@ -73,6 +76,8 @@ export async function inviteUserAction(input: { name: string; email: string; rol
 export async function setUserRoleAction(userId: number, role: string): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "member:manage")) return { error: "You don't have permission." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
 
   const target = await getUserById(userId);
   if (!target || target.organization_id !== session.organizationId) return { error: "User not found." };
@@ -94,6 +99,8 @@ export async function setUserRoleAction(userId: number, role: string): Promise<{
 export async function setUserStatusAction(userId: number, status: "active" | "disabled"): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "member:manage")) return { error: "You don't have permission." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
 
   const target = await getUserById(userId);
   if (!target || target.organization_id !== session.organizationId) return { error: "User not found." };

@@ -5,6 +5,7 @@ import { listApiKeys, createApiKey, setApiKeyEnabled, deleteApiKey, getUserById 
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { verifyPassword } from "@/lib/auth/password";
+import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
 import { generateApiKey, maskKey, normalizeScopes, scopesToString, expiryFromDays, type ApiScope } from "@/lib/crm/api-keys";
@@ -60,6 +61,8 @@ export async function createApiKeyAction(
 ): Promise<{ plain?: string; error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can create API keys." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   // Step-up: a new key grants standing programmatic access, so re-verify the
   // password (a hijacked session alone can't mint one).
   const rl = checkRateLimit(`apikey-create:${session.userId}`, { limit: 8, windowMs: 10 * 60_000, blockMs: 15 * 60_000 });
@@ -81,6 +84,8 @@ export async function createApiKeyAction(
 export async function toggleApiKeyAction(id: number, enabled: boolean): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can change API keys." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   await setApiKeyEnabled(session.organizationId, id, enabled);
   await recordAudit(session, enabled ? "apikey_enable" : "apikey_disable", "api_key", id);
   revalidatePath("/settings/api");
@@ -90,6 +95,8 @@ export async function toggleApiKeyAction(id: number, enabled: boolean): Promise<
 export async function deleteApiKeyAction(id: number): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can revoke API keys." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   await deleteApiKey(session.organizationId, id);
   await recordAudit(session, "apikey_revoke", "api_key", id);
   revalidatePath("/settings/api");
