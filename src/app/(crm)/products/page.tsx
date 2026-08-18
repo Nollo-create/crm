@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Pencil, Copy } from "lucide-react";
 import {
   productsPageAction,
   createProductAction,
   updateProductAction,
   setProductActiveAction,
   deleteProductAction,
+  duplicateProductAction,
   type Product,
 } from "@/lib/actions/products";
 import { BILLINGS, BILLING_LABEL, BILLING_SUFFIX, type Billing, type ProductSortKey } from "@/lib/crm/products";
@@ -132,9 +133,20 @@ export default function ProductsPage() {
   }
 
   async function remove(p: Product) {
-    if (typeof window !== "undefined" && !window.confirm(`Delete product "${p.name}"?`)) return;
+    const warn = p.quoteUses > 0 ? ` It's used on ${p.quoteUses} quote${p.quoteUses === 1 ? "" : "s"} (those lines keep their saved price).` : "";
+    if (typeof window !== "undefined" && !window.confirm(`Delete product "${p.name}"?${warn}`)) return;
     await deleteProductAction(p.id);
     toast("Product deleted", { tone: "success" });
+    refetch();
+  }
+
+  async function duplicate(p: Product) {
+    const r = await duplicateProductAction(p.id);
+    if (r.error) {
+      toast(r.error, { tone: "error" });
+      return;
+    }
+    toast(`Duplicated “${p.name}”`, { tone: "success" });
     refetch();
   }
 
@@ -206,18 +218,19 @@ export default function ProductsPage() {
                 <Th label="Product" k="name" sort={sort} onSort={toggleSort} />
                 <Th label="SKU" k="sku" sort={sort} onSort={toggleSort} />
                 <Th label="Price" k="price" sort={sort} onSort={toggleSort} align="right" />
+                <th className="px-3 py-2 text-left font-medium">Used</th>
                 <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="w-20 px-3 py-2" />
+                <th className="w-28 px-3 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}><td className="px-3 py-3" colSpan={5}><Skeleton className="h-4 w-full" /></td></tr>
+                  <tr key={i}><td className="px-3 py-3" colSpan={6}><Skeleton className="h-4 w-full" /></td></tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-12 text-center text-sm text-muted-foreground">
                     {hasFilters ? "No matches." : "No products yet — add your first product."}
                   </td>
                 </tr>
@@ -233,10 +246,12 @@ export default function ProductsPage() {
                       <span className="font-medium tabular">{money(p.price)}</span>
                       <span className="text-2xs text-muted-foreground">{BILLING_SUFFIX[p.billing as Billing] ?? ""}</span>
                     </td>
+                    <td className="px-3 py-2.5 text-muted-foreground tabular">{p.quoteUses > 0 ? `${p.quoteUses} quote${p.quoteUses === 1 ? "" : "s"}` : "—"}</td>
                     <td className="px-3 py-2.5"><Badge tone={p.active ? "emerald" : "neutral"}>{p.active ? "Active" : "Archived"}</Badge></td>
                     <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Edit"><Pencil size={13} /></button>
+                        <button onClick={() => duplicate(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
                         <button onClick={() => toggleActive(p)} className="rounded px-1.5 text-2xs text-muted-foreground hover:text-foreground" title={p.active ? "Archive" : "Activate"}>{p.active ? "Archive" : "Activate"}</button>
                         <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={13} /></button>
                       </div>
@@ -269,8 +284,10 @@ export default function ProductsPage() {
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <Badge tone={p.active ? "emerald" : "neutral"}>{p.active ? "Active" : "Archived"}</Badge>
+                {p.quoteUses > 0 && <span className="text-2xs text-muted-foreground">· {p.quoteUses} quote{p.quoteUses === 1 ? "" : "s"}</span>}
                 <button onClick={() => toggleActive(p)} className="text-2xs text-muted-foreground hover:text-foreground">{p.active ? "Archive" : "Activate"}</button>
-                <button onClick={() => remove(p)} className="ml-auto grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                <button onClick={() => duplicate(p)} className="ml-auto grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
+                <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
               </div>
             </div>
           ))

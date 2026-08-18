@@ -1552,8 +1552,11 @@ export async function deleteProduct(orgId: number, id: number): Promise<void> {
   await getPool().query("DELETE FROM crm_products WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
+export interface ProductStatsRow extends ProductRow {
+  quote_uses: number;
+}
 export interface ProductsPageResult {
-  rows: ProductRow[];
+  rows: ProductStatsRow[];
   total: number;
   page: number;
   pageCount: number;
@@ -1587,8 +1590,28 @@ export async function listProductsPage(
   const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
   const orderBy = buildProductOrderBy(opts.sortKey, opts.sortDir);
 
-  const [rows] = await pool.query<ProductRow[]>(`SELECT p.* FROM crm_products p ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  const [rows] = await pool.query<ProductStatsRow[]>(
+    `SELECT p.*, (SELECT COUNT(*) FROM crm_quote_items qi WHERE qi.product_id = p.id AND qi.organization_id = p.organization_id) AS quote_uses
+       FROM crm_products p ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
   return { rows, total, page, pageCount };
+}
+
+/** Clone a product into a new "… (copy)" (active). */
+export async function duplicateProduct(orgId: number, id: number): Promise<number | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<ProductRow[]>("SELECT * FROM crm_products WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  const p = rows[0];
+  if (!p) return null;
+  return createProduct(orgId, {
+    name: `${p.name} (copy)`.slice(0, 190),
+    sku: p.sku,
+    description: p.description,
+    priceCents: p.price_cents,
+    billing: p.billing,
+    active: true,
+  });
 }
 
 // ------------------------------------------------------------------- quotes

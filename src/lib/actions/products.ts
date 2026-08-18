@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createProduct, updateProduct, setProductActive, deleteProduct, listProductsPage, type ProductRow } from "@/lib/db";
+import { createProduct, updateProduct, setProductActive, deleteProduct, duplicateProduct, listProductsPage, type ProductStatsRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { isBilling } from "@/lib/crm/products";
 
@@ -13,10 +13,11 @@ export interface Product {
   price: number; // euros
   billing: string;
   active: boolean;
+  quoteUses: number;
   createdAt: string;
 }
 
-function toProduct(r: ProductRow): Product {
+function toProduct(r: ProductStatsRow): Product {
   return {
     id: r.id,
     name: r.name,
@@ -25,6 +26,7 @@ function toProduct(r: ProductRow): Product {
     price: r.price_cents / 100,
     billing: r.billing,
     active: !!r.active,
+    quoteUses: Number(r.quote_uses) || 0,
     createdAt: new Date(r.created_at).toISOString(),
   };
 }
@@ -103,4 +105,12 @@ export async function deleteProductAction(id: number): Promise<void> {
   const { organizationId } = await requireSession();
   await deleteProduct(organizationId, id);
   revalidatePath("/products");
+}
+
+export async function duplicateProductAction(id: number): Promise<{ id?: number; error?: string }> {
+  const { organizationId } = await requireSession();
+  const newId = await duplicateProduct(organizationId, id);
+  if (!newId) return { error: "Product not found." };
+  revalidatePath("/products");
+  return { id: newId };
 }
