@@ -62,6 +62,26 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       { key: "priority", label: "Task priority", kind: "priority", default: "normal" },
     ],
   },
+  {
+    key: "nudge_idle_deals",
+    category: "followup",
+    name: "Nudge idle open deals",
+    description: "Create a task for open deals with no activity in N days (still inside their close date).",
+    params: [
+      { key: "days", label: "Idle days", kind: "days", default: 14 },
+      { key: "priority", label: "Task priority", kind: "priority", default: "normal" },
+    ],
+  },
+  {
+    key: "welcome_new_customers",
+    category: "followup",
+    name: "Welcome new customers",
+    description: "Create an onboarding task when a company wins its first deal in the last N days.",
+    params: [
+      { key: "days", label: "Won within days", kind: "days", default: 7 },
+      { key: "priority", label: "Task priority", kind: "priority", default: "high" },
+    ],
+  },
 ];
 
 export function getTemplate(key: string): AutomationTemplate | null {

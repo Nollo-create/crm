@@ -9,6 +9,8 @@ import {
   nbaOverdueDeals,
   nbaHotLeads,
   nbaAgingQuotes,
+  nbaIdleDeals,
+  nbaNewCustomers,
   type AutomationRow,
 } from "@/lib/db";
 import { normalizeParams, getTemplate } from "@/lib/crm/automation";
@@ -56,6 +58,14 @@ async function runOne(orgId: number, a: AutomationRow): Promise<number> {
     for (const l of await nbaHotLeads(orgId, Number(p.minScore) || 60, CAP)) {
       await makeTask(`Work lead: ${l.name || l.company}`, null, "Auto: new hot lead");
     }
+  } else if (a.template_key === "nudge_idle_deals") {
+    for (const d of await nbaIdleDeals(orgId, Number(p.days) || 14, CAP)) {
+      await makeTask(`Nudge idle deal: ${d.title}`, d.companyId, "Auto: idle open deal");
+    }
+  } else if (a.template_key === "welcome_new_customers") {
+    for (const co of await nbaNewCustomers(orgId, Number(p.days) || 7, CAP)) {
+      await makeTask(`Onboard ${co.name}`, co.id, "Auto: new customer");
+    }
   }
 
   await logAutomationRun(orgId, a.id, created, `${created} task${created === 1 ? "" : "s"} created`).catch(() => {});
@@ -88,5 +98,7 @@ export async function previewAutomation(orgId: number, templateKey: string, rawP
   if (templateKey === "chase_overdue_deals") return (await nbaOverdueDeals(orgId, CAP).catch(() => [])).length;
   if (templateKey === "chase_sent_quotes") return (await nbaAgingQuotes(orgId, Number(p.days) || 7, CAP).catch(() => [])).length;
   if (templateKey === "work_new_leads") return (await nbaHotLeads(orgId, Number(p.minScore) || 60, CAP).catch(() => [])).length;
+  if (templateKey === "nudge_idle_deals") return (await nbaIdleDeals(orgId, Number(p.days) || 14, CAP).catch(() => [])).length;
+  if (templateKey === "welcome_new_customers") return (await nbaNewCustomers(orgId, Number(p.days) || 7, CAP).catch(() => [])).length;
   return 0;
 }

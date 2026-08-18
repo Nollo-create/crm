@@ -22,6 +22,13 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/api/health/route-2642dee9d07b2b68.js"
     ],
+    "/api/v1/contacts/route": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/app/api/v1/contacts/route-2642dee9d07b2b68.js"
+    ],
     "/api/v1/companies/route": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
@@ -36,12 +43,12 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/api/v1/deals/route-2642dee9d07b2b68.js"
     ],
-    "/api/v1/contacts/route": [
+    "/api/v1/ping/route": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/app/api/v1/contacts/route-2642dee9d07b2b68.js"
+      "static/chunks/app/api/v1/ping/route-2642dee9d07b2b68.js"
     ],
     "/sso/start/route": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -57,13 +64,6 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/sso/callback/route-2642dee9d07b2b68.js"
     ],
-    "/api/v1/ping/route": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/app/api/v1/ping/route-2642dee9d07b2b68.js"
-    ],
     "/api/cron/tick/route": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
@@ -71,21 +71,21 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/api/cron/tick/route-2642dee9d07b2b68.js"
     ],
-    "/setup/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/setup/page-f58bcdfde31eb37d.js"
-    ],
     "/login/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/login/page-9c6215591126e929.js"
+      "static/chunks/app/login/page-6cac3904acc7822b.js"
+    ],
+    "/setup/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/app/setup/page-ac7cdb56035802b7.js"
     ],
     "/(crm)/layout": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -95,7 +95,7 @@
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
       "static/chunks/9328-dcdbf70ebf4f3339.js",
-      "static/chunks/app/(crm)/layout-8059016a95dd3ea7.js"
+      "static/chunks/app/(crm)/layout-f121a674817f75ec.js"
     ],
     "/(crm)/activities/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -103,7 +103,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/467-14e4f39adc830494.js",
+      "static/chunks/467-108675e4f2fd07ce.js",
       "static/chunks/app/(crm)/activities/page-7e14133f48b3feed.js"
     ],
     "/(crm)/ai/assistant/page": [
@@ -113,7 +113,7 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/ai/assistant/page-59084a5f974cf1ad.js"
+      "static/chunks/app/(crm)/ai/assistant/page-80e057e608e0724b.js"
     ],
     "/(crm)/ai/company/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -122,7 +122,7 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/ai/company/page-5424a362bbe2575e.js"
+      "static/chunks/app/(crm)/ai/company/page-a241889fa41257ae.js"
     ],
     "/(crm)/ai/outreach/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -131,15 +131,7 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/ai/outreach/page-ceb8051df13a0888.js"
-    ],
-    "/(crm)/automation/notifications/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/automation/notifications/page-f727bfa15c853b7d.js"
+      "static/chunks/app/(crm)/ai/outreach/page-c98b7e49943a10e1.js"
     ],
     "/(crm)/automation/routing/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -147,7 +139,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2411-a72339f3108725d2.js",
+      "static/chunks/2411-5a0388ee4fa52337.js",
       "static/chunks/app/(crm)/automation/routing/page-27639ccde02b4224.js"
     ],
     "/(crm)/automation/followups/page": [
@@ -156,8 +148,17 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2411-a72339f3108725d2.js",
+      "static/chunks/2411-5a0388ee4fa52337.js",
       "static/chunks/app/(crm)/automation/followups/page-bffffb41032740dd.js"
+    ],
+    "/(crm)/calls/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/467-108675e4f2fd07ce.js",
+      "static/chunks/app/(crm)/calls/page-03d58dff9b46c75c.js"
     ],
     "/(crm)/automation/workflows/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -165,8 +166,33 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2411-a72339f3108725d2.js",
+      "static/chunks/2411-5a0388ee4fa52337.js",
       "static/chunks/app/(crm)/automation/workflows/page-d205062dbe8c5e75.js"
+    ],
+    "/(crm)/automation/notifications/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/app/(crm)/automation/notifications/page-53abccb5f01efe23.js"
+    ],
+    "/(crm)/contacts/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/app/(crm)/contacts/page-63272d4db18cf119.js"
+    ],
+    "/(crm)/customers/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/2782-059f89de7dc7a0f1.js",
+      "static/chunks/app/(crm)/customers/page-84fb11f3472a8f31.js"
     ],
     "/(crm)/companies/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -176,34 +202,17 @@
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
       "static/chunks/8428-3555a53b1b03b7d2.js",
-      "static/chunks/2782-99e09906fc089e9b.js",
-      "static/chunks/app/(crm)/companies/page-253d29ebf1633dd3.js"
+      "static/chunks/2782-059f89de7dc7a0f1.js",
+      "static/chunks/app/(crm)/companies/page-69e6f240afde9fe4.js"
     ],
-    "/(crm)/calls/page": [
+    "/(crm)/emails/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/467-14e4f39adc830494.js",
-      "static/chunks/app/(crm)/calls/page-03d58dff9b46c75c.js"
-    ],
-    "/(crm)/customers/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2782-99e09906fc089e9b.js",
-      "static/chunks/app/(crm)/customers/page-d646971b2ab86f43.js"
-    ],
-    "/(crm)/contacts/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/contacts/page-1a11b81811bb73b2.js"
+      "static/chunks/467-108675e4f2fd07ce.js",
+      "static/chunks/app/(crm)/emails/page-a00d7fa28d2615c4.js"
     ],
     "/(crm)/deals/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -213,16 +222,7 @@
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
       "static/chunks/3028-cd4b8f7dde41154d.js",
-      "static/chunks/app/(crm)/deals/page-d0f2089665b97832.js"
-    ],
-    "/(crm)/emails/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/467-14e4f39adc830494.js",
-      "static/chunks/app/(crm)/emails/page-a00d7fa28d2615c4.js"
+      "static/chunks/app/(crm)/deals/page-059f3bca850a1213.js"
     ],
     "/(crm)/meetings/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -230,7 +230,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/467-14e4f39adc830494.js",
+      "static/chunks/467-108675e4f2fd07ce.js",
       "static/chunks/app/(crm)/meetings/page-c9d718c23b0da429.js"
     ],
     "/(crm)/leads/page": [
@@ -240,7 +240,7 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/3028-cd4b8f7dde41154d.js",
-      "static/chunks/app/(crm)/leads/page-d9b655f517cc6554.js"
+      "static/chunks/app/(crm)/leads/page-a4b19c0ccc3949dd.js"
     ],
     "/(crm)/pipeline/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -248,7 +248,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/pipeline/page-4bfad895e1b217a2.js"
+      "static/chunks/app/(crm)/pipeline/page-f2ae6ac45ec44ee0.js"
     ],
     "/(crm)/products/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -256,15 +256,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/products/page-fcc3a8863492eda3.js"
-    ],
-    "/(crm)/tasks/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/tasks/page-cfef5e310b3ae474.js"
+      "static/chunks/app/(crm)/products/page-7b9758ad275172b3.js"
     ],
     "/(crm)/quotes/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -272,7 +264,24 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/quotes/page-643d5fb2d5bd7054.js"
+      "static/chunks/app/(crm)/quotes/page-3b74816a36a74996.js"
+    ],
+    "/(crm)/tasks/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/app/(crm)/tasks/page-72b2aa6fd262d785.js"
+    ],
+    "/(crm)/ai/next-action/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/2619-3c9e02e22d10480a.js",
+      "static/chunks/app/(crm)/ai/next-action/page-d16c3160287bedeb.js"
     ],
     "/(crm)/ai/scoring/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -283,29 +292,12 @@
       "static/chunks/2619-3c9e02e22d10480a.js",
       "static/chunks/app/(crm)/ai/scoring/page-fdffdc5e2172ae97.js"
     ],
-    "/(crm)/ai/insights/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/ai/insights/page-ea53f3a81e4fc957.js"
-    ],
     "/(crm)/analytics/conversion/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/(crm)/analytics/conversion/page-2642dee9d07b2b68.js"
-    ],
-    "/(crm)/ai/next-action/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/ai/next-action/page-4e5a3a46ce6ea610.js"
     ],
     "/(crm)/analytics/forecast/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -314,19 +306,20 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/(crm)/analytics/forecast/page-2642dee9d07b2b68.js"
     ],
+    "/(crm)/ai/insights/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/2619-3c9e02e22d10480a.js",
+      "static/chunks/app/(crm)/ai/insights/page-ea53f3a81e4fc957.js"
+    ],
     "/(crm)/analytics/pipeline/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/(crm)/analytics/pipeline/page-2642dee9d07b2b68.js"
-    ],
-    "/(crm)/analytics/team/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/app/(crm)/analytics/team/page-2642dee9d07b2b68.js"
     ],
     "/(crm)/analytics/sales/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -335,15 +328,12 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/(crm)/analytics/sales/page-2642dee9d07b2b68.js"
     ],
-    "/(crm)/deals/[id]/page": [
+    "/(crm)/analytics/team/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/8794-18bedc57d2d90fe2.js",
-      "static/chunks/app/(crm)/deals/[id]/page-00652ed9d77872c3.js"
+      "static/chunks/app/(crm)/analytics/team/page-2642dee9d07b2b68.js"
     ],
     "/(crm)/companies/[id]/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -352,8 +342,8 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/8794-18bedc57d2d90fe2.js",
-      "static/chunks/app/(crm)/companies/[id]/page-47a6c99864f4d76c.js"
+      "static/chunks/8920-2922fb71a2f2401a.js",
+      "static/chunks/app/(crm)/companies/[id]/page-969ce9c4762b9730.js"
     ],
     "/(crm)/contacts/[id]/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -362,8 +352,18 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/8794-18bedc57d2d90fe2.js",
-      "static/chunks/app/(crm)/contacts/[id]/page-cfdd5237c925bf1f.js"
+      "static/chunks/8920-2922fb71a2f2401a.js",
+      "static/chunks/app/(crm)/contacts/[id]/page-5d8c0100571c71b9.js"
+    ],
+    "/(crm)/deals/[id]/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/2619-3c9e02e22d10480a.js",
+      "static/chunks/8920-2922fb71a2f2401a.js",
+      "static/chunks/app/(crm)/deals/[id]/page-0c123435665b406d.js"
     ],
     "/(crm)/leads/[id]/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -372,8 +372,8 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/8794-18bedc57d2d90fe2.js",
-      "static/chunks/app/(crm)/leads/[id]/page-6dd5800a7b6049b2.js"
+      "static/chunks/8920-2922fb71a2f2401a.js",
+      "static/chunks/app/(crm)/leads/[id]/page-7ae5a37b73958773.js"
     ],
     "/(crm)/quotes/[id]/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -382,7 +382,7 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
-      "static/chunks/app/(crm)/quotes/[id]/page-86efd9f2dcc72345.js"
+      "static/chunks/app/(crm)/quotes/[id]/page-93a73194264ffd45.js"
     ],
     "/(crm)/settings/api/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -390,7 +390,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/settings/api/page-61b445d8fc632456.js"
+      "static/chunks/app/(crm)/settings/api/page-6fc7412fd4cb3ff4.js"
     ],
     "/(crm)/settings/billing/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -398,7 +398,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/settings/billing/page-04dad40ac16f9f1e.js"
+      "static/chunks/app/(crm)/settings/billing/page-d5af29b47f2b4216.js"
     ],
     "/(crm)/settings/org/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -406,7 +406,7 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/settings/org/page-5248c79258ce0e2c.js"
+      "static/chunks/app/(crm)/settings/org/page-b454af282280c26f.js"
     ],
     "/(crm)/settings/security/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -414,7 +414,22 @@
       "static/chunks/1255-a20f6c5e797a687b.js",
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/settings/security/page-011bd199a8d30352.js"
+      "static/chunks/app/(crm)/settings/security/page-608fa31ba764bf45.js"
+    ],
+    "/(crm)/settings/users/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/9779-ff8f025d30e3a30c.js",
+      "static/chunks/app/(crm)/settings/users/page-272a5edbe75a6837.js"
+    ],
+    "/(crm)/settings/roles/page": [
+      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
+      "static/chunks/4bd1b696-f785427dddbba9fb.js",
+      "static/chunks/1255-a20f6c5e797a687b.js",
+      "static/chunks/main-app-3ad30d9f0b9f588e.js",
+      "static/chunks/app/(crm)/settings/roles/page-2642dee9d07b2b68.js"
     ],
     "/(crm)/settings/integrations/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
@@ -423,14 +438,6 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/app/(crm)/settings/integrations/page-2642dee9d07b2b68.js"
     ],
-    "/(crm)/settings/users/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/9779-ff8f025d30e3a30c.js",
-      "static/chunks/app/(crm)/settings/users/page-69ea7aa439632754.js"
-    ],
     "/(crm)/page": [
       "static/chunks/webpack-cda25ba3dfbd6ebd.js",
       "static/chunks/4bd1b696-f785427dddbba9fb.js",
@@ -438,13 +445,6 @@
       "static/chunks/main-app-3ad30d9f0b9f588e.js",
       "static/chunks/2619-3c9e02e22d10480a.js",
       "static/chunks/app/(crm)/page-ea53f3a81e4fc957.js"
-    ],
-    "/(crm)/settings/roles/page": [
-      "static/chunks/webpack-cda25ba3dfbd6ebd.js",
-      "static/chunks/4bd1b696-f785427dddbba9fb.js",
-      "static/chunks/1255-a20f6c5e797a687b.js",
-      "static/chunks/main-app-3ad30d9f0b9f588e.js",
-      "static/chunks/app/(crm)/settings/roles/page-2642dee9d07b2b68.js"
     ]
   }
 }

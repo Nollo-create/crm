@@ -1913,6 +1913,40 @@ export async function nbaAgingQuotes(orgId: number, days: number, limit: number)
   return rows.map((r) => ({ id: Number(r.id), companyName: String(r.company_name), days: Number(r.days) }));
 }
 
+/** Open deals that have gone quiet: at least N days old and no activity logged
+ *  in the last N days (distinct from overdue, which is past the close date). */
+export async function nbaIdleDeals(orgId: number, days: number, limit: number): Promise<{ id: number; companyId: number; companyName: string; title: string; idleDays: number | null }[]> {
+  await ensureSchema();
+  const d = Number(days) || 14;
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT d.id, d.company_id, d.title, co.name AS company_name,
+            DATEDIFF(NOW(), (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.deal_id = d.id)) AS idle_days
+     FROM crm_deals d JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id
+     WHERE d.organization_id = ? AND d.stage NOT IN ('won','lost') AND d.created_at < NOW() - INTERVAL ${d} DAY
+       AND ((SELECT MAX(a.created_at) FROM crm_activities a WHERE a.deal_id = d.id) IS NULL
+            OR (SELECT MAX(a.created_at) FROM crm_activities a WHERE a.deal_id = d.id) < NOW() - INTERVAL ${d} DAY)
+     ORDER BY idle_days IS NULL DESC, idle_days DESC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), companyId: Number(r.company_id), companyName: String(r.company_name), title: String(r.title), idleDays: r.idle_days == null ? null : Number(r.idle_days) }));
+}
+
+/** Companies that closed a won deal in the last N days — new customers to
+ *  onboard (approximates "customer since" via the latest won close). */
+export async function nbaNewCustomers(orgId: number, days: number, limit: number): Promise<{ id: number; name: string; days: number }[]> {
+  await ensureSchema();
+  const d = Number(days) || 7;
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT co.id, co.name, DATEDIFF(NOW(), MAX(d.closed_at)) AS days
+     FROM crm_companies co JOIN crm_deals d ON d.company_id = co.id AND d.organization_id = co.organization_id
+     WHERE co.organization_id = ? AND d.stage = 'won' AND d.closed_at IS NOT NULL AND d.closed_at >= NOW() - INTERVAL ${d} DAY
+     GROUP BY co.id, co.name
+     ORDER BY MAX(d.closed_at) DESC LIMIT ?`,
+    [orgId, Number(limit) || 5]
+  );
+  return rows.map((r) => ({ id: Number(r.id), name: String(r.name), days: Number(r.days) }));
+}
+
 // --------------------------------------------------------------- automations
 
 export interface AutomationRow extends mysql.RowDataPacket {
