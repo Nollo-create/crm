@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { getOrgFlags, setOrgFlag, getUserTotp } from "@/lib/db";
 import { recordAudit } from "@/lib/auth/audit";
 import { recordSecurityAlert } from "@/lib/security/alerts";
@@ -49,6 +50,8 @@ export async function getPolicyStatusAction(): Promise<PolicyStatus> {
 export async function setRestrictMembersAction(on: boolean, credential: string): Promise<{ error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can change this." };
+  const mfaErr = await enforceAdminMfa(session);
+  if (mfaErr) return { error: mfaErr };
   const stepErr = await verifyStepUp(session.userId, credential);
   if (stepErr) return { error: stepErr };
   await setOrgFlag(session.organizationId, "restrict_members", on);
@@ -65,6 +68,12 @@ export async function setRequireAdminMfaAction(on: boolean, credential: string):
   if (on) {
     const totp = await getUserTotp(session.userId).catch(() => null);
     if (!totp?.enabled) return { error: "Turn on two-factor for your own account before requiring it for admins." };
+  } else {
+    // Turning the policy OFF is itself an org-management action: a privileged
+    // user who is out of compliance (no MFA while it's required) can't quietly
+    // disable the very policy meant to force them onto MFA.
+    const mfaErr = await enforceAdminMfa(session);
+    if (mfaErr) return { error: mfaErr };
   }
   const stepErr = await verifyStepUp(session.userId, credential);
   if (stepErr) return { error: stepErr };

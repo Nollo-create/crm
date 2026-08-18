@@ -5,10 +5,13 @@ describe("api-key scopes", () => {
   it("keeps known scopes, dedups, drops junk", () => {
     expect(normalizeScopes(["companies", "deals", "companies", "evil"])).toEqual(["companies", "deals"]);
   });
-  it("falls back to all scopes on empty/invalid (back-compat)", () => {
-    expect(normalizeScopes([])).toEqual([...API_SCOPES]);
-    expect(normalizeScopes("nonsense")).toEqual([...API_SCOPES]);
-    expect(normalizeScopes(undefined)).toEqual([...API_SCOPES]);
+  it("fails CLOSED on empty/invalid — grants nothing, never everything (SEC-12)", () => {
+    // Legacy keys carry the explicit 'companies,contacts,deals' DB default, so
+    // they keep working; only a deliberately empty/garbage list yields no access.
+    expect(normalizeScopes([])).toEqual([]);
+    expect(normalizeScopes("nonsense")).toEqual([]);
+    expect(normalizeScopes(undefined)).toEqual([]);
+    expect(normalizeScopes("companies,contacts,deals")).toEqual([...API_SCOPES]);
   });
   it("parses a comma string", () => {
     expect(normalizeScopes("companies, contacts")).toEqual(["companies", "contacts"]);

@@ -1,5 +1,6 @@
+import { lookup } from "node:dns/promises";
 import { insertSecurityAlert, getOrgSecurityWebhook, type SecurityAlertInput } from "@/lib/db";
-import { isSafeWebhookUrl } from "@/lib/crm/webhook-url";
+import { isSafeWebhookUrl, isBlockedIp, webhookHostname } from "@/lib/crm/webhook-url";
 
 // Active security alerts (master-prompt #5). A high-severity security event
 // (MFA turned off, admin granted, API key minted, emergency switch flipped…)
@@ -28,7 +29,18 @@ export async function recordSecurityAlert(orgId: number, alert: SecurityAlertInp
 async function pushToWebhook(orgId: number, alert: SecurityAlertInput): Promise<void> {
   const url = await getOrgSecurityWebhook(orgId).catch(() => "");
   if (!url) return; // channel not configured → off
-  if (!isSafeWebhookUrl(url).ok) return; // re-check at send time (defence in depth)
+  if (!isSafeWebhookUrl(url).ok) return; // fast string pre-check
+  // Authoritative SSRF check: resolve the host and refuse if ANY resolved
+  // address is private/loopback/link-local/metadata. A string blocklist alone
+  // can't stop "public-hostname → private-IP"; this can.
+  const host = webhookHostname(url);
+  if (!host) return;
+  try {
+    const addrs = await lookup(host, { all: true });
+    if (addrs.length === 0 || addrs.some((a) => isBlockedIp(a.address))) return;
+  } catch {
+    return; // can't resolve safely → don't send
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);

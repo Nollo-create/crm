@@ -11,6 +11,12 @@ export function verifySsoCode(code: string): { email: string; name: string } | n
   if (!isConnected(integration) || !code) return null;
   const payload = verifyHS256(code, integration.secret);
   if (!payload || payload.use !== "crm-sso") return null;
+  // Require a bounded lifetime: reject a handoff code with no `exp`, or one
+  // whose window is implausibly long (a captured code must not be replayable
+  // indefinitely). verifyHS256 already rejects an expired code.
+  if (typeof payload.exp !== "number") return null;
+  const iat = typeof payload.iat === "number" ? payload.iat : payload.exp - 300;
+  if (payload.exp - iat > 600) return null; // max 10-minute handoff window
   const email = String(payload.email ?? "").toLowerCase().trim();
   const name = String(payload.name ?? "");
   if (!email) return null;

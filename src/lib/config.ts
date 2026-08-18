@@ -1,3 +1,4 @@
+import "server-only"; // holds INTERNAL_API_SECRET — must never be bundled to the client
 // The integration contract — the single switch that makes the CMS "connected to
 // Sajtpress" vs "standalone". Everything cross-app reads this. Flip
 // SAJTPRESS_INTEGRATION off and the CMS runs entirely on its own (own DB, own

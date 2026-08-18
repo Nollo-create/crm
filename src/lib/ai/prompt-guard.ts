@@ -31,11 +31,14 @@ export function sanitizeForPrompt(raw: unknown, maxLen: number = DEFAULT_MAX): s
   let s = typeof raw === "string" ? raw : String(raw ?? "");
   if (s.length > maxLen) s = s.slice(0, maxLen);
   s = s.replace(CONTROL_CHARS, "");
-  // Remove our own fence markers so injected text can't forge an END marker and
-  // then append "instructions" that appear to be outside the fence.
+  // Defang chat-template / control tokens (<|im_start|>, <|system|>, …) FIRST,
+  // replacing each with a space. Critically, we do NOT turn "<|" into "<": that
+  // would let "<|<|<|END_UNTRUSTED_DATA" collapse into a real "<<<END..." marker
+  // AFTER stripping. A space can never combine into the "<<<" fence prefix.
+  s = s.replace(/<\|/g, " ").replace(/\|>/g, " ");
+  // Then strip any literal fence markers so injected text can't forge one and
+  // smuggle "instructions" that look like they're outside the fence.
   s = s.split(OPEN).join("(untrusted)").split(CLOSE).join("(untrusted)");
-  // Defang common chat-template / control tokens (<|im_start|>, <|system|>, …).
-  s = s.replace(/<\|/g, "<").replace(/\|>/g, ">");
   return s;
 }
 

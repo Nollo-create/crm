@@ -42,7 +42,8 @@ describe("rbac", () => {
     expect(isRole("viewer")).toBe(true);
     expect(isRole("root")).toBe(false);
     expect(toRole("admin")).toBe("admin");
-    expect(toRole("nonsense")).toBe("member");
-    expect(toRole(null)).toBe("member");
+    // Fail closed: an unrecognized/corrupt role gets the least privilege (SEC-INFO).
+    expect(toRole("nonsense")).toBe("viewer");
+    expect(toRole(null)).toBe("viewer");
   });
 });

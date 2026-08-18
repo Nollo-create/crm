@@ -129,6 +129,15 @@ export async function updateQuoteStatusAction(id: number, status: string): Promi
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
   if (!isQuoteStatus(status)) return { error: "Unknown status." };
+  // State machine: a quote that has left draft can't be reverted to draft —
+  // otherwise the "only draft quotes are editable" line-item lock is defeated by
+  // reopening, editing prices, and re-sending. Duplicate it to make a new draft.
+  if (status === "draft") {
+    const cur = await getQuote(organizationId, id).catch(() => null);
+    if (cur && cur.quote.status !== "draft") {
+      return { error: "A quote that's been sent can't be reopened to draft — duplicate it instead." };
+    }
+  }
   await updateQuote(organizationId, id, { status });
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${id}`);

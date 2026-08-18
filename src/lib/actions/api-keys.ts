@@ -9,7 +9,7 @@ import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
 import { recordSecurityAlert } from "@/lib/security/alerts";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
-import { generateApiKey, maskKey, normalizeScopes, scopesToString, expiryFromDays, type ApiScope } from "@/lib/crm/api-keys";
+import { generateApiKey, maskKey, normalizeScopes, scopesToString, expiryFromDays, API_SCOPES, type ApiScope } from "@/lib/crm/api-keys";
 
 const MAX_KEYS = 20;
 
@@ -73,7 +73,11 @@ export async function createApiKeyAction(
   const label = (name || "").trim().slice(0, 120) || "API key";
   const existing = await listApiKeys(session.organizationId).catch(() => []);
   if (existing.length >= MAX_KEYS) return { error: `You can have at most ${MAX_KEYS} keys. Revoke one first.` };
-  const scopes = scopesToString(normalizeScopes(opts.scopes));
+  // Omitted scopes → all (back-compat for API callers); an explicitly empty or
+  // all-invalid selection is rejected rather than silently granting everything.
+  const scopeList = opts.scopes === undefined ? [...API_SCOPES] : normalizeScopes(opts.scopes);
+  if (scopeList.length === 0) return { error: "Choose at least one scope for the key." };
+  const scopes = scopesToString(scopeList);
   const expiresAt = expiryFromDays(opts.expiresInDays ?? null);
   const key = generateApiKey();
   await createApiKey(session.organizationId, { name: label, keyHash: key.hash, last4: key.last4, createdByEmail: session.email, expiresAt, scopes });

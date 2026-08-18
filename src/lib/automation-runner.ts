@@ -89,6 +89,10 @@ export async function runAutomationsForOrg(orgId: number): Promise<{ automationI
 /** Run a single automation now (the per-row "Run" button). Logs the run like a
  *  tick would, so it shows up in the activity log too. Returns tasks created. */
 export async function runSingleAutomation(orgId: number, id: number): Promise<number> {
+  // Emergency pause applies to EVERY execution path, not just the bulk/cron one
+  // — otherwise the per-row "Run" button would bypass the kill switch.
+  const flags = await getOrgFlags(orgId).catch(() => null);
+  if (flags?.automationsPaused) return 0;
   const a = await getAutomation(orgId, id);
   if (!a) return 0;
   return runOne(orgId, a).catch(() => 0);

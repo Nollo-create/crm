@@ -282,7 +282,13 @@ export default function CompaniesPage() {
         if (p >= res.pageCount) break;
       }
     }
-    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // Neutralize spreadsheet formula injection: a leading = + - @ TAB CR makes
+    // Excel/Sheets evaluate the cell. Prefix with an apostrophe before quoting.
+    const cell = (v: unknown) => {
+      let s = String(v ?? "");
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
     const head = ["Name", "Industry", "City", "Status", "Contacts", "Open deals", "Open pipeline", "Lead score", "Last activity"];
     const csv = [head.map(cell).join(","), ...data.map((c) => [c.name, c.industry, c.city, c.status, c.contacts, c.openDeals, c.openValue, score(c), c.lastActivity ?? ""].map(cell).join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));

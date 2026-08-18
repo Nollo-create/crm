@@ -46,5 +46,7 @@ export function can(role: Role, permission: Permission): boolean {
 /** Normalise an unknown stored value into a safe role (defaults to the least
  *  privileged). */
 export function toRole(v: string | null | undefined): Role {
-  return v && isRole(v) ? v : "member";
+  // Fail closed: an unrecognized/corrupt stored role gets the least privilege,
+  // never a write-capable one.
+  return v && isRole(v) ? v : "viewer";
 }

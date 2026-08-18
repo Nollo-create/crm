@@ -968,11 +968,11 @@ export async function listDealActivities(orgId: number, dealId: number, limit = 
 }
 
 /** Deals whose primary contact is this person — for the contact profile. */
-export async function listDealsForContact(orgId: number, contactId: number): Promise<DealRow[]> {
+export async function listDealsForContact(orgId: number, contactId: number, ownerScope?: { sql: string; params: number[] }): Promise<DealRow[]> {
   await ensureSchema();
   const [rows] = await getPool().query<DealRow[]>(
-    "SELECT * FROM crm_deals WHERE contact_id = ? AND organization_id = ? ORDER BY updated_at DESC LIMIT 50",
-    [contactId, orgId]
+    `SELECT * FROM crm_deals WHERE contact_id = ? AND organization_id = ?${ownerScope?.sql ?? ""} ORDER BY updated_at DESC LIMIT 50`,
+    [contactId, orgId, ...(ownerScope?.params ?? [])]
   );
   return rows;
 }
@@ -2351,7 +2351,7 @@ export async function insertSecurityAlert(orgId: number, a: SecurityAlertInput):
   const [res] = await getPool().query<mysql.ResultSetHeader>(
     `INSERT INTO crm_security_alerts (organization_id, type, severity, message, actor_email, meta)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    [orgId, a.type.slice(0, 40), a.severity.slice(0, 10), a.message.slice(0, 300), (a.actorEmail ?? "").slice(0, 190), (a.meta ?? "").slice(0, 500)]
+    [orgId, a.type.slice(0, 40), a.severity.slice(0, 10), stripLogControl(a.message).slice(0, 300), stripLogControl(a.actorEmail ?? "").slice(0, 190), stripLogControl(a.meta ?? "").slice(0, 500)]
   );
   return res.insertId;
 }
@@ -2854,6 +2854,14 @@ export interface AuditEntry {
   userAgent?: string;
 }
 
+// Strip CR/LF and C0/C1 control chars from any user-influenced text before it
+// lands in the audit / alert feed, so a crafted name can't forge a second log
+// line (feed spoofing). Built from escapes to avoid raw control bytes in source.
+const AUDIT_CONTROL_RE = new RegExp("[\\u0000-\\u001F\\u007F-\\u009F]", "g");
+export function stripLogControl(s: string): string {
+  return String(s ?? "").replace(AUDIT_CONTROL_RE, " ");
+}
+
 export async function writeAudit(e: AuditEntry): Promise<void> {
   await ensureAuthSchema();
   await getPool().query(
@@ -2861,13 +2869,13 @@ export async function writeAudit(e: AuditEntry): Promise<void> {
     [
       e.organizationId,
       e.userId,
-      e.actorEmail.slice(0, 190),
+      stripLogControl(e.actorEmail).slice(0, 190),
       e.action.slice(0, 40),
       e.entity.slice(0, 40),
       e.entityId ?? null,
-      (e.summary ?? "").slice(0, 255),
+      stripLogControl(e.summary ?? "").slice(0, 255),
       (e.ip ?? "").slice(0, 45),
-      (e.userAgent ?? "").slice(0, 255),
+      stripLogControl(e.userAgent ?? "").slice(0, 255),
     ]
   );
 }

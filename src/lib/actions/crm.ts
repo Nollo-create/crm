@@ -62,7 +62,7 @@ import {
 import { requireSession, guardWrite, type SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
-import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
+import { validated, vString, vEmail, vInt, vEnum } from "@/lib/crm/validate";
 import { ownerFilter, canAccessOwned } from "@/lib/crm/record-scope";
 import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
@@ -374,6 +374,7 @@ export async function createCompanyAction(input: CompanyInput): Promise<{ id?: n
     city: vString("City", input.city, { max: 120 }),
     website: vString("Website", input.website, { max: 190 }),
     accountManager: vString("Account manager", input.accountManager, { max: 120 }),
+    status: vEnum("Status", input.status, STATUSES as readonly string[], { fallback: "lead" }),
     employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
     annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
   }));
@@ -395,6 +396,7 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
     city: vString("City", input.city, { max: 120 }),
     website: vString("Website", input.website, { max: 190 }),
     accountManager: vString("Account manager", input.accountManager, { max: 120 }),
+    status: vEnum("Status", input.status, STATUSES as readonly string[], { fallback: "lead" }),
     employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
     annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
   }));
@@ -505,12 +507,16 @@ export interface ContactDetail {
 }
 
 export async function getContactAction(id: number): Promise<ContactDetail | null> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   const row: ContactWithCompanyRow | null = await getContact(organizationId, id);
   if (!row) return null;
+  // Record-level scoping: a restricted member must not see other members' deals
+  // via the contact profile (every other deal-list path already scopes).
+  const dealScope = ownerFilter("owner_user_id", session.role, session.userId, await orgRestricted(organizationId));
   const [activities, deals] = await Promise.all([
     listContactActivities(organizationId, id).catch(() => []),
-    listDealsForContact(organizationId, id).catch(() => []),
+    listDealsForContact(organizationId, id, dealScope).catch(() => []),
   ]);
   return {
     contact: { ...toContact(row), companyName: row.company_name },
@@ -689,6 +695,9 @@ export async function updateDealAction(
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
+  // Won/Lost must go through the close workflow (customer flip + close stamp),
+  // never this general patch — otherwise analytics and Rule 6 are bypassed.
+  if (patch.stage === "won" || patch.stage === "lost") return { error: "Use Mark won / Mark lost to close a deal." };
   if (!(await canTouchDeal(g.session, id))) return { error: "Deal not found." };
   const check = validated(() => {
     if (patch.title !== undefined) vString("Title", patch.title, { required: true, max: 190 });

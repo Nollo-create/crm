@@ -54,7 +54,10 @@ export type ApiScope = (typeof API_SCOPES)[number];
 export function normalizeScopes(raw: unknown): ApiScope[] {
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
   const clean = arr.map((s) => String(s).trim()).filter((s): s is ApiScope => (API_SCOPES as readonly string[]).includes(s));
-  return clean.length ? [...new Set(clean)] : [...API_SCOPES];
+  // Fail CLOSED: an empty/invalid scope list grants nothing, never everything.
+  // (Legacy keys carry the explicit 'companies,contacts,deals' DB default, so
+  // they keep working; only a deliberately empty list yields no access.)
+  return [...new Set(clean)];
 }
 export const scopesToString = (scopes: ApiScope[]): string => normalizeScopes(scopes).join(",");
 export const hasScope = (scopes: ApiScope[], needed: ApiScope): boolean => scopes.includes(needed);
