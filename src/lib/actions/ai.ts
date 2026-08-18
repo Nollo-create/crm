@@ -7,6 +7,7 @@ import { getCompanyAction, getDealAction } from "@/lib/actions/crm";
 import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes, getOrgFlags } from "@/lib/db";
 import { quoteNumber } from "@/lib/crm/quotes";
 import { eur } from "@/lib/format";
+import { guardedSystem, fenceData, sanitizeForPrompt } from "@/lib/ai/prompt-guard";
 import {
   ANALYSIS_FOCUS,
   isAnalysisFocus,
@@ -78,14 +79,19 @@ export async function aiAssistantAction(question: string, history: ChatTurn[] = 
   if (!q) return { text: "", enabled: true };
   const ctx = await snapshot().catch(() => "");
   // Keep the last few turns for follow-up continuity ("and which of those…").
+  // History comes from the client, so it's untrusted and gets fenced too.
   const priorTurns = (history || [])
     .slice(-6)
     .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${String(t.text || "").slice(0, 1000)}`)
     .join("\n");
-  const prior = priorTurns ? `Conversation so far:\n${priorTurns}\n\n` : "";
+  const prompt = [
+    fenceData("workspace_snapshot", ctx),
+    priorTurns ? fenceData("conversation_so_far", priorTurns) : "",
+    `Question: ${sanitizeForPrompt(q, 2000)}`,
+  ].filter(Boolean).join("\n\n");
   return aiComplete({
-    system: "You are a concise B2B sales assistant inside the Sajtpress CRM. Use the workspace snapshot to ground your answer; be practical and brief. If the user asks a follow-up, use the conversation so far for context. If numbers aren't in the snapshot, say you don't have them rather than guessing.",
-    prompt: `Workspace snapshot:\n${ctx}\n\n${prior}Question: ${q}`,
+    system: guardedSystem("You are a concise B2B sales assistant inside the Sajtpress CRM. Use the workspace snapshot to ground your answer; be practical and brief. If the user asks a follow-up, use the conversation so far for context. If numbers aren't in the snapshot, say you don't have them rather than guessing."),
+    prompt,
     maxTokens: 700,
   });
 }
@@ -106,8 +112,8 @@ export async function companyAnalysisAction(companyId: number, focus: AnalysisFo
   ].join("\n");
   const focusLine = ANALYSIS_FOCUS[isAnalysisFocus(focus) ? focus : "general"];
   return aiComplete({
-    system: `You are a B2B account strategist. ${focusLine} Reply in plain text with those short sections. Be concrete; base it only on the data given.`,
-    prompt: ctx,
+    system: guardedSystem(`You are a B2B account strategist. ${focusLine} Reply in plain text with those short sections. Be concrete; base it only on the data given.`),
+    prompt: fenceData("company_record", ctx),
     maxTokens: 900,
   });
 }
@@ -126,8 +132,8 @@ export async function dealInsightAction(dealId: number): Promise<AiOut> {
     `Recent activity: ${detail.activities.slice(0, 6).map((a) => `${a.type}: ${a.summary}`).join("; ") || "none"}`,
   ].filter(Boolean).join("\n");
   return aiComplete({
-    system: "You are a B2B deal coach. Analyse this single deal and reply in plain text with short sections: Momentum (one line), Risks (2 bullets), Next best move (one line). Be concrete and base it only on the data given.",
-    prompt: ctx,
+    system: guardedSystem("You are a B2B deal coach. Analyse this single deal and reply in plain text with short sections: Momentum (one line), Risks (2 bullets), Next best move (one line). Be concrete and base it only on the data given."),
+    prompt: fenceData("deal_record", ctx),
     maxTokens: 700,
   });
 }
@@ -163,8 +169,8 @@ export async function outreachDraftAction(input: {
       : `Write a ${TONE_WORD[tone]} B2B outreach email: a Subject line, then a ${length === "short" ? "3-4" : "4-6"} sentence body.`;
 
   return aiComplete({
-    system: `You draft ${TONE_WORD[tone]} B2B outreach. ${format} Reply in plain text. Use the given details — never leave placeholders like [Name]. This is a DRAFT for the rep to review and send manually; do not claim it was sent.`,
-    prompt: ctx,
+    system: guardedSystem(`You draft ${TONE_WORD[tone]} B2B outreach. ${format} Reply in plain text. Use the given details — never leave placeholders like [Name]. This is a DRAFT for the rep to review and send manually; do not claim it was sent.`),
+    prompt: fenceData("recipient_details", ctx),
     maxTokens: 500,
   });
 }
