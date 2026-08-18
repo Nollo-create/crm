@@ -61,7 +61,7 @@ import {
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
-import { validated, vString, vInt } from "@/lib/crm/validate";
+import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
@@ -372,8 +372,17 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.name?.trim()) return { error: "The company needs a name." };
-  await updateCompany(organizationId, id, { ...input, name: input.name.trim() });
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 190 }),
+    industry: vString("Industry", input.industry, { max: 120 }),
+    city: vString("City", input.city, { max: 120 }),
+    website: vString("Website", input.website, { max: 190 }),
+    accountManager: vString("Account manager", input.accountManager, { max: 120 }),
+    employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
+    annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
+  }));
+  if (!v.ok) return { error: v.error };
+  await updateCompany(organizationId, id, { ...input, ...v.value });
   revalidatePath(`/companies/${id}`);
   revalidatePath("/companies");
   return {};
@@ -385,8 +394,18 @@ export async function updateCompanyDetailsAction(id: number, input: CompanyDetai
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
+  const v = validated(() => ({
+    legalName: vString("Legal name", input.legalName, { max: 190 }),
+    phone: vString("Phone", input.phone, { max: 40 }),
+    email: vEmail("Email", input.email),
+    country: vString("Country", input.country, { max: 120 }),
+    address: vString("Address", input.address, { max: 500 }),
+    vatId: vString("VAT / Tax ID", input.vatId, { max: 40 }),
+    description: vString("Description", input.description, { max: 2000 }),
+  }));
+  if (!v.ok) return { error: v.error };
   if (!(await getCompany(organizationId, id))) return { error: "Company not found." };
-  await updateCompanyDetails(organizationId, id, input);
+  await updateCompanyDetails(organizationId, id, v.value);
   revalidatePath(`/companies/${id}`);
   return {};
 }
@@ -434,9 +453,19 @@ export async function addContactAction(companyId: number, input: ContactInput): 
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.name?.trim()) return { error: "The contact needs a name." };
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 190 }),
+    role: vString("Role", input.role, { max: 120 }),
+    email: vEmail("Email", input.email),
+    phone: vString("Phone", input.phone, { max: 40 }),
+    mobile: vString("Mobile", input.mobile, { max: 40 }),
+    department: vString("Department", input.department, { max: 120 }),
+    linkedin: vString("LinkedIn", input.linkedin, { max: 190 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+  }));
+  if (!v.ok) return { error: v.error };
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
-  await addContact(organizationId, companyId, { ...input, name: input.name.trim() });
+  await addContact(organizationId, companyId, { ...input, ...v.value });
   revalidatePath(`/companies/${companyId}`);
   return {};
 }
@@ -475,8 +504,18 @@ export async function updateContactAction(id: number, companyId: number, input: 
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.name?.trim()) return { error: "The contact needs a name." };
-  await updateContact(organizationId, id, { ...input, name: input.name.trim() });
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 190 }),
+    role: vString("Role", input.role, { max: 120 }),
+    email: vEmail("Email", input.email),
+    phone: vString("Phone", input.phone, { max: 40 }),
+    mobile: vString("Mobile", input.mobile, { max: 40 }),
+    department: vString("Department", input.department, { max: 120 }),
+    linkedin: vString("LinkedIn", input.linkedin, { max: 190 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+  }));
+  if (!v.ok) return { error: v.error };
+  await updateContact(organizationId, id, { ...input, ...v.value });
   revalidatePath(`/contacts/${id}`);
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/contacts");
@@ -543,10 +582,16 @@ export async function createDealAction(companyId: number, input: DealInput): Pro
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.title?.trim()) return { error: "The deal needs a title." };
+  const v = validated(() => ({
+    title: vString("Title", input.title, { required: true, max: 190 }),
+    owner: vString("Owner", input.owner, { max: 120 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+    value: vInt("Value", input.value, { min: 0, max: 1_000_000_000 }) ?? 0,
+  }));
+  if (!v.ok) return { error: v.error };
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   const stage = input.stage && isStageId(input.stage) ? input.stage : "new";
-  await createDeal(organizationId, companyId, { ...input, title: input.title.trim(), stage });
+  await createDeal(organizationId, companyId, { ...input, ...v.value, stage });
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -621,6 +666,14 @@ export async function updateDealAction(
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
+  const check = validated(() => {
+    if (patch.title !== undefined) vString("Title", patch.title, { required: true, max: 190 });
+    vString("Owner", patch.owner, { max: 120 });
+    vString("Notes", patch.notes, { max: 2000 });
+    if (patch.value !== undefined) vInt("Value", patch.value, { min: 0, max: 1_000_000_000 });
+    return true;
+  });
+  if (!check.ok) return { error: check.error };
   await updateDeal(organizationId, id, patch);
   revalidatePath(`/deals/${id}`);
   revalidatePath("/deals");
@@ -699,9 +752,10 @@ export async function addActivityAction(input: {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.summary?.trim()) return { error: "Write what happened." };
+  const v = validated(() => ({ summary: vString("Summary", input.summary, { required: true, max: 2000 }) }));
+  if (!v.ok) return { error: v.error };
   if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
-  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim(), contactId: input.contactId ?? null, dealId: input.dealId ?? null });
+  await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: v.value.summary, contactId: input.contactId ?? null, dealId: input.dealId ?? null });
   revalidatePath(`/companies/${input.companyId}`);
   if (input.contactId) revalidatePath(`/contacts/${input.contactId}`);
   if (input.dealId) revalidatePath(`/deals/${input.dealId}`);

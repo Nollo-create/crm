@@ -19,6 +19,7 @@ import {
 } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isQuoteStatus, quoteNumber } from "@/lib/crm/quotes";
+import { validated, vString, vInt } from "@/lib/crm/validate";
 
 const ymd = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
@@ -138,6 +139,8 @@ export async function updateQuoteAction(id: number, patch: { notes?: string; val
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
+  const check = validated(() => { vString("Notes", patch.notes, { max: 2000 }); return true; });
+  if (!check.ok) return { error: check.error };
   await updateQuote(organizationId, id, patch);
   revalidatePath(`/quotes/${id}`);
   return {};
@@ -155,15 +158,20 @@ export async function addQuoteItemAction(quoteId: number, item: { productId?: nu
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!item?.name?.trim()) return { error: "The line needs a name." };
+  const v = validated(() => ({
+    name: vString("Line name", item.name, { required: true, max: 200 }),
+    quantity: vInt("Quantity", item.quantity, { min: 1, max: 100000 }) ?? 1,
+  }));
+  if (!v.ok) return { error: v.error };
+  if (!Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) return { error: "Unit price must be a positive number." };
   const q = await getQuote(organizationId, quoteId);
   if (!q) return { error: "Quote not found." };
   if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };
   await addQuoteItem(organizationId, quoteId, {
     productId: item.productId ?? null,
-    name: item.name.trim(),
-    unitPriceCents: Math.round((Number(item.unitPrice) || 0) * 100),
-    quantity: item.quantity,
+    name: v.value.name,
+    unitPriceCents: Math.round(Number(item.unitPrice) * 100),
+    quantity: v.value.quantity,
   });
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath("/quotes");

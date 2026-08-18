@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createTask, listTasksPage, setTaskDone, updateTask, deleteTask, getCompany, type TaskStatsRow } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isTaskPriority } from "@/lib/crm/tasks";
+import { validated, vString } from "@/lib/crm/validate";
 
 export interface Task {
   id: number;
@@ -74,12 +75,16 @@ export async function createTaskAction(input: {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.title?.trim()) return { error: "The task needs a title." };
+  const v = validated(() => ({
+    title: vString("Title", input.title, { required: true, max: 190 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+  }));
+  if (!v.ok) return { error: v.error };
   const priority = input.priority && isTaskPriority(input.priority) ? input.priority : "normal";
   if (input.companyId && !(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
   const id = await createTask(organizationId, {
-    title: input.title.trim(),
-    notes: input.notes,
+    title: v.value.title,
+    notes: v.value.notes,
     dueDate: input.dueDate || null,
     priority,
     companyId: input.companyId || null,
@@ -100,7 +105,12 @@ export async function updateTaskAction(id: number, patch: { title?: string; note
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (patch.title !== undefined && !patch.title.trim()) return { error: "The task needs a title." };
+  const check = validated(() => {
+    if (patch.title !== undefined) vString("Title", patch.title, { required: true, max: 190 });
+    vString("Notes", patch.notes, { max: 2000 });
+    return true;
+  });
+  if (!check.ok) return { error: check.error };
   const priority = patch.priority && isTaskPriority(patch.priority) ? patch.priority : undefined;
   await updateTask(organizationId, id, { ...patch, priority });
   revalidatePath("/tasks");

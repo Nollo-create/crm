@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createProduct, updateProduct, setProductActive, deleteProduct, duplicateProduct, listProductsPage, type ProductStatsRow } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isBilling } from "@/lib/crm/products";
+import { validated, vString } from "@/lib/crm/validate";
 
 export interface Product {
   id: number;
@@ -78,12 +79,24 @@ const toInput = (p: ProductDTO) => ({
   active: p.active,
 });
 
+function validateProduct(input: ProductDTO): { ok: true; value: ProductDTO } | { ok: false; error: string } {
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 190 }),
+    sku: vString("SKU", input.sku, { max: 60 }),
+    description: vString("Description", input.description, { max: 2000 }),
+  }));
+  if (!v.ok) return v;
+  if (input.price != null && (!Number.isFinite(Number(input.price)) || Number(input.price) < 0)) return { ok: false, error: "Price must be a positive number." };
+  return { ok: true, value: { ...input, ...v.value } };
+}
+
 export async function createProductAction(input: ProductDTO): Promise<{ id?: number; error?: string }> {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.name?.trim()) return { error: "The product needs a name." };
-  const id = await createProduct(organizationId, toInput(input));
+  const v = validateProduct(input);
+  if (!v.ok) return { error: v.error };
+  const id = await createProduct(organizationId, toInput(v.value));
   revalidatePath("/products");
   return { id };
 }
@@ -92,8 +105,9 @@ export async function updateProductAction(id: number, input: ProductDTO): Promis
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  if (!input?.name?.trim()) return { error: "The product needs a name." };
-  await updateProduct(organizationId, id, toInput(input));
+  const v = validateProduct(input);
+  if (!v.ok) return { error: v.error };
+  await updateProduct(organizationId, id, toInput(v.value));
   revalidatePath("/products");
   return {};
 }

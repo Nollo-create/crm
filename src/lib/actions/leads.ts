@@ -186,12 +186,24 @@ export async function updateLeadAction(id: number, input: LeadInputDTO): Promise
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
-  const name = (input.name ?? "").trim();
-  const company = (input.company ?? "").trim();
-  if (!name && !company) return { error: "A lead needs a name or a company." };
+  const v = validated(() => ({
+    name: vString("Name", input.name, { max: 190 }),
+    company: vString("Company", input.company, { max: 190 }),
+    title: vString("Title", input.title, { max: 120 }),
+    email: vEmail("Email", input.email),
+    phone: vString("Phone", input.phone, { max: 40 }),
+    website: vString("Website", input.website, { max: 190 }),
+    industry: vString("Industry", input.industry, { max: 120 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+    owner: vString("Owner", input.owner, { max: 120 }),
+    employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
+    annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
+  }));
+  if (!v.ok) return { error: v.error };
+  if (!v.value.name && !v.value.company) return { error: "A lead needs a name or a company." };
   const source = input.source && isLeadSource(input.source) ? input.source : "other";
   const priority = input.priority && isLeadPriority(input.priority) ? input.priority : "normal";
-  await updateLead(organizationId, id, { ...input, name, company, source, priority });
+  await updateLead(organizationId, id, { ...input, ...v.value, source, priority });
   revalidatePath(`/leads/${id}`);
   revalidatePath("/leads");
   return {};
