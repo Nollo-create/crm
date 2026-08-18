@@ -110,6 +110,40 @@ export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: numb
   return { id };
 }
 
+/** Bulk-create leads from a parsed CSV (source = 'import'). Capped, fail-safe per
+ *  row. A row needs a name or a company to count. */
+export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created: number; skipped: number }> {
+  const { organizationId } = await requireSession();
+  let created = 0;
+  let skipped = 0;
+  for (const r of rows.slice(0, 500)) {
+    const name = (r.name ?? "").trim();
+    const company = (r.company ?? "").trim();
+    if (!name && !company) {
+      skipped++;
+      continue;
+    }
+    try {
+      await createLead(organizationId, {
+        name,
+        company,
+        title: r.title,
+        email: r.email,
+        phone: r.phone,
+        website: r.website,
+        industry: r.industry,
+        source: "import",
+        status: "new",
+      });
+      created++;
+    } catch {
+      skipped++;
+    }
+  }
+  if (created > 0) revalidatePath("/leads");
+  return { created, skipped };
+}
+
 export async function setLeadStatusAction(id: number, status: string): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   if (!isLeadStatus(status)) return { error: "Unknown status." };

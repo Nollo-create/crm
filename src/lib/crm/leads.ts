@@ -15,13 +15,14 @@ export function isLeadStatus(v: string): v is LeadStatus {
   return (LEAD_STATUSES as string[]).includes(v);
 }
 
-export type LeadSource = "web" | "referral" | "event" | "cold" | "other";
-export const LEAD_SOURCES: LeadSource[] = ["web", "referral", "event", "cold", "other"];
+export type LeadSource = "web" | "referral" | "event" | "cold" | "import" | "other";
+export const LEAD_SOURCES: LeadSource[] = ["web", "referral", "event", "cold", "import", "other"];
 export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   web: "Website",
   referral: "Referral",
   event: "Event",
   cold: "Cold outreach",
+  import: "Imported",
   other: "Other",
 };
 export function isLeadSource(v: string): v is LeadSource {

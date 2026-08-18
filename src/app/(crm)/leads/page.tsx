@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Sparkles, ArrowRight } from "lucide-react";
+import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Sparkles, ArrowRight, Upload } from "lucide-react";
 import {
   leadsPageAction,
   createLeadAction,
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { LeadImport } from "@/components/crm/lead-import";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,7 @@ export default function LeadsPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowAdd(true);
   }, []);
@@ -156,10 +158,22 @@ export default function LeadsPage() {
           <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} lead{total === 1 ? "" : "s"} to qualify</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-          <Plus size={15} /> Add lead
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => { setShowImport((v) => !v); setShowAdd(false); }}>
+            <Upload size={14} /> Import
+          </Button>
+          <Button size="sm" onClick={() => { setShowAdd((v) => !v); setShowImport(false); }}>
+            <Plus size={15} /> Add lead
+          </Button>
+        </div>
       </div>
+
+      {showImport && (
+        <LeadImport
+          onDone={() => { setShowImport(false); setPage(1); refetch(); }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {showAdd && (
         <Card className="space-y-3 p-4">
