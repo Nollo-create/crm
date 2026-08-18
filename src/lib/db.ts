@@ -2169,6 +2169,9 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_audit_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Request context on each audit event (added later; idempotent for prod).
+      await ensureColumn(pool, "crm_audit_logs", "ip", "ip VARCHAR(45) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_audit_logs", "user_agent", "user_agent VARCHAR(255) NOT NULL DEFAULT ''");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_api_keys (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2481,6 +2484,8 @@ export interface AuditRow extends mysql.RowDataPacket {
   entity: string;
   entity_id: number | null;
   summary: string;
+  ip: string;
+  user_agent: string;
   created_at: Date;
 }
 
@@ -2492,13 +2497,25 @@ export interface AuditEntry {
   entity: string;
   entityId?: number | null;
   summary?: string;
+  ip?: string;
+  userAgent?: string;
 }
 
 export async function writeAudit(e: AuditEntry): Promise<void> {
   await ensureAuthSchema();
   await getPool().query(
-    "INSERT INTO crm_audit_logs (organization_id, user_id, actor_email, action, entity, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [e.organizationId, e.userId, e.actorEmail.slice(0, 190), e.action.slice(0, 40), e.entity.slice(0, 40), e.entityId ?? null, (e.summary ?? "").slice(0, 255)]
+    "INSERT INTO crm_audit_logs (organization_id, user_id, actor_email, action, entity, entity_id, summary, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      e.organizationId,
+      e.userId,
+      e.actorEmail.slice(0, 190),
+      e.action.slice(0, 40),
+      e.entity.slice(0, 40),
+      e.entityId ?? null,
+      (e.summary ?? "").slice(0, 255),
+      (e.ip ?? "").slice(0, 45),
+      (e.userAgent ?? "").slice(0, 255),
+    ]
   );
 }
 

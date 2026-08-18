@@ -11,6 +11,7 @@ export interface AuditEvent {
   entity: string;
   entityId: number | null;
   summary: string;
+  ip: string;
   createdAt: string;
 }
 
@@ -25,6 +26,7 @@ export async function listAuditLogsAction(): Promise<AuditEvent[]> {
     entity: r.entity,
     entityId: r.entity_id,
     summary: r.summary,
+    ip: r.ip ?? "",
     createdAt: new Date(r.created_at).toISOString(),
   }));
 }

@@ -23,6 +23,9 @@ const ACTION_LABEL: Record<string, string> = {
   billing_update: "updated",
   login: "signed in",
   login_sso: "signed in via SSO",
+  login_failed: "failed to sign in",
+  logout: "signed out",
+  setup: "set up the workspace",
 };
 
 const verb = (action: string) => ACTION_LABEL[action] ?? action.replace(/_/g, " ");
@@ -55,7 +58,7 @@ export function AuditViewer() {
       (e) =>
         (action === "all" || e.action === action) &&
         (actor === "all" || e.actorEmail === actor) &&
-        (!needle || [e.actorEmail, e.entity, e.summary, e.action].some((v) => v?.toLowerCase().includes(needle)))
+        (!needle || [e.actorEmail, e.entity, e.summary, e.action, e.ip].some((v) => v?.toLowerCase().includes(needle)))
     );
   }, [events, action, actor, q]);
 
@@ -113,9 +116,11 @@ export function AuditViewer() {
                 <div className="min-w-0">
                   <p>
                     <span className="font-medium">{e.actorEmail || "system"}</span>{" "}
-                    <span className="text-muted-foreground">{phrase(e)}</span>
+                    <span className={e.action === "login_failed" ? "text-danger" : "text-muted-foreground"}>{phrase(e)}</span>
                   </p>
-                  {e.summary && <p className="truncate text-2xs text-muted-foreground">{e.summary}</p>}
+                  <p className="truncate text-2xs text-muted-foreground">
+                    {[e.summary, e.ip && `IP ${e.ip}`].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
                 <span className="shrink-0 text-2xs text-muted-foreground">{timeAgo(e.createdAt)}</span>
               </li>

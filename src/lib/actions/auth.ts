@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { countUsers, createOrganization, createUser, getUserByEmail, setUserLastLogin } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { startSession, endSession } from "@/lib/auth/session";
+import { startSession, endSession, getSession } from "@/lib/auth/session";
+import { recordAuthEvent } from "@/lib/auth/audit";
 import { checkRateLimit, resetRateLimit, retryMessage } from "@/lib/rate-limit";
 
 /** Best-effort client IP from the proxy chain (cPanel/Passenger sets these). */
@@ -51,6 +52,7 @@ export async function setupAction(input: { orgName: string; name: string; email:
   const passwordHash = await hashPassword(input.password);
   const userId = await createUser({ organizationId: orgId, email, name: input.name.trim(), passwordHash, role: "owner" });
   await startSession(userId, orgId);
+  await recordAuthEvent({ organizationId: orgId, userId, actorEmail: email, action: "setup", summary: `created organization ${orgName}` });
   return { ok: true };
 }
 
@@ -75,17 +77,29 @@ export async function loginAction(input: { email: string; password: string }): P
   }
   // Always run a verify to keep timing uniform whether or not the user exists.
   const ok = await verifyPassword(input.password, user?.password_hash ?? DUMMY_HASH);
-  if (!user || !ok) return { error: "Invalid email or password." };
+  if (!user || !ok) {
+    // Record a failed attempt only against a real account (we then know the org);
+    // unknown emails are left unlogged to avoid enumeration noise.
+    if (user && !ok) {
+      await recordAuthEvent({ organizationId: user.organization_id, userId: user.id, actorEmail: user.email, action: "login_failed", summary: "wrong password" });
+    }
+    return { error: "Invalid email or password." };
+  }
 
   // Success: clear this user's/IP's counters so earlier fumbles don't linger.
   resetRateLimit(emailKey);
   resetRateLimit(ipKey);
   await startSession(user.id, user.organization_id);
   await setUserLastLogin(user.id).catch(() => {});
+  await recordAuthEvent({ organizationId: user.organization_id, userId: user.id, actorEmail: user.email, action: "login" });
   return { ok: true };
 }
 
 export async function logoutAction(): Promise<void> {
+  const session = await getSession().catch(() => null);
+  if (session) {
+    await recordAuthEvent({ organizationId: session.organizationId, userId: session.userId, actorEmail: session.email, action: "logout" });
+  }
   await endSession();
   redirect("/login");
 }
