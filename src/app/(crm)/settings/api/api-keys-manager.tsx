@@ -27,6 +27,7 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
   const { toast } = useToast();
   const router = useRouter();
   const [name, setName] = useState("");
+  const [pw, setPw] = useState("");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [reveal, setReveal] = useState<string | null>(null);
@@ -54,11 +55,12 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
 
   async function create() {
     setCreating(true);
-    const r = await createApiKeyAction(name);
+    const r = await createApiKeyAction(name, pw);
     setCreating(false);
     if (r.error) return toast(r.error, { tone: "error" });
     setReveal(r.plain ?? null);
     setName("");
+    setPw("");
     router.refresh();
   }
   async function toggle(id: number, enabled: boolean) {
@@ -117,11 +119,15 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
       {/* Create */}
       {data.canManage && (
         <Card className="flex flex-wrap items-end gap-2 p-4">
-          <label className="flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
+          <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
             New key label
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zapier, internal script" className="mt-1" />
           </label>
-          <Button size="sm" onClick={create} disabled={creating}>
+          <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
+            Your password
+            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Confirm it's you" className="mt-1" autoComplete="current-password" />
+          </label>
+          <Button size="sm" onClick={create} disabled={creating || !pw}>
             {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create key
           </Button>
         </Card>

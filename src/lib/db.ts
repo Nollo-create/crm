@@ -2503,6 +2503,11 @@ export async function setUserLastLogin(id: number): Promise<void> {
   await getPool().query("UPDATE crm_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
 }
 
+export async function updateUserPassword(userId: number, passwordHash: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET password_hash = ? WHERE id = ?", [passwordHash, userId]);
+}
+
 export async function listUsers(orgId: number): Promise<UserRow[]> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<UserRow[]>(

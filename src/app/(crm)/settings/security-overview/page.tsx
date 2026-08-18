@@ -38,6 +38,7 @@ const ACTION_LABEL: Record<string, string> = {
   apikey_disable: "API key disabled",
   session_revoke: "Session revoked",
   session_revoke_all: "Signed out other sessions",
+  password_change: "Password changed",
   mfa_enable: "Two-factor enabled",
   mfa_disable: "Two-factor disabled",
   force_logout_all: "Forced sign-out (all)",

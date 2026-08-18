@@ -30,6 +30,7 @@ const ACTION_LABEL: Record<string, string> = {
   setup: "set up the workspace",
   session_revoke: "revoked a",
   session_revoke_all: "revoked other",
+  password_change: "changed the password for",
   mfa_enable: "turned on 2FA for",
   mfa_disable: "turned off 2FA for",
   mfa_recovery_regen: "regenerated recovery codes for",

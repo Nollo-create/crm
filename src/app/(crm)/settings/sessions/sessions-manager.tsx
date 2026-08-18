@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { MfaCard } from "@/components/crm/mfa-card";
+import { PasswordCard } from "@/components/crm/password-card";
 
 const isMobile = (device: string) => /iphone|ipad|android/i.test(device);
 
@@ -66,6 +67,7 @@ export function SessionsManager() {
       </div>
 
       <MfaCard />
+      <PasswordCard />
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <p className="text-sm font-semibold">Active sessions</p>
