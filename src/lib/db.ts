@@ -2572,3 +2572,33 @@ export async function listAuditLogs(orgId: number, limit = 100): Promise<AuditRo
   );
   return rows;
 }
+
+export interface SecurityOverviewMetrics {
+  activeSessions: number;
+  staleSessions: number;
+  failedLogins24h: number;
+  users: number;
+  admins: number;
+  apiKeysEnabled: number;
+  apiKeysIdle: number;
+}
+
+/** Measured, org-scoped inputs for the security score. All parameterized COUNTs. */
+export async function securityOverview(orgId: number): Promise<SecurityOverviewMetrics> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  const one = async (sql: string): Promise<number> => {
+    const [rows] = await pool.query<mysql.RowDataPacket[]>(sql, [orgId]);
+    return Number(rows[0]?.n ?? 0);
+  };
+  const [activeSessions, staleSessions, failedLogins24h, users, admins, apiKeysEnabled, apiKeysIdle] = await Promise.all([
+    one("SELECT COUNT(*) AS n FROM crm_sessions WHERE organization_id = ? AND expires_at > NOW()"),
+    one("SELECT COUNT(*) AS n FROM crm_sessions WHERE organization_id = ? AND expires_at > NOW() AND COALESCE(last_used_at, created_at) < NOW() - INTERVAL 30 DAY"),
+    one("SELECT COUNT(*) AS n FROM crm_audit_logs WHERE organization_id = ? AND action = 'login_failed' AND created_at >= NOW() - INTERVAL 24 HOUR"),
+    one("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ?"),
+    one("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ? AND role IN ('owner','admin')"),
+    one("SELECT COUNT(*) AS n FROM crm_api_keys WHERE organization_id = ? AND enabled = 1"),
+    one("SELECT COUNT(*) AS n FROM crm_api_keys WHERE organization_id = ? AND enabled = 1 AND COALESCE(last_used_at, created_at) < NOW() - INTERVAL 90 DAY"),
+  ]);
+  return { activeSessions, staleSessions, failedLogins24h, users, admins, apiKeysEnabled, apiKeysIdle };
+}
