@@ -67,6 +67,7 @@ export interface IntegrationStatus {
   cookieDomain: string;
   hasSecret: boolean;
   reachable: boolean;
+  cronConfigured: boolean;
 }
 
 export async function integrationStatusAction(): Promise<IntegrationStatus> {
@@ -80,5 +81,6 @@ export async function integrationStatusAction(): Promise<IntegrationStatus> {
     cookieDomain: integration.cookieDomain,
     hasSecret: integration.secret !== "",
     reachable,
+    cronConfigured: !!process.env.CRON_SECRET,
   };
 }

@@ -59,6 +59,20 @@ export default async function IntegrationsPage() {
         )}
       </Card>
 
+      <Card className="p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <Plug size={15} className="text-electric" /> Scheduled jobs
+        </p>
+        <div className="mt-3 divide-y divide-border">
+          <Row label="Cron seam" ok={s.cronConfigured} value={s.cronConfigured ? "configured" : "not configured"} />
+        </div>
+        <p className="mt-3 text-2xs text-muted-foreground">
+          {s.cronConfigured
+            ? "Automations and follow-ups run on schedule. You can still trigger them manually anytime."
+            : <>Set <code className="text-foreground">CRON_SECRET</code> and point a cron job at <code className="text-foreground">/api/cron/tick</code> so automations run on their own. Until then, use “Run now”.</>}
+        </p>
+      </Card>
+
       <p className="text-2xs text-muted-foreground">
         Email, calendar, Stripe and outbound webhooks are on the roadmap and appear here once available.
       </p>

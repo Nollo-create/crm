@@ -2,6 +2,7 @@ import { Check, Minus } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can, ROLES, type Permission } from "@/lib/auth/rbac";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export default async function RolesPage() {
     );
   }
 
+  const me = session.role;
+
   return (
     <div className="space-y-4">
       <div>
@@ -39,8 +42,11 @@ export default async function RolesPage() {
 
       <div className="grid gap-2 sm:grid-cols-3">
         {ROLES.map((r) => (
-          <Card key={r} className="p-3">
-            <p className="text-sm font-semibold capitalize">{r}</p>
+          <Card key={r} className={cn("p-3", r === me && "border-electric ring-1 ring-electric/30")}>
+            <p className="flex items-center gap-1.5 text-sm font-semibold capitalize">
+              {r}
+              {r === me && <span className="rounded-full bg-electric/12 px-1.5 py-0.5 text-[10px] font-medium text-electric">You</span>}
+            </p>
             <p className="mt-1 text-2xs text-muted-foreground">{ROLE_DESC[r]}</p>
           </Card>
         ))}
@@ -53,7 +59,7 @@ export default async function RolesPage() {
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Permission</th>
                 {ROLES.map((r) => (
-                  <th key={r} className="px-3 py-2 text-center font-medium capitalize">{r}</th>
+                  <th key={r} className={cn("px-3 py-2 text-center font-medium capitalize", r === me && "bg-electric/[0.06] text-electric")}>{r}</th>
                 ))}
               </tr>
             </thead>
@@ -62,7 +68,7 @@ export default async function RolesPage() {
                 <tr key={p.key}>
                   <td className="px-3 py-2.5">{p.label}</td>
                   {ROLES.map((r) => (
-                    <td key={r} className="px-3 py-2.5 text-center">
+                    <td key={r} className={cn("px-3 py-2.5 text-center", r === me && "bg-electric/[0.06]")}>
                       {can(r, p.key) ? (
                         <Check size={15} className="mx-auto text-emerald" />
                       ) : (

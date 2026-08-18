@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Loader2, UserPlus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Loader2, UserPlus, Search } from "lucide-react";
 import { listUsersAction, inviteUserAction, setUserRoleAction, setUserStatusAction, type OrgUser } from "@/lib/actions/users";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
@@ -22,6 +22,20 @@ export function UsersManager({ currentUserId, currentRole }: { currentUserId: nu
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "member", password: "" });
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return users.filter(
+      (u) =>
+        (roleFilter === "all" || u.role === roleFilter) &&
+        (statusFilter === "all" || u.status === statusFilter) &&
+        (!needle || (u.name || "").toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle))
+    );
+  }, [users, q, roleFilter, statusFilter]);
+  const activeCount = useMemo(() => users.filter((u) => u.status === "active").length, [users]);
 
   async function load() {
     setLoading(true);
@@ -97,6 +111,27 @@ export function UsersManager({ currentUserId, currentRole }: { currentUserId: nu
         </Card>
       )}
 
+      {!loading && users.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[160px] flex-1 sm:max-w-xs">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Search users…" value={q} onChange={(e) => setQ(e.target.value)} className="h-9 pl-8" />
+          </div>
+          <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="h-9 w-auto text-xs">
+            <option value="all">All roles</option>
+            <option value="owner">Owner</option>
+            <option value="admin">Admin</option>
+            <option value="member">Member</option>
+          </Select>
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 w-auto text-xs">
+            <option value="all">Any status</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </Select>
+          <span className="ml-auto text-2xs text-muted-foreground">{users.length} user{users.length === 1 ? "" : "s"} · {activeCount} active</span>
+        </div>
+      )}
+
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
@@ -115,8 +150,12 @@ export function UsersManager({ currentUserId, currentRole }: { currentUserId: nu
                     <td className="px-3 py-3" colSpan={4}><Skeleton className="h-4 w-full" /></td>
                   </tr>
                 ))
+              ) : shown.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-12 text-center text-sm text-muted-foreground">No users match these filters.</td>
+                </tr>
               ) : (
-                users.map((u) => {
+                shown.map((u) => {
                   const self = u.id === currentUserId;
                   const canManageThis = currentRole === "owner" || u.role !== "owner";
                   return (
