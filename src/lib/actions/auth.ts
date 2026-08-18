@@ -2,15 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
-import { countUsers, createOrganization, createUser, getUserByEmail, getUserById, setUserLastLogin, createMfaChallenge, getMfaChallenge, deleteMfaChallenge } from "@/lib/db";
+import { countUsers, createOrganization, createUser, getUserByEmail, getUserById, setUserLastLogin, getMfaChallenge, deleteMfaChallenge } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { startSession, endSession, getSession } from "@/lib/auth/session";
-import { generateSessionToken, hashToken } from "@/lib/auth/tokens";
-import { MFA_COOKIE, MFA_CHALLENGE_TTL_MIN } from "@/lib/auth/constants";
+import { hashToken } from "@/lib/auth/tokens";
+import { issueMfaChallenge } from "@/lib/auth/mfa-challenge";
+import { MFA_COOKIE } from "@/lib/auth/constants";
 import { verifyUserMfaCode } from "@/lib/auth/mfa-verify";
 import { recordAuthEvent } from "@/lib/auth/audit";
 import { checkRateLimit, resetRateLimit, retryMessage } from "@/lib/rate-limit";
-import { integration } from "@/lib/config";
 
 /** Best-effort client IP from the proxy chain (cPanel/Passenger sets these). */
 async function clientIp(): Promise<string> {
@@ -60,20 +60,6 @@ export async function setupAction(input: { orgName: string; name: string; email:
   return { ok: true };
 }
 
-async function issueMfaChallenge(userId: number): Promise<void> {
-  const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + MFA_CHALLENGE_TTL_MIN * 60_000);
-  await createMfaChallenge(userId, hashToken(token), expiresAt);
-  const jar = await cookies();
-  jar.set(MFA_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires: expiresAt,
-    domain: integration.cookieDomain || undefined,
-  });
-}
 
 export async function loginAction(input: { email: string; password: string }): Promise<{ ok?: true; mfaRequired?: true; error?: string }> {
   const email = input.email.trim().toLowerCase();

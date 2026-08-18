@@ -7,15 +7,17 @@ import { loginAction, verifyLoginMfaAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function LoginForm() {
+export function LoginForm({ startMfa = false }: { startMfa?: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Second step (only for 2FA accounts).
-  const [mfa, setMfa] = useState(false);
+  // Second step (only for 2FA accounts). `startMfa` is set when the page loads
+  // with a pending challenge cookie (password login already advanced, or an SSO
+  // sign-in that must still complete 2FA).
+  const [mfa, setMfa] = useState(startMfa);
   const [code, setCode] = useState("");
 
   function done() {

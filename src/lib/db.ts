@@ -2857,7 +2857,7 @@ export interface AuditEntry {
 // Strip CR/LF and C0/C1 control chars from any user-influenced text before it
 // lands in the audit / alert feed, so a crafted name can't forge a second log
 // line (feed spoofing). Built from escapes to avoid raw control bytes in source.
-const AUDIT_CONTROL_RE = new RegExp("[\\u0000-\\u001F\\u007F-\\u009F]", "g");
+const AUDIT_CONTROL_RE = new RegExp("[\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]", "g");
 export function stripLogControl(s: string): string {
   return String(s ?? "").replace(AUDIT_CONTROL_RE, " ");
 }

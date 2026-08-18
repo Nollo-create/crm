@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { countUsers } from "@/lib/db";
 import { integration, isConnected } from "@/lib/config";
+import { MFA_COOKIE } from "@/lib/auth/constants";
 import { AuthShell } from "@/components/crm/auth-shell";
 import { LoginForm } from "./login-form";
 
@@ -20,11 +22,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { error } = await searchParams;
   const message = error ? ERRORS[error] ?? "Something went wrong." : "";
   const sso = isConnected(integration);
+  // A pending 2FA challenge (from password login OR the SSO callback) means we
+  // open directly on the TOTP step so the second factor is always completed.
+  const startMfa = !!(await cookies()).get(MFA_COOKIE)?.value;
 
   return (
     <AuthShell title="Sign in" subtitle="Welcome back to your workspace.">
       {message && <p className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{message}</p>}
-      <LoginForm />
+      <LoginForm startMfa={startMfa} />
       {sso && (
         <>
           <div className="my-3 flex items-center gap-2 text-2xs text-muted-foreground">

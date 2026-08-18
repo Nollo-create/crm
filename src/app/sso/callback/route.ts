@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySsoCode } from "@/lib/auth/sso";
 import { issueSession } from "@/lib/auth/session";
+import { createMfaChallengeCookie } from "@/lib/auth/mfa-challenge";
 import { getUserByEmail, setUserLastLogin, writeAudit } from "@/lib/db";
 import { SSO_STATE_COOKIE } from "@/lib/auth/constants";
 
@@ -29,6 +30,17 @@ export async function GET(req: NextRequest) {
 
   const user = await getUserByEmail(identity.email).catch(() => null);
   if (!user || user.status !== "active") return fail("no_account");
+
+  // If this account has 2FA on, DON'T issue a session here — the upstream IdP
+  // can't be trusted to have performed the CRM's second factor, and the handoff
+  // carries no MFA claim. Issue the same challenge the password path does and
+  // send the user to the TOTP step, so CRM 2FA holds regardless of the IdP.
+  if (user.totp_enabled) {
+    const c = await createMfaChallengeCookie(user.id);
+    const res = clearState(NextResponse.redirect(new URL("/login?mfa=1", origin)));
+    res.cookies.set(c.name, c.value, c.options);
+    return res;
+  }
 
   const session = await issueSession(user.id, user.organization_id);
   await setUserLastLogin(user.id).catch(() => {});

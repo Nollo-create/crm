@@ -27,9 +27,12 @@ export function isBlockedIp(ip: string): boolean {
       const v4 = `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`;
       if (isBlockedIp(v4)) return true;
     }
-    // Pure IPv6: block loopback/unspecified/ULA(fc/fd)/link-local(fe80)/multicast(ff).
+    // Pure IPv6: loopback/unspecified/ULA(fc/fd)/link-local(fe80::/10)/
+    // site-local(fec0::/10, deprecated)/multicast(ff).
     if (h === "::1" || h === "::") return true;
-    if (h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe8") || h.startsWith("fe9") || h.startsWith("fea") || h.startsWith("feb") || h.startsWith("ff")) return true;
+    if (h.startsWith("fc") || h.startsWith("fd") || h.startsWith("ff")) return true;
+    if (h.startsWith("fe8") || h.startsWith("fe9") || h.startsWith("fea") || h.startsWith("feb")) return true; // fe80::/10
+    if (h.startsWith("fec") || h.startsWith("fed") || h.startsWith("fee") || h.startsWith("fef")) return true; // fec0::/10
     return false;
   }
 
@@ -43,6 +46,7 @@ export function isBlockedIp(ip: string): boolean {
   if (a === 169 && b === 254) return true; // link-local + 169.254.169.254 metadata
   if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
   if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 192 && b === 0 && Number(m[3]) === 0) return true; // 192.0.0.0/24 special-use (incl. Oracle metadata 192.0.0.192)
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64.0.0/10
   if (a >= 224) return true; // multicast / reserved
   return false;

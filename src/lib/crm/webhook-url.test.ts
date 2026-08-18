@@ -80,7 +80,7 @@ describe("isSafeWebhookUrl", () => {
 
 describe("isBlockedIp (used on every DNS-resolved address before sending)", () => {
   it("blocks private / loopback / link-local / metadata / CGNAT / multicast", () => {
-    for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "172.31.255.255", "169.254.169.254", "0.0.0.0", "100.64.0.1", "224.0.0.1", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254"]) {
+    for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "172.31.255.255", "169.254.169.254", "0.0.0.0", "100.64.0.1", "224.0.0.1", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254", "fec0::1", "feff::1", "192.0.0.192"]) {
       expect(isBlockedIp(ip), ip).toBe(true);
     }
   });
