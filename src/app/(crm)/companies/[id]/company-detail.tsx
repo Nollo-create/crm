@@ -40,6 +40,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { eur, timeAgo } from "@/lib/format";
 import { customerMetrics, customerHealth } from "@/lib/crm/customer";
+import { TagEditor } from "@/components/crm/tag-editor";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = { lead: "Lead", active: "Active", customer: "Customer", at_risk: "At risk", lost: "Lost" };
@@ -223,6 +224,11 @@ export function CompanyDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Tags</span>
+        <TagEditor entityType="company" entityId={c.id} />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Main */}

@@ -234,6 +234,28 @@ export function ensureSchema(): Promise<void> {
           INDEX idx_arun_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_tags (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          name VARCHAR(60) NOT NULL DEFAULT '',
+          color VARCHAR(20) NOT NULL DEFAULT 'electric',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_tag_org_name (organization_id, name),
+          INDEX idx_tag_org (organization_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_entity_tags (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL DEFAULT 0,
+          tag_id INT UNSIGNED NOT NULL,
+          entity_type VARCHAR(16) NOT NULL DEFAULT '',
+          entity_id INT UNSIGNED NOT NULL,
+          UNIQUE KEY uq_entity_tag (organization_id, tag_id, entity_type, entity_id),
+          INDEX idx_entity_tags (organization_id, entity_type, entity_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Multi-tenancy: add organization_id to tables that predate it (existing
       // prod DB). New installs already have it from the CREATE statements above.
       await ensureColumn(pool, "crm_companies", "organization_id", "organization_id INT UNSIGNED NOT NULL DEFAULT 0");
@@ -426,6 +448,58 @@ export async function findSimilarCompanies(orgId: number, name: string, website:
     params
   );
   return rows;
+}
+
+// -------- tags (polymorphic: attach to companies/contacts/leads/deals)
+
+export interface TagRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  color: string;
+}
+export async function listTags(orgId: number): Promise<TagRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<TagRow[]>("SELECT id, name, color FROM crm_tags WHERE organization_id = ? ORDER BY name ASC", [orgId]);
+  return rows;
+}
+/** Create a tag, or return the existing one's id (idempotent per org+name). */
+export async function createTag(orgId: number, name: string, color: string): Promise<number> {
+  await ensureSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_tags (organization_id, name, color) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
+    [orgId, name.slice(0, 60), color.slice(0, 20)]
+  );
+  return res.insertId;
+}
+export async function tagsForEntity(orgId: number, entityType: string, entityId: number): Promise<TagRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<TagRow[]>(
+    `SELECT t.id, t.name, t.color FROM crm_entity_tags et
+       JOIN crm_tags t ON t.id = et.tag_id AND t.organization_id = et.organization_id
+      WHERE et.organization_id = ? AND et.entity_type = ? AND et.entity_id = ? ORDER BY t.name ASC`,
+    [orgId, entityType.slice(0, 16), entityId]
+  );
+  return rows;
+}
+/** Replace the full tag set on an entity, atomically. */
+export async function setEntityTags(orgId: number, entityType: string, entityId: number, tagIds: number[]): Promise<void> {
+  await ensureSchema();
+  const clean = tagIds.filter((n) => Number.isInteger(n)).slice(0, 50);
+  const type = entityType.slice(0, 16);
+  const conn = await getPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("DELETE FROM crm_entity_tags WHERE organization_id = ? AND entity_type = ? AND entity_id = ?", [orgId, type, entityId]);
+    for (const tagId of clean) {
+      await conn.query("INSERT IGNORE INTO crm_entity_tags (organization_id, tag_id, entity_type, entity_id) VALUES (?, ?, ?, ?)", [orgId, tagId, type, entityId]);
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function updateCompany(orgId: number, id: number, c: CompanyInput): Promise<void> {

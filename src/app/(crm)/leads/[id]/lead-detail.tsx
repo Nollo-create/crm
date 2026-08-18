@@ -21,6 +21,7 @@ import {
 } from "@/lib/crm/leads";
 import { leadScoreBreakdown, STAGES } from "@/lib/crm/pipeline";
 import { searchCompaniesAction, type SearchHit } from "@/lib/actions/crm";
+import { TagEditor } from "@/components/crm/tag-editor";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -202,6 +203,11 @@ export function LeadDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Tags</span>
+        <TagEditor entityType="lead" entityId={id} />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* Main */}

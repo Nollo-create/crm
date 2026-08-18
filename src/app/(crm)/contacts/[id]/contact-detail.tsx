@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { eur, timeAgo } from "@/lib/format";
 import { stageLabel } from "@/lib/crm/pipeline";
+import { TagEditor } from "@/components/crm/tag-editor";
 import { cn } from "@/lib/utils";
 
 const INFLUENCE: Record<string, { label: string; stars: number; tone: Tone }> = {
@@ -168,6 +169,11 @@ export function ContactDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Tags</span>
+        <TagEditor entityType="contact" entityId={id} />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* Main */}
