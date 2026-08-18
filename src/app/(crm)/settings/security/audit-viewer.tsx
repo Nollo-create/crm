@@ -12,6 +12,8 @@ const ACTION_LABEL: Record<string, string> = {
   create: "created",
   delete: "deleted",
   bulk_delete: "bulk-deleted",
+  bulk_update: "bulk-updated",
+  import: "imported",
   invite: "invited",
   role_change: "changed the role of",
   status_change: "changed the status of",

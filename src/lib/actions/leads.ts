@@ -113,7 +113,8 @@ export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: numb
 /** Bulk-create leads from a parsed CSV (source = 'import'). Capped, fail-safe per
  *  row. A row needs a name or a company to count. */
 export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created: number; skipped: number }> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   let created = 0;
   let skipped = 0;
   for (const r of rows.slice(0, 500)) {
@@ -140,7 +141,10 @@ export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created
       skipped++;
     }
   }
-  if (created > 0) revalidatePath("/leads");
+  if (created > 0) {
+    revalidatePath("/leads");
+    await recordAudit(session, "import", "lead", null, `${created} imported${skipped ? `, ${skipped} skipped` : ""}`);
+  }
   return { created, skipped };
 }
 
@@ -179,17 +183,19 @@ export async function deleteLeadAction(id: number): Promise<void> {
 }
 
 export async function bulkDeleteLeadsAction(ids: number[]): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
-  await bulkDeleteLeads(organizationId, ids);
+  const session = await requireSession();
+  await bulkDeleteLeads(session.organizationId, ids);
   revalidatePath("/leads");
+  await recordAudit(session, "bulk_delete", "lead", null, `${ids.length} lead${ids.length === 1 ? "" : "s"}`);
   return {};
 }
 
 export async function bulkSetLeadStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
   if (!isLeadStatus(status) || status === "converted") return { error: "Pick a status." };
-  await bulkSetLeadStatus(organizationId, ids, status);
+  await bulkSetLeadStatus(session.organizationId, ids, status);
   revalidatePath("/leads");
+  await recordAudit(session, "bulk_update", "lead", null, `set ${status} on ${ids.length}`);
   return {};
 }
 

@@ -618,12 +618,13 @@ export async function bulkDeleteDealsAction(ids: number[]): Promise<{ error?: st
 }
 
 export async function bulkSetDealStageAction(ids: number[], stage: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
   if (!isStageId(stage) || stage === "won" || stage === "lost") return { error: "Pick an open stage." };
-  await bulkSetDealStage(organizationId, ids, stage);
+  await bulkSetDealStage(session.organizationId, ids, stage);
   revalidatePath("/deals");
   revalidatePath("/pipeline");
   revalidatePath("/");
+  await recordAudit(session, "bulk_update", "deal", null, `set ${stage} on ${ids.length}`);
   return {};
 }
 

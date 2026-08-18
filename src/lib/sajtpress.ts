@@ -14,15 +14,23 @@ import "server-only";
 // so the CMS already works.
 
 import { integration, isConnected } from "./config";
+import { buildInternalUrl } from "./crm/internal-url";
 
+// SSRF invariant: the CRM only ever calls its configured webapp origin, on
+// code-defined `/api/internal/*` paths — never a user- or AI-supplied URL. The
+// guard (pure + unit-tested in crm/internal-url) refuses anything off-origin;
+// redirect:"error" below stops a redirect from pivoting off it mid-flight.
 async function callWebapp(path: string, init: RequestInit, timeoutMs = 5000): Promise<Response | null> {
   if (!isConnected(integration)) return null;
+  const target = buildInternalUrl(integration.webappUrl, path);
+  if (!target) return null;
   try {
-    return await fetch(`${integration.webappUrl}${path}`, {
+    return await fetch(target, {
       ...init,
       headers: { ...(init.headers ?? {}), "x-internal-secret": integration.secret },
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
+      redirect: "error", // never follow a redirect off the internal origin
     });
   } catch {
     return null;
