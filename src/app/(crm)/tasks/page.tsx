@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Loader2, Trash2, X, ChevronLeft, ChevronRight, Building2, CalendarClock } from "lucide-react";
+import { Plus, Search, Loader2, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Building2, CalendarClock } from "lucide-react";
 import {
   tasksPageAction,
   createTaskAction,
   toggleTaskDoneAction,
+  updateTaskAction,
   deleteTaskAction,
   type Task,
 } from "@/lib/actions/tasks";
@@ -61,8 +62,11 @@ export default function TasksPage() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [doneFilter, setDoneFilter] = useState("open");
+  const [due, setDue] = useState("");
   const [priority, setPriority] = useState("");
   const [sortId, setSortId] = useState("due");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", dueDate: "", priority: "normal", notes: "" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [reloadKey, setReloadKey] = useState(0);
@@ -89,7 +93,7 @@ export default function TasksPage() {
     setLoading(true);
     const sort = SORTS.find((s) => s.id === sortId) ?? SORTS[0];
     const done = DONE_FILTERS.find((f) => f.id === doneFilter)?.done;
-    tasksPageAction({ q: debouncedQ, done, priority, sortKey: sort.key, sortDir: sort.dir, page, pageSize })
+    tasksPageAction({ q: debouncedQ, done, priority, due: due || undefined, sortKey: sort.key, sortDir: sort.dir, page, pageSize })
       .then((res) => {
         if (cancelled) return;
         setRows(res.rows);
@@ -110,7 +114,7 @@ export default function TasksPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, doneFilter, priority, sortId, page, pageSize, reloadKey]);
+  }, [debouncedQ, doneFilter, priority, due, sortId, page, pageSize, reloadKey]);
 
   const refetch = () => setReloadKey((k) => k + 1);
 
@@ -163,6 +167,19 @@ export default function TasksPage() {
   async function remove(t: Task) {
     await deleteTaskAction(t.id);
     toast("Task deleted", { tone: "success" });
+    refetch();
+  }
+
+  function startEdit(t: Task) {
+    setEditForm({ title: t.title, dueDate: t.dueDate ?? "", priority: t.priority, notes: t.notes });
+    setEditingId(t.id);
+  }
+  async function saveEdit(id: number) {
+    if (!editForm.title.trim()) return;
+    const r = await updateTaskAction(id, { title: editForm.title, dueDate: editForm.dueDate || null, priority: editForm.priority, notes: editForm.notes });
+    if (r.error) return toast(r.error, { tone: "error" });
+    setEditingId(null);
+    toast("Task updated", { tone: "success" });
     refetch();
   }
 
@@ -239,6 +256,12 @@ export default function TasksPage() {
             </button>
           ))}
         </div>
+        <Select value={due} onChange={(e) => { setDue(e.target.value); setPage(1); }} className="h-9 w-auto text-xs">
+          <option value="">Any due date</option>
+          <option value="overdue">Overdue</option>
+          <option value="today">Due today</option>
+          <option value="week">This week</option>
+        </Select>
         <Select value={priority} onChange={(e) => { setPriority(e.target.value); setPage(1); }} className="h-9 w-auto text-xs">
           <option value="">Any priority</option>
           {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>)}
@@ -268,24 +291,45 @@ export default function TasksPage() {
                 >
                   {t.done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5" /></svg>}
                 </button>
-                <div className="min-w-0 flex-1">
-                  <p className={cn("text-sm font-medium", t.done && "line-through")}>{t.title}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-2xs">
-                    {t.priority === "high" && <Badge tone={PRIORITY_TONE.high}>High</Badge>}
-                    {due && !t.done && (
-                      <span className={cn("inline-flex items-center gap-1", due.tone === "danger" ? "text-danger" : due.tone === "warning" ? "text-warning" : "text-muted-foreground")}>
-                        <CalendarClock size={11} /> {due.label}
-                      </span>
-                    )}
-                    {t.companyId && t.companyName && (
-                      <button onClick={() => router.push(`/companies/${t.companyId}`)} className="inline-flex items-center gap-1 text-muted-foreground hover:text-electric">
-                        <Building2 size={11} /> {t.companyName}
-                      </button>
-                    )}
-                    {t.notes && <span className="truncate text-muted-foreground">{t.notes}</span>}
+                {editingId === t.id ? (
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="h-9" onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t.id); }} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="h-9 w-auto" />
+                      <Select value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })} className="h-9 w-auto text-xs">
+                        {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]} priority</option>)}
+                      </Select>
+                      <div className="ml-auto flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}><X size={14} /></Button>
+                        <Button size="sm" onClick={() => saveEdit(t.id)} disabled={!editForm.title.trim()}><Check size={14} /> Save</Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <button onClick={() => remove(t)} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete task"><Trash2 size={14} /></button>
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className={cn("text-sm font-medium", t.done && "line-through")}>{t.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-2xs">
+                        {t.priority === "high" && <Badge tone={PRIORITY_TONE.high}>High</Badge>}
+                        {due && !t.done && (
+                          <span className={cn("inline-flex items-center gap-1", due.tone === "danger" ? "text-danger" : due.tone === "warning" ? "text-warning" : "text-muted-foreground")}>
+                            <CalendarClock size={11} /> {due.label}
+                          </span>
+                        )}
+                        {t.companyId && t.companyName && (
+                          <button onClick={() => router.push(`/companies/${t.companyId}`)} className="inline-flex items-center gap-1 text-muted-foreground hover:text-electric">
+                            <Building2 size={11} /> {t.companyName}
+                          </button>
+                        )}
+                        {t.notes && <span className="truncate text-muted-foreground">{t.notes}</span>}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button onClick={() => startEdit(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-electric" title="Edit task"><Pencil size={13} /></button>
+                      <button onClick={() => remove(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete task"><Trash2 size={14} /></button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createTask, listTasksPage, setTaskDone, deleteTask, getCompany, type TaskStatsRow } from "@/lib/db";
+import { createTask, listTasksPage, setTaskDone, updateTask, deleteTask, getCompany, type TaskStatsRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { isTaskPriority } from "@/lib/crm/tasks";
 
@@ -44,6 +44,7 @@ export async function tasksPageAction(opts: {
   q?: string;
   done?: boolean;
   priority?: string;
+  due?: string;
   sortKey: string;
   sortDir: 1 | -1;
   page: number;
@@ -54,6 +55,7 @@ export async function tasksPageAction(opts: {
     q: opts.q?.trim() || undefined,
     done: opts.done,
     priority: opts.priority || undefined,
+    due: opts.due || undefined,
     sortKey: opts.sortKey,
     sortDir: opts.sortDir,
     page: opts.page,
@@ -87,6 +89,15 @@ export async function createTaskAction(input: {
 export async function toggleTaskDoneAction(id: number, done: boolean): Promise<{ error?: string }> {
   const { organizationId } = await requireSession();
   await setTaskDone(organizationId, id, done);
+  revalidatePath("/tasks");
+  return {};
+}
+
+export async function updateTaskAction(id: number, patch: { title?: string; notes?: string; dueDate?: string | null; priority?: string }): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  if (patch.title !== undefined && !patch.title.trim()) return { error: "The task needs a title." };
+  const priority = patch.priority && isTaskPriority(patch.priority) ? patch.priority : undefined;
+  await updateTask(organizationId, id, { ...patch, priority });
   revalidatePath("/tasks");
   return {};
 }

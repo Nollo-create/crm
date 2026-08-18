@@ -1441,7 +1441,7 @@ export interface TasksPageResult {
 
 export async function listTasksPage(
   orgId: number,
-  opts: { q?: string; done?: boolean; priority?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+  opts: { q?: string; done?: boolean; priority?: string; due?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
 ): Promise<TasksPageResult> {
   await ensureSchema();
   const where: string[] = ["t.organization_id = ?"];
@@ -1458,6 +1458,10 @@ export async function listTasksPage(
     where.push("t.priority = ?");
     params.push(opts.priority);
   }
+  // Due-date windows (static SQL, no user input) — for the Overdue/Today/Week tabs.
+  if (opts.due === "overdue") where.push("t.due_date IS NOT NULL AND t.due_date < CURDATE()");
+  else if (opts.due === "today") where.push("t.due_date = CURDATE()");
+  else if (opts.due === "week") where.push("t.due_date IS NOT NULL AND t.due_date >= CURDATE() AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)");
   const joinSql = "FROM crm_tasks t LEFT JOIN crm_companies co ON co.id = t.company_id AND co.organization_id = t.organization_id";
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const pool = getPool();
@@ -1477,6 +1481,19 @@ export async function listTasksPage(
 export async function setTaskDone(orgId: number, id: number, done: boolean): Promise<void> {
   await ensureSchema();
   await getPool().query("UPDATE crm_tasks SET done = ? WHERE id = ? AND organization_id = ?", [done ? 1 : 0, id, orgId]);
+}
+
+export async function updateTask(orgId: number, id: number, patch: { title?: string; notes?: string; dueDate?: string | null; priority?: string }): Promise<void> {
+  await ensureSchema();
+  const sets: string[] = [];
+  const vals: (string | number | null)[] = [];
+  if (patch.title !== undefined) { sets.push("title=?"); vals.push(patch.title.slice(0, 300)); }
+  if (patch.notes !== undefined) { sets.push("notes=?"); vals.push((patch.notes ?? "").slice(0, 500)); }
+  if (patch.dueDate !== undefined) { sets.push("due_date=?"); vals.push(patch.dueDate || null); }
+  if (patch.priority !== undefined) { sets.push("priority=?"); vals.push(patch.priority.slice(0, 10)); }
+  if (!sets.length) return;
+  vals.push(id, orgId);
+  await getPool().query(`UPDATE crm_tasks SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`, vals);
 }
 
 export async function deleteTask(orgId: number, id: number): Promise<void> {
