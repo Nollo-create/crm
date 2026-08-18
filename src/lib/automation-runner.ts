@@ -1,6 +1,7 @@
 import "server-only";
 import {
   listEnabledAutomations,
+  getAutomation,
   createTask,
   openTaskExists,
   logAutomationRun,
@@ -69,4 +70,23 @@ export async function runAutomationsForOrg(orgId: number): Promise<{ automationI
     out.push({ automationId: a.id, created });
   }
   return out;
+}
+
+/** Run a single automation now (the per-row "Run" button). Logs the run like a
+ *  tick would, so it shows up in the activity log too. Returns tasks created. */
+export async function runSingleAutomation(orgId: number, id: number): Promise<number> {
+  const a = await getAutomation(orgId, id);
+  if (!a) return 0;
+  return runOne(orgId, a).catch(() => 0);
+}
+
+/** How many tasks a rule would target right now — the raw signal count (capped,
+ *  before dedup against existing open tasks). Read-only: creates nothing. */
+export async function previewAutomation(orgId: number, templateKey: string, rawParams: Record<string, unknown>): Promise<number> {
+  const p = normalizeParams(templateKey, rawParams);
+  if (templateKey === "followup_inactive") return (await nbaStaleAccounts(orgId, Number(p.days) || 30, CAP).catch(() => [])).length;
+  if (templateKey === "chase_overdue_deals") return (await nbaOverdueDeals(orgId, CAP).catch(() => [])).length;
+  if (templateKey === "chase_sent_quotes") return (await nbaAgingQuotes(orgId, Number(p.days) || 7, CAP).catch(() => [])).length;
+  if (templateKey === "work_new_leads") return (await nbaHotLeads(orgId, Number(p.minScore) || 60, CAP).catch(() => [])).length;
+  return 0;
 }

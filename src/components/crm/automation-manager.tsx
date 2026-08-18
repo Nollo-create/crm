@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Loader2, Trash2, X, Zap, Play } from "lucide-react";
+import { Plus, Loader2, Trash2, X, Zap, Play, Eye, Clock, CheckCircle2 } from "lucide-react";
 import {
   listAutomationsAction,
   createAutomationAction,
   toggleAutomationAction,
   deleteAutomationAction,
   runAutomationsNowAction,
+  runOneAutomationNowAction,
+  previewAutomationAction,
+  automationStatusAction,
   type Automation,
 } from "@/lib/actions/automation";
 import { AUTOMATION_TEMPLATES, type AutomationCategory } from "@/lib/crm/automation";
@@ -30,6 +33,10 @@ export function AutomationManager({ title, subtitle, category }: { title: string
   const [params, setParams] = useState<Record<string, string | number>>({});
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runningId, setRunningId] = useState<number | null>(null);
+  const [cronConfigured, setCronConfigured] = useState<boolean | null>(null);
+  const [preview, setPreview] = useState<number | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const template = AUTOMATION_TEMPLATES.find((t) => t.key === templateKey) ?? templates[0];
 
@@ -49,9 +56,35 @@ export function AutomationManager({ title, subtitle, category }: { title: string
     // reset params to the selected template's defaults
     if (!template) return;
     setParams(Object.fromEntries(template.params.map((p) => [p.key, p.default])));
+    setPreview(null);
   }, [templateKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    automationStatusAction().then((s) => setCronConfigured(s.cronConfigured)).catch(() => setCronConfigured(null));
+  }, []);
+
   const refetch = () => setReloadKey((k) => k + 1);
+
+  function setParam(key: string, value: string) {
+    setParams((prev) => ({ ...prev, [key]: value }));
+    setPreview(null); // params changed — stale preview no longer valid
+  }
+
+  async function doPreview() {
+    if (!template) return;
+    setPreviewing(true);
+    const r = await previewAutomationAction(template.key, params).catch(() => ({ count: 0 }));
+    setPreviewing(false);
+    setPreview(r.count);
+  }
+
+  async function runOne(a: Automation) {
+    setRunningId(a.id);
+    const r = await runOneAutomationNowAction(a.id).catch(() => ({ created: 0 }));
+    setRunningId(null);
+    toast(r.created > 0 ? `${r.created} task${r.created === 1 ? "" : "s"} created` : "Nothing to do right now", { tone: "success" });
+    refetch();
+  }
 
   async function create() {
     if (!template) return;
@@ -98,6 +131,12 @@ export function AutomationManager({ title, subtitle, category }: { title: string
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+          {cronConfigured !== null && (
+            <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium", cronConfigured ? "bg-emerald/10 text-emerald" : "bg-warning/10 text-warning")}>
+              {cronConfigured ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+              {cronConfigured ? "Scheduled — runs automatically" : "Manual only — schedule not configured"}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <Button size="sm" variant="outline" onClick={runNow} disabled={running}>
@@ -122,21 +161,33 @@ export function AutomationManager({ title, subtitle, category }: { title: string
               <label key={p.key} className="block text-2xs uppercase tracking-wide text-muted-foreground">
                 {p.label}
                 {p.kind === "priority" ? (
-                  <Select value={String(params[p.key] ?? p.default)} onChange={(e) => setParams({ ...params, [p.key]: e.target.value })} className="mt-1 h-9">
+                  <Select value={String(params[p.key] ?? p.default)} onChange={(e) => setParam(p.key, e.target.value)} className="mt-1 h-9">
                     <option value="low">Low</option>
                     <option value="normal">Normal</option>
                     <option value="high">High</option>
                   </Select>
                 ) : (
-                  <Input type="number" value={String(params[p.key] ?? p.default)} onChange={(e) => setParams({ ...params, [p.key]: e.target.value })} className="mt-1 h-9" />
+                  <Input type="number" value={String(params[p.key] ?? p.default)} onChange={(e) => setParam(p.key, e.target.value)} className="mt-1 h-9" />
                 )}
               </label>
             ))}
           </div>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={create} disabled={busy}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 text-2xs text-muted-foreground">
+              {previewing ? (
+                <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Checking…</span>
+              ) : preview !== null ? (
+                <span>Would create <span className="font-semibold text-foreground">up to {preview}</span> task{preview === 1 ? "" : "s"} now{preview > 0 ? " (before dedup)" : ""}.</span>
+              ) : (
+                <span>Preview how many tasks this would create right now.</span>
+              )}
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <Button size="sm" variant="outline" onClick={doPreview} disabled={previewing || busy}><Eye size={14} /> Preview</Button>
+              <Button size="sm" onClick={create} disabled={busy}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create
+              </Button>
+            </div>
           </div>
         </Card>
       )}
@@ -157,6 +208,9 @@ export function AutomationManager({ title, subtitle, category }: { title: string
                   {a.lastRunAt ? ` · ran ${timeAgo(a.lastRunAt)} · ${a.createdCount} created` : " · never run"}
                 </p>
               </div>
+              <button onClick={() => runOne(a)} disabled={runningId === a.id} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground disabled:opacity-50" title="Run now">
+                {runningId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              </button>
               <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-2xs text-muted-foreground">
                 <input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} className="h-3.5 w-3.5 accent-electric" />
                 {a.enabled ? "On" : "Off"}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { listAutomations, createAutomation, toggleAutomation, deleteAutomation, listAutomationRuns, type AutomationRow, type AutomationRunRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { isTemplateKey, normalizeParams, getTemplate, type AutomationCategory } from "@/lib/crm/automation";
-import { runAutomationsForOrg } from "@/lib/automation-runner";
+import { runAutomationsForOrg, runSingleAutomation, previewAutomation } from "@/lib/automation-runner";
 
 export interface Automation {
   id: number;
@@ -78,6 +78,29 @@ export async function runAutomationsNowAction(): Promise<{ created: number }> {
   const results = await runAutomationsForOrg(organizationId);
   revalidatePath("/automation/notifications");
   return { created: results.reduce((s, x) => s + x.created, 0) };
+}
+
+/** Run a single automation now (the per-row "Run" button). */
+export async function runOneAutomationNowAction(id: number): Promise<{ created: number }> {
+  const { organizationId } = await requireSession();
+  const created = await runSingleAutomation(organizationId, id);
+  revalidatePath("/automation/notifications");
+  return { created };
+}
+
+/** Dry-run: how many tasks a template + params would target right now. Read-only. */
+export async function previewAutomationAction(templateKey: string, params?: Record<string, unknown>): Promise<{ count: number }> {
+  const { organizationId } = await requireSession();
+  if (!isTemplateKey(templateKey)) return { count: 0 };
+  const count = await previewAutomation(organizationId, templateKey, params ?? {});
+  return { count };
+}
+
+/** Whether the scheduled cron seam is configured (a boolean only — never the
+ *  secret). Lets the UI show live vs manual-only status honestly. */
+export async function automationStatusAction(): Promise<{ cronConfigured: boolean }> {
+  await requireSession();
+  return { cronConfigured: !!process.env.CRON_SECRET };
 }
 
 export interface AutomationRunItem {

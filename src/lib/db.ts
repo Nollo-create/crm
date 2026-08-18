@@ -1947,6 +1947,11 @@ export async function listEnabledAutomations(orgId: number): Promise<AutomationR
   const [rows] = await getPool().query<AutomationRow[]>("SELECT * FROM crm_automations WHERE organization_id = ? AND enabled = 1 ORDER BY id ASC", [orgId]);
   return rows;
 }
+export async function getAutomation(orgId: number, id: number): Promise<AutomationRow | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<AutomationRow[]>("SELECT * FROM crm_automations WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  return rows[0] ?? null;
+}
 export async function createAutomation(orgId: number, a: { templateKey: string; name: string; params: Record<string, unknown> }): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
