@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ const NOUN: Record<string, [string, string]> = {
 export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: ActivityType }) {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [singular, plural] = fixedType ? NOUN[fixedType] : ["activity", "activities"];
 
   const [rows, setRows] = useState<ActivityFeedItem[]>([]);
@@ -164,12 +166,14 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
             {!fixedType && " across your accounts"}
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-          <Plus size={15} /> Log {singular}
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <Plus size={15} /> Log {singular}
+          </Button>
+        )}
       </div>
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">Log {singular}</p>
@@ -271,7 +275,7 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-2xs text-muted-foreground">{timeAgo(a.createdAt)}</span>
-                    <button onClick={() => remove(a.id)} className="text-muted-foreground opacity-0 transition-opacity hover:text-danger group-hover:opacity-100" title={`Delete ${singular}`} aria-label="Delete"><Trash2 size={13} /></button>
+                    {canWrite && <button onClick={() => remove(a.id)} className="text-muted-foreground opacity-0 transition-opacity hover:text-danger group-hover:opacity-100" title={`Delete ${singular}`} aria-label="Delete"><Trash2 size={13} /></button>}
                   </div>
                 </li>
               );

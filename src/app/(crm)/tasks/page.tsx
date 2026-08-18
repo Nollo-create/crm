@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 const PRIORITY_TONE: Record<string, Tone> = { high: "danger", normal: "neutral", low: "neutral" };
@@ -55,6 +56,7 @@ const emptyForm = { title: "", dueDate: "", priority: "normal", notes: "", compa
 export default function TasksPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<Task[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -194,12 +196,14 @@ export default function TasksPage() {
           <h1 className="text-xl font-semibold tracking-tight">Tasks</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} task{total === 1 ? "" : "s"}</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-          <Plus size={15} /> Add task
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <Plus size={15} /> Add task
+          </Button>
+        )}
       </div>
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New task</p>
@@ -285,9 +289,10 @@ export default function TasksPage() {
             return (
               <div key={t.id} className={cn("flex items-start gap-3 rounded-xl border border-border bg-card p-3", t.done && "opacity-60")}>
                 <button
-                  onClick={() => toggle(t)}
-                  className={cn("mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors", t.done ? "border-emerald bg-emerald text-white" : "border-border hover:border-electric")}
-                  aria-label={t.done ? "Mark not done" : "Mark done"}
+                  onClick={() => canWrite && toggle(t)}
+                  disabled={!canWrite}
+                  className={cn("mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors", t.done ? "border-emerald bg-emerald text-white" : "border-border", canWrite && !t.done && "hover:border-electric", !canWrite && "cursor-default")}
+                  aria-label={t.done ? "Done" : "Not done"}
                 >
                   {t.done && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5" /></svg>}
                 </button>
@@ -324,10 +329,12 @@ export default function TasksPage() {
                         {t.notes && <span className="truncate text-muted-foreground">{t.notes}</span>}
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button onClick={() => startEdit(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-electric" title="Edit task"><Pencil size={13} /></button>
-                      <button onClick={() => remove(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete task"><Trash2 size={14} /></button>
-                    </div>
+                    {canWrite && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button onClick={() => startEdit(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-electric" title="Edit task"><Pencil size={13} /></button>
+                        <button onClick={() => remove(t)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete task"><Trash2 size={14} /></button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

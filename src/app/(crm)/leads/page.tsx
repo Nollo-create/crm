@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { LeadImport } from "@/components/crm/lead-import";
 import { SavedViews } from "@/components/crm/saved-views";
 import { eur } from "@/lib/format";
@@ -42,6 +43,7 @@ function scoreClass(sc: number) {
 export default function LeadsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -196,24 +198,26 @@ export default function LeadsPage() {
           <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} lead{total === 1 ? "" : "s"} to qualify</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={() => { setShowImport((v) => !v); setShowAdd(false); }}>
-            <Upload size={14} /> Import
-          </Button>
-          <Button size="sm" onClick={() => { setShowAdd((v) => !v); setShowImport(false); }}>
-            <Plus size={15} /> Add lead
-          </Button>
-        </div>
+        {canWrite && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => { setShowImport((v) => !v); setShowAdd(false); }}>
+              <Upload size={14} /> Import
+            </Button>
+            <Button size="sm" onClick={() => { setShowAdd((v) => !v); setShowImport(false); }}>
+              <Plus size={15} /> Add lead
+            </Button>
+          </div>
+        )}
       </div>
 
-      {showImport && (
+      {canWrite && showImport && (
         <LeadImport
           onDone={() => { setShowImport(false); setPage(1); refetch(); }}
           onClose={() => setShowImport(false)}
         />
       )}
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New lead</p>
@@ -280,7 +284,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Bulk bar */}
-      {selected.size > 0 && (
+      {canWrite && selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -344,21 +348,25 @@ export default function LeadsPage() {
                           ) : (
                             <Badge tone="royal">Converted</Badge>
                           )
-                        ) : (
+                        ) : canWrite ? (
                           <Select value={l.status} onChange={(e) => changeStatus(l, e.target.value)} className="h-7 w-auto text-2xs">
                             {OPEN_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
                           </Select>
+                        ) : (
+                          <Badge tone={STATUS_TONE[l.status] ?? "neutral"}>{LEAD_STATUS_LABEL[l.status as keyof typeof LEAD_STATUS_LABEL] ?? l.status}</Badge>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center justify-end gap-1">
-                          {!converted && (
-                            <Button size="sm" variant="outline" onClick={() => convert(l)} title="Convert to a company">
-                              <Sparkles size={13} /> Convert <ArrowRight size={12} />
-                            </Button>
-                          )}
-                          <button onClick={() => remove(l)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete lead"><Trash2 size={14} /></button>
-                        </div>
+                        {canWrite && (
+                          <div className="flex items-center justify-end gap-1">
+                            {!converted && (
+                              <Button size="sm" variant="outline" onClick={() => convert(l)} title="Convert to a company">
+                                <Sparkles size={13} /> Convert <ArrowRight size={12} />
+                              </Button>
+                            )}
+                            <button onClick={() => remove(l)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete lead"><Trash2 size={14} /></button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

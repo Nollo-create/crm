@@ -5,10 +5,12 @@ import { Plus, X } from "lucide-react";
 import { listTagsAction, getEntityTagsAction, setEntityTagsAction, type Tag } from "@/lib/actions/tags";
 import { pickTagColor, tagClass } from "@/lib/crm/tags";
 import { Input } from "@/components/ui/input";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 /** Reusable tag chips + add/create popover for any entity (company/contact/lead/deal). */
 export function TagEditor({ entityType, entityId }: { entityType: "company" | "contact" | "lead" | "deal"; entityId: number }) {
+  const canWrite = useCanWrite();
   const [tags, setTags] = useState<Tag[]>([]);
   const [all, setAll] = useState<Tag[]>([]);
   const [open, setOpen] = useState(false);
@@ -55,9 +57,10 @@ export function TagEditor({ entityType, entityId }: { entityType: "company" | "c
       {tags.map((t) => (
         <span key={t.id} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium", tagClass(t.color))}>
           {t.name}
-          <button onClick={() => removeTag(t.id)} className="opacity-60 hover:opacity-100" aria-label={`Remove ${t.name}`}><X size={11} /></button>
+          {canWrite && <button onClick={() => removeTag(t.id)} className="opacity-60 hover:opacity-100" aria-label={`Remove ${t.name}`}><X size={11} /></button>}
         </span>
       ))}
+      {canWrite && (
       <div className="relative">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -90,6 +93,7 @@ export function TagEditor({ entityType, entityId }: { entityType: "company" | "c
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { eur, timeAgo } from "@/lib/format";
 import { stageLabel } from "@/lib/crm/pipeline";
 import { TagEditor } from "@/components/crm/tag-editor";
@@ -48,6 +49,7 @@ type Form = { name: string; role: string; department: string; email: string; pho
 
 export function ContactDetail({ id }: { id: number }) {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [d, setD] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -160,12 +162,16 @@ export function ContactDetail({ id }: { id: number }) {
             <a href={c.phone || c.mobile ? `tel:${c.phone || c.mobile}` : undefined} className={cn(!c.phone && !c.mobile && "pointer-events-none opacity-40")}>
               <Button size="icon" variant="ghost" title="Call"><Phone size={15} /></Button>
             </a>
-            <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
-              {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
-            </Button>
-            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Remove contact" onClick={remove}>
-              <Trash2 size={15} />
-            </Button>
+            {canWrite && (
+              <>
+                <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
+                  {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
+                </Button>
+                <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Remove contact" onClick={remove}>
+                  <Trash2 size={15} />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Card>

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { SavedViews } from "@/components/crm/saved-views";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const stageBadgeTone = (s: StageId): Tone => (STAGE_TONE[s] === "muted" ? "neutr
 export default function DealsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<BoardDeal[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -199,13 +201,15 @@ export default function DealsPage() {
           <Link href="/pipeline">
             <Button size="sm" variant="outline"><LayoutGrid size={14} /> Board</Button>
           </Link>
-          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-            <Plus size={15} /> New deal
-          </Button>
+          {canWrite && (
+            <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+              <Plus size={15} /> New deal
+            </Button>
+          )}
         </div>
       </div>
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New deal</p>
@@ -273,7 +277,7 @@ export default function DealsPage() {
       </div>
 
       {/* Bulk bar */}
-      {selected.size > 0 && (
+      {canWrite && selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -329,9 +333,13 @@ export default function DealsPage() {
                         <span className="ml-1 text-2xs text-muted-foreground">≈ {eur(weightedValue(d))}</span>
                       </td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <Select value={d.stage} onChange={(e) => changeStage(d, e.target.value)} className="h-7 w-auto text-2xs">
-                          {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </Select>
+                        {canWrite ? (
+                          <Select value={d.stage} onChange={(e) => changeStage(d, e.target.value)} className="h-7 w-auto text-2xs">
+                            {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                          </Select>
+                        ) : (
+                          <Badge tone={stageBadgeTone(d.stage as StageId)}>{stageLabel(d.stage as StageId)}</Badge>
+                        )}
                       </td>
                       <td className="px-3 py-2.5">
                         {close ? (
@@ -343,7 +351,7 @@ export default function DealsPage() {
                         )}
                       </td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => remove(d)} className="text-muted-foreground hover:text-danger" title="Delete deal"><Trash2 size={14} /></button>
+                        {canWrite && <button onClick={() => remove(d)} className="text-muted-foreground hover:text-danger" title="Delete deal"><Trash2 size={14} /></button>}
                       </td>
                     </tr>
                   );

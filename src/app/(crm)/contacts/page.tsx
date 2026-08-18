@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 const INFLUENCE: Record<string, { label: string; tone: Tone }> = {
@@ -34,6 +35,7 @@ const emptyForm = { name: "", role: "", email: "", phone: "", influence: "none",
 export default function ContactsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<ContactListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -146,12 +148,14 @@ export default function ContactsPage() {
           <h1 className="text-xl font-semibold tracking-tight">Contacts</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} contact{total === 1 ? "" : "s"} across your accounts</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-          <UserPlus size={15} /> Add contact
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <UserPlus size={15} /> Add contact
+          </Button>
+        )}
       </div>
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New contact</p>
@@ -265,7 +269,7 @@ export default function ContactsPage() {
                     </td>
                     <td className="px-3 py-2.5"><Badge tone={infl(c.influence).tone}>{infl(c.influence).label}</Badge></td>
                     <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => remove(c)} className="text-muted-foreground hover:text-danger" title="Remove contact"><Trash2 size={14} /></button>
+                      {canWrite && <button onClick={() => remove(c)} className="text-muted-foreground hover:text-danger" title="Remove contact"><Trash2 size={14} /></button>}
                     </td>
                   </tr>
                 ))
@@ -296,7 +300,7 @@ export default function ContactsPage() {
               <div className="mt-2 flex items-center gap-3 text-xs">
                 {c.email && <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 text-electric"><Mail size={12} /> Email</a>}
                 {c.phone && <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-muted-foreground"><Phone size={12} /> Call</a>}
-                <button onClick={() => remove(c)} className="ml-auto text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                {canWrite && <button onClick={() => remove(c)} className="ml-auto text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>}
               </div>
             </div>
           ))

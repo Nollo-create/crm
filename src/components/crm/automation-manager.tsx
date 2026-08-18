@@ -19,11 +19,13 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function AutomationManager({ title, subtitle, category }: { title: string; subtitle: string; category?: AutomationCategory }) {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const templates = category ? AUTOMATION_TEMPLATES.filter((t) => t.category === category) : AUTOMATION_TEMPLATES;
   const [rows, setRows] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,15 +140,17 @@ export function AutomationManager({ title, subtitle, category }: { title: string
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={runNow} disabled={running}>
-            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Run now
-          </Button>
-          <Button size="sm" onClick={() => setShowAdd((v) => !v)}><Plus size={15} /> Add automation</Button>
-        </div>
+        {canWrite && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={runNow} disabled={running}>
+              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Run now
+            </Button>
+            <Button size="sm" onClick={() => setShowAdd((v) => !v)}><Plus size={15} /> Add automation</Button>
+          </div>
+        )}
       </div>
 
-      {showAdd && template && (
+      {canWrite && showAdd && template && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New automation</p>
@@ -208,20 +212,24 @@ export function AutomationManager({ title, subtitle, category }: { title: string
                   {a.lastRunAt ? ` · ran ${timeAgo(a.lastRunAt)} · ${a.createdCount} created` : " · never run"}
                 </p>
               </div>
-              <button onClick={() => runOne(a)} disabled={runningId === a.id} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground disabled:opacity-50" title="Run now">
-                {runningId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              </button>
-              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-2xs text-muted-foreground">
-                <input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} className="h-3.5 w-3.5 accent-electric" />
-                {a.enabled ? "On" : "Off"}
-              </label>
-              <button onClick={() => remove(a)} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={14} /></button>
+              {canWrite && (
+                <>
+                  <button onClick={() => runOne(a)} disabled={runningId === a.id} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground disabled:opacity-50" title="Run now">
+                    {runningId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                  </button>
+                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-2xs text-muted-foreground">
+                    <input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} className="h-3.5 w-3.5 accent-electric" />
+                    {a.enabled ? "On" : "Off"}
+                  </label>
+                  <button onClick={() => remove(a)} className="grid h-7 w-7 shrink-0 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={14} /></button>
+                </>
+              )}
             </Card>
           ))}
         </div>
       )}
 
-      {!showAdd && templates.length > 0 && (
+      {canWrite && !showAdd && templates.length > 0 && (
         <div className="space-y-2 pt-1">
           <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Add from a template</p>
           <div className="grid gap-2 sm:grid-cols-2">

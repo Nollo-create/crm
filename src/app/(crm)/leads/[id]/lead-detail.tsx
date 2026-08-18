@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,7 @@ type Form = {
 
 export function LeadDetail({ id }: { id: number }) {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [l, setL] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -189,7 +191,7 @@ export function LeadDetail({ id }: { id: number }) {
             <a href={l.email ? `mailto:${l.email}` : undefined} className={cn(!l.email && "pointer-events-none opacity-40")}>
               <Button size="icon" variant="ghost" title="Email"><Mail size={15} /></Button>
             </a>
-            {!converted && (
+            {canWrite && !converted && (
               <>
                 <Select value={l.status} onChange={(e) => changeStatus(e.target.value)} className="h-8 w-auto text-xs">
                   {OPEN_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
@@ -199,7 +201,7 @@ export function LeadDetail({ id }: { id: number }) {
                 </Button>
               </>
             )}
-            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete lead" onClick={remove}><Trash2 size={15} /></Button>
+            {canWrite && <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete lead" onClick={remove}><Trash2 size={15} /></Button>}
           </div>
         </div>
       </Card>
@@ -294,7 +296,7 @@ export function LeadDetail({ id }: { id: number }) {
                   <Link href={`/companies/${l.convertedCompanyId}`} className="mt-2 block text-xs text-electric hover:underline">Open the company →</Link>
                 )}
               </div>
-            ) : !showConvert ? (
+            ) : !canWrite ? null : !showConvert ? (
               <>
                 <p className="mt-1 text-xs text-muted-foreground">Turn this qualified lead into a company (and a contact), optionally with a deal.</p>
                 <Button size="sm" className="mt-2 w-full" onClick={() => setShowConvert(true)}>

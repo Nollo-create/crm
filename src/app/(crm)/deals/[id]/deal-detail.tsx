@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { eur, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ type Form = { title: string; value: string; probability: string; expectedClose: 
 
 export function DealDetail({ id }: { id: number }) {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [d, setD] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -199,27 +201,29 @@ export function DealDetail({ id }: { id: number }) {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {closed ? (
-              <Button size="sm" variant="outline" onClick={reopen} disabled={busy}><RotateCcw size={13} /> Reopen</Button>
-            ) : (
-              <>
-                <Select value={dl.stage} onChange={(e) => changeStage(e.target.value)} className="h-8 w-auto text-xs">
-                  {OPEN_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                </Select>
-                <Button size="sm" className="bg-emerald text-white hover:bg-emerald/90" onClick={markWon} disabled={busy}><CheckCircle2 size={14} /> Won</Button>
-                <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setLostOpen((v) => !v)} disabled={busy}><XCircle size={14} /> Lost</Button>
-              </>
-            )}
-            <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
-              {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
-            </Button>
-            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete deal" onClick={remove}><Trash2 size={15} /></Button>
-          </div>
+          {canWrite && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {closed ? (
+                <Button size="sm" variant="outline" onClick={reopen} disabled={busy}><RotateCcw size={13} /> Reopen</Button>
+              ) : (
+                <>
+                  <Select value={dl.stage} onChange={(e) => changeStage(e.target.value)} className="h-8 w-auto text-xs">
+                    {OPEN_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </Select>
+                  <Button size="sm" className="bg-emerald text-white hover:bg-emerald/90" onClick={markWon} disabled={busy}><CheckCircle2 size={14} /> Won</Button>
+                  <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setLostOpen((v) => !v)} disabled={busy}><XCircle size={14} /> Lost</Button>
+                </>
+              )}
+              <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
+                {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
+              </Button>
+              <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete deal" onClick={remove}><Trash2 size={15} /></Button>
+            </div>
+          )}
         </div>
       </Card>
 
-      {lostOpen && !closed && (
+      {canWrite && lostOpen && !closed && (
         <Card className="flex flex-wrap items-end gap-2 border-danger/30 p-4">
           <label className="text-2xs uppercase tracking-wide text-muted-foreground">
             Loss reason

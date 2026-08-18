@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { CompanyDrawer } from "@/components/crm/company-drawer";
 import { BUILTIN_VIEWS, activeViewId, makeView, normalizeViews, type CompanyView, type CompanySortKey, type ViewState } from "@/lib/crm/views";
 import { eur, timeAgo } from "@/lib/format";
@@ -62,6 +63,7 @@ const allColsVisible = () => Object.fromEntries(COL_KEYS.map((k) => [k, true])) 
 
 export default function CompaniesPage() {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<CompanyRowView[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -302,9 +304,11 @@ export default function CompaniesPage() {
           <h1 className="text-xl font-semibold tracking-tight">Companies</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} account{total === 1 ? "" : "s"}</p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
-          <Plus size={15} /> New company
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
+            <Plus size={15} /> New company
+          </Button>
+        )}
       </div>
 
       {/* Saved views */}
@@ -365,7 +369,7 @@ export default function CompaniesPage() {
         )}
       </div>
 
-      {showCreate && (
+      {canWrite && showCreate && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New company</p>
@@ -412,7 +416,7 @@ export default function CompaniesPage() {
       )}
 
       {/* Toolbar / bulk bar */}
-      {selected.size > 0 ? (
+      {canWrite && selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -602,14 +606,16 @@ export default function CompaniesPage() {
       )}
 
       {/* Mobile FAB — primary create action */}
-      <button
-        onClick={() => { setShowCreate(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-        className="fixed right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-electric text-white shadow-glow transition-transform active:scale-95 md:hidden"
-        style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
-        aria-label="New company"
-      >
-        <Plus size={24} />
-      </button>
+      {canWrite && (
+        <button
+          onClick={() => { setShowCreate(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+          className="fixed right-4 z-20 grid h-14 w-14 place-items-center rounded-full bg-electric text-white shadow-glow transition-transform active:scale-95 md:hidden"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
+          aria-label="New company"
+        >
+          <Plus size={24} />
+        </button>
+      )}
 
       <CompanyDrawer id={peek} onClose={() => setPeek(null)} onChanged={refetch} />
     </div>

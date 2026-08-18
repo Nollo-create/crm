@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<string, Tone> = { draft: "neutral", sent: "electric", accepted: "emerald", declined: "danger" };
@@ -20,6 +21,7 @@ const money = (euros: number) => "€" + euros.toLocaleString("en-US", { minimum
 export default function QuotesPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<Quote[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -115,10 +117,10 @@ export default function QuotesPage() {
           <h1 className="text-xl font-semibold tracking-tight">Quotes</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} quote{total === 1 ? "" : "s"}</p>
         </div>
-        <Button size="sm" onClick={() => setShowAdd((v) => !v)}><Plus size={15} /> New quote</Button>
+        {canWrite && <Button size="sm" onClick={() => setShowAdd((v) => !v)}><Plus size={15} /> New quote</Button>}
       </div>
 
-      {showAdd && (
+      {canWrite && showAdd && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">New quote</p>

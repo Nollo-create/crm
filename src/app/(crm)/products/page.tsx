@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 const emptyForm = { name: "", sku: "", price: "", billing: "onetime", description: "", active: true };
@@ -31,6 +32,7 @@ const ACTIVE_FILTERS = [
 
 export default function ProductsPage() {
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [rows, setRows] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -161,10 +163,10 @@ export default function ProductsPage() {
           <h1 className="text-xl font-semibold tracking-tight">Products</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{total} product{total === 1 ? "" : "s"} in your catalog</p>
         </div>
-        <Button size="sm" onClick={openCreate}><Plus size={15} /> Add product</Button>
+        {canWrite && <Button size="sm" onClick={openCreate}><Plus size={15} /> Add product</Button>}
       </div>
 
-      {showForm && (
+      {canWrite && showForm && (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">{editingId ? "Edit product" : "New product"}</p>
@@ -249,12 +251,14 @@ export default function ProductsPage() {
                     <td className="px-3 py-2.5 text-muted-foreground tabular">{p.quoteUses > 0 ? `${p.quoteUses} quote${p.quoteUses === 1 ? "" : "s"}` : "—"}</td>
                     <td className="px-3 py-2.5"><Badge tone={p.active ? "emerald" : "neutral"}>{p.active ? "Active" : "Archived"}</Badge></td>
                     <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Edit"><Pencil size={13} /></button>
-                        <button onClick={() => duplicate(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
-                        <button onClick={() => toggleActive(p)} className="rounded px-1.5 text-2xs text-muted-foreground hover:text-foreground" title={p.active ? "Archive" : "Activate"}>{p.active ? "Archive" : "Activate"}</button>
-                        <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={13} /></button>
-                      </div>
+                      {canWrite && (
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Edit"><Pencil size={13} /></button>
+                          <button onClick={() => duplicate(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
+                          <button onClick={() => toggleActive(p)} className="rounded px-1.5 text-2xs text-muted-foreground hover:text-foreground" title={p.active ? "Archive" : "Activate"}>{p.active ? "Archive" : "Activate"}</button>
+                          <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={13} /></button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -285,9 +289,13 @@ export default function ProductsPage() {
               <div className="mt-2 flex items-center gap-2">
                 <Badge tone={p.active ? "emerald" : "neutral"}>{p.active ? "Active" : "Archived"}</Badge>
                 {p.quoteUses > 0 && <span className="text-2xs text-muted-foreground">· {p.quoteUses} quote{p.quoteUses === 1 ? "" : "s"}</span>}
-                <button onClick={() => toggleActive(p)} className="text-2xs text-muted-foreground hover:text-foreground">{p.active ? "Archive" : "Activate"}</button>
-                <button onClick={() => duplicate(p)} className="ml-auto grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
-                <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                {canWrite && (
+                  <>
+                    <button onClick={() => toggleActive(p)} className="text-2xs text-muted-foreground hover:text-foreground">{p.active ? "Archive" : "Activate"}</button>
+                    <button onClick={() => duplicate(p)} className="ml-auto grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Duplicate"><Copy size={13} /></button>
+                    <button onClick={() => remove(p)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                  </>
+                )}
               </div>
             </div>
           ))
