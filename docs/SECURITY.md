@@ -28,8 +28,9 @@ No single layer is load-bearing on its own.
 | **Password auth** | `lib/auth/password.ts` — scrypt (Node built-in; deliberately no native dep for cPanel). Timing-uniform login via a dummy hash; generic errors; `status='active'` enforced in SQL | `password.test.ts`; login flow reviewed |
 | **Two-factor (TOTP)** | `lib/auth/totp.ts` (RFC 6238), seed encrypted at rest (`lib/auth/crypto.ts`, AES-256-GCM), recovery codes (single-use hashes), login challenge step | `totp.test.ts` (RFC vectors), `crypto.test.ts` (round-trip + tamper) |
 | **Sessions** | `lib/auth/session.ts` — DB-backed opaque token, cookie `httpOnly`+`Secure`(prod)+`SameSite=Lax`; only the SHA-256 is stored; status re-checked each request | `tokens.test.ts`; reviewed |
-| **RBAC** | `lib/auth/rbac.ts` `can()`, enforced per action server-side | `rbac.test.ts`, `user-admin.test.ts` |
-| **Rate limiting** | `lib/rate-limit.ts` (in-memory, injectable clock) on login (per-IP + per-email), setup, MFA enroll/verify | `rate-limit.test.ts` |
+| **RBAC** | `lib/auth/rbac.ts` rank model (owner > admin > member > viewer) + `can()`, enforced per action. Every mutating action is gated by `guardWrite()` (`record:write`); admin actions by `can()`. **Viewer** is fully read-only — server-blocked on all writes, with the write UI hidden client-side too | `rbac.test.ts`, `user-admin.test.ts` |
+| **Input validation** | `lib/crm/validate.ts` (pure, tested) — length/format/range/enum checks at the action boundary before any query; cleaned values merged, never blind-spread | `validate.test.ts` |
+| **Rate limiting** | `lib/rate-limit.ts` (in-memory, injectable clock): login (per-IP + per-email), setup, MFA enroll/verify, password change, API-key creation, and the public API (`/api/v1`: per-key + per-IP, `429` + `Retry-After`) | `rate-limit.test.ts` |
 | **Security headers** | `next.config.mjs` `headers()` — HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` | curl `-I` on responses |
 | **CSP** | `middleware.ts` — per-request nonce, `strict-dynamic`; next-themes nonce threaded via the root layout | Browser: all scripts nonced, no violations |
 | **SSRF guard** | `lib/crm/internal-url.ts` — the one outbound seam (`sajtpress.ts`) only reaches the configured origin on `/api/internal/*`; `redirect:"error"` | `internal-url.test.ts` |
@@ -48,6 +49,23 @@ No single layer is load-bearing on its own.
    unchanged from before MFA existed.
 4. Sessions are visible and revocable per device (`/settings/sessions`);
    "log out other sessions" and the org-wide force sign-out both exist.
+
+## Roles & access
+
+Four org-wide roles in a rank model (`lib/auth/rbac.ts`): **owner** > **admin** >
+**member** > **viewer**. Reads require `viewer`; creating/editing any record
+requires `record:write` (member and up); deletes and user/billing/org management
+require admin/owner.
+
+- **Enforcement is server-side.** `guardWrite()` gates every mutating action
+  (create/update/delete/bulk/convert/import/run across companies, contacts,
+  leads, deals, activities, tasks, quotes, products, tags, automations); `can()`
+  gates the admin actions. A read-only viewer is refused by construction —
+  missing a gate would let a viewer write, never let a lower role escalate.
+- **Viewer is complete.** It is blocked on every write path server-side, and the
+  write UI is also hidden client-side (`RoleProvider` + `useCanWrite()`, from the
+  session role) so a viewer never sees a control they can't use. Hiding the UI is
+  UX only — the server checks are the boundary.
 
 ## Data protection
 
@@ -108,6 +126,10 @@ Stated honestly rather than hidden:
   server-side from org-scoped data, so cross-tenant leakage isn't possible via
   the current actions, but there is no formal system/user/data/content boundary
   enforcement for future tool-using agents.
+- **Access is role-level, not record-level.** The four roles are org-wide; there
+  is no per-owner or per-team scoping yet (e.g. "reps see only their assigned
+  leads/deals"). The rank model is designed to extend to it, but a member today
+  can read/edit every record in the org.
 - **Rate limiting is process-local** (single Passenger process today). Back it
   with Redis if the app is ever horizontally scaled.
 - **MFA has no QR code** (manual key entry only) and **no admin-enforced MFA**
