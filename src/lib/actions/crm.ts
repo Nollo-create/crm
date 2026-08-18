@@ -61,6 +61,7 @@ import {
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
+import { validated, vString, vInt } from "@/lib/crm/validate";
 import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
 
 // -------- plain, serialisable shapes for the client
@@ -346,9 +347,18 @@ export async function bulkSetStatusAction(ids: number[], status: string): Promis
 
 export async function createCompanyAction(input: CompanyInput): Promise<{ id?: number; error?: string }> {
   const session = await requireSession();
-  if (!input?.name?.trim()) return { error: "The company needs a name." };
-  const id = await createCompany(session.organizationId, { ...input, name: input.name.trim() });
-  await recordAudit(session, "create", "company", id, input.name.trim());
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 190 }),
+    industry: vString("Industry", input.industry, { max: 120 }),
+    city: vString("City", input.city, { max: 120 }),
+    website: vString("Website", input.website, { max: 190 }),
+    accountManager: vString("Account manager", input.accountManager, { max: 120 }),
+    employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
+    annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
+  }));
+  if (!v.ok) return { error: v.error };
+  const id = await createCompany(session.organizationId, { ...input, ...v.value });
+  await recordAudit(session, "create", "company", id, v.value.name);
   revalidatePath("/companies");
   revalidatePath("/");
   return { id };

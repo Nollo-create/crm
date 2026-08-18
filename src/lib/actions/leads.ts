@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, bulkDeleteLeads, bulkSetLeadStatus, type LeadRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
+import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
 import { isStageId } from "@/lib/crm/pipeline";
 
@@ -101,11 +102,23 @@ export interface LeadInputDTO {
 
 export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: number; error?: string }> {
   const { organizationId } = await requireSession();
-  const name = (input.name ?? "").trim();
-  const company = (input.company ?? "").trim();
-  if (!name && !company) return { error: "A lead needs a name or a company." };
+  const v = validated(() => ({
+    name: vString("Name", input.name, { max: 190 }),
+    company: vString("Company", input.company, { max: 190 }),
+    title: vString("Title", input.title, { max: 120 }),
+    email: vEmail("Email", input.email),
+    phone: vString("Phone", input.phone, { max: 40 }),
+    website: vString("Website", input.website, { max: 190 }),
+    industry: vString("Industry", input.industry, { max: 120 }),
+    notes: vString("Notes", input.notes, { max: 2000 }),
+    owner: vString("Owner", input.owner, { max: 120 }),
+    employees: vInt("Employees", input.employees, { min: 0, max: 100_000_000 }),
+    annualValue: vInt("Annual value", input.annualValue, { min: 0 }) ?? 0,
+  }));
+  if (!v.ok) return { error: v.error };
+  if (!v.value.name && !v.value.company) return { error: "A lead needs a name or a company." };
   const source = input.source && isLeadSource(input.source) ? input.source : "other";
-  const id = await createLead(organizationId, { ...input, name, company, source, status: "new" });
+  const id = await createLead(organizationId, { ...input, ...v.value, source, status: "new" });
   revalidatePath("/leads");
   return { id };
 }
