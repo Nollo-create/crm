@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", viewer: "Viewer" };
 const roleTone = (r: string): Tone => (r === "owner" ? "royal" : r === "admin" ? "electric" : "neutral");
 
 export function UsersManager({ currentUserId, currentRole }: { currentUserId: number; currentRole: string }) {
@@ -46,7 +46,7 @@ export function UsersManager({ currentUserId, currentRole }: { currentUserId: nu
     void load();
   }, []);
 
-  const roleOptions = currentRole === "owner" ? ["owner", "admin", "member"] : ["admin", "member"];
+  const roleOptions = currentRole === "owner" ? ["owner", "admin", "member", "viewer"] : ["admin", "member", "viewer"];
 
   async function invite() {
     setBusy(true);

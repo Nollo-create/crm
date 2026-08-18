@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, bulkDeleteLeads, bulkSetLeadStatus, type LeadRow } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
@@ -101,7 +101,9 @@ export interface LeadInputDTO {
 }
 
 export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const v = validated(() => ({
     name: vString("Name", input.name, { max: 190 }),
     company: vString("Company", input.company, { max: 190 }),
@@ -125,8 +127,10 @@ export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: numb
 
 /** Bulk-create leads from a parsed CSV (source = 'import'). Capped, fail-safe per
  *  row. A row needs a name or a company to count. */
-export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created: number; skipped: number }> {
-  const session = await requireSession();
+export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created: number; skipped: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { created: 0, skipped: 0, error: g.error };
+  const session = g.session;
   const { organizationId } = session;
   let created = 0;
   let skipped = 0;
@@ -162,7 +166,9 @@ export async function importLeadsAction(rows: LeadInputDTO[]): Promise<{ created
 }
 
 export async function setLeadStatusAction(id: number, status: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!isLeadStatus(status)) return { error: "Unknown status." };
   if (status === "converted") return { error: "Use Convert to convert a lead." };
   await setLeadStatus(organizationId, id, status);
@@ -177,7 +183,9 @@ export async function getLeadAction(id: number): Promise<Lead | null> {
 }
 
 export async function updateLeadAction(id: number, input: LeadInputDTO): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const name = (input.name ?? "").trim();
   const company = (input.company ?? "").trim();
   if (!name && !company) return { error: "A lead needs a name or a company." };
@@ -189,14 +197,18 @@ export async function updateLeadAction(id: number, input: LeadInputDTO): Promise
   return {};
 }
 
-export async function deleteLeadAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteLead(organizationId, id);
+export async function deleteLeadAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteLead(g.session.organizationId, id);
   revalidatePath("/leads");
+  return {};
 }
 
 export async function bulkDeleteLeadsAction(ids: number[]): Promise<{ error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   await bulkDeleteLeads(session.organizationId, ids);
   revalidatePath("/leads");
   await recordAudit(session, "bulk_delete", "lead", null, `${ids.length} lead${ids.length === 1 ? "" : "s"}`);
@@ -204,7 +216,9 @@ export async function bulkDeleteLeadsAction(ids: number[]): Promise<{ error?: st
 }
 
 export async function bulkSetLeadStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   if (!isLeadStatus(status) || status === "converted") return { error: "Pick a status." };
   await bulkSetLeadStatus(session.organizationId, ids, status);
   revalidatePath("/leads");
@@ -216,7 +230,9 @@ export async function convertLeadAction(
   id: number,
   opts?: { companyId?: number | null; deal?: { title: string; value?: number; stage?: string } | null }
 ): Promise<{ companyId?: number; dealId?: number | null; createdCompany?: boolean; error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   let deal = opts?.deal ?? null;
   if (deal) {
     const title = (deal.title ?? "").trim();

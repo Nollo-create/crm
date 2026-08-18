@@ -337,7 +337,9 @@ export async function bulkDeleteCompaniesAction(ids: number[]): Promise<{ error?
 }
 
 export async function bulkSetStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!STATUSES.includes(status)) return { error: "Unknown status." };
   await bulkSetCompanyStatus(organizationId, ids, status);
   revalidatePath("/companies");
@@ -380,7 +382,9 @@ export async function updateCompanyAction(id: number, input: CompanyInput): Prom
 /** Patch the descriptive account fields (legal name, contact details, VAT, etc.)
  *  without touching status/score — see db.updateCompanyDetails. */
 export async function updateCompanyDetailsAction(id: number, input: CompanyDetailsInput): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!(await getCompany(organizationId, id))) return { error: "Company not found." };
   await updateCompanyDetails(organizationId, id, input);
   revalidatePath(`/companies/${id}`);
@@ -427,7 +431,9 @@ export async function getCompanyAction(id: number): Promise<CompanyDetail | null
 // ------------------------------------------------------------------- contacts
 
 export async function addContactAction(companyId: number, input: ContactInput): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.name?.trim()) return { error: "The contact needs a name." };
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   await addContact(organizationId, companyId, { ...input, name: input.name.trim() });
@@ -435,11 +441,13 @@ export async function addContactAction(companyId: number, input: ContactInput): 
   return {};
 }
 
-export async function deleteContactAction(id: number, companyId: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteContact(organizationId, id);
+export async function deleteContactAction(id: number, companyId: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteContact(g.session.organizationId, id);
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/contacts");
+  return {};
 }
 
 export interface ContactDetail {
@@ -464,7 +472,9 @@ export async function getContactAction(id: number): Promise<ContactDetail | null
 }
 
 export async function updateContactAction(id: number, companyId: number, input: ContactInput): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.name?.trim()) return { error: "The contact needs a name." };
   await updateContact(organizationId, id, { ...input, name: input.name.trim() });
   revalidatePath(`/contacts/${id}`);
@@ -530,7 +540,9 @@ export async function contactsPageAction(opts: {
 // ---------------------------------------------------------------------- deals
 
 export async function createDealAction(companyId: number, input: DealInput): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.title?.trim()) return { error: "The deal needs a title." };
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   const stage = input.stage && isStageId(input.stage) ? input.stage : "new";
@@ -555,7 +567,9 @@ function revalidateDeal(id: number, companyId?: number) {
  *  Customer (Rule 6) and Won/Lost stamp the close — from the list, board, or
  *  company profile alike. */
 export async function updateDealStageAction(id: number, stage: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!isStageId(stage)) return { error: "Unknown stage." };
   if (stage === "won") await closeDealWon(organizationId, id);
   else if (stage === "lost") await closeDealLost(organizationId, id, "");
@@ -565,7 +579,9 @@ export async function updateDealStageAction(id: number, stage: string): Promise<
 }
 
 export async function markDealWonAction(id: number): Promise<{ companyId?: number; error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   const r = await closeDealWon(session.organizationId, id);
   if (!r) return { error: "Deal not found." };
   await recordAudit(session, "deal_won", "deal", id, `company #${r.companyId} -> customer`);
@@ -574,7 +590,9 @@ export async function markDealWonAction(id: number): Promise<{ companyId?: numbe
 }
 
 export async function markDealLostAction(id: number, reason: string): Promise<{ error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   if (!isLossReason(reason)) return { error: "Pick a loss reason." };
   const r = await closeDealLost(session.organizationId, id, reason);
   if (!r) return { error: "Deal not found." };
@@ -584,7 +602,9 @@ export async function markDealLostAction(id: number, reason: string): Promise<{ 
 }
 
 export async function reopenDealAction(id: number, stage: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const target = isStageId(stage) && stage !== "won" && stage !== "lost" ? stage : "negotiation";
   const r = await setDealOpenStage(organizationId, id, target);
   if (!r) return { error: "Deal not found." };
@@ -597,7 +617,9 @@ export async function updateDealAction(
   companyId: number,
   patch: { title?: string; value?: number; stage?: string; probability?: number | null; expectedClose?: string | null; owner?: string; contactId?: number | null; notes?: string }
 ): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
   await updateDeal(organizationId, id, patch);
   revalidatePath(`/deals/${id}`);
@@ -632,7 +654,9 @@ export async function bulkDeleteDealsAction(ids: number[]): Promise<{ error?: st
 }
 
 export async function bulkSetDealStageAction(ids: number[], stage: string): Promise<{ error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   if (!isStageId(stage) || stage === "won" || stage === "lost") return { error: "Pick an open stage." };
   await bulkSetDealStage(session.organizationId, ids, stage);
   revalidatePath("/deals");
@@ -672,7 +696,9 @@ export async function addActivityAction(input: {
   contactId?: number | null;
   dealId?: number | null;
 }): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.summary?.trim()) return { error: "Write what happened." };
   if (!(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
   await addActivity(organizationId, { companyId: input.companyId, type: input.type, summary: input.summary.trim(), contactId: input.contactId ?? null, dealId: input.dealId ?? null });
@@ -724,8 +750,9 @@ export async function activitiesPageAction(opts: {
 }
 
 export async function deleteActivityAction(id: number): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
-  await deleteActivity(organizationId, id);
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteActivity(g.session.organizationId, id);
   revalidatePath("/activities");
   return {};
 }

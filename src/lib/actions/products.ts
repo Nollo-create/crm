@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createProduct, updateProduct, setProductActive, deleteProduct, duplicateProduct, listProductsPage, type ProductStatsRow } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isBilling } from "@/lib/crm/products";
 
 export interface Product {
@@ -79,7 +79,9 @@ const toInput = (p: ProductDTO) => ({
 });
 
 export async function createProductAction(input: ProductDTO): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.name?.trim()) return { error: "The product needs a name." };
   const id = await createProduct(organizationId, toInput(input));
   revalidatePath("/products");
@@ -87,7 +89,9 @@ export async function createProductAction(input: ProductDTO): Promise<{ id?: num
 }
 
 export async function updateProductAction(id: number, input: ProductDTO): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.name?.trim()) return { error: "The product needs a name." };
   await updateProduct(organizationId, id, toInput(input));
   revalidatePath("/products");
@@ -95,20 +99,25 @@ export async function updateProductAction(id: number, input: ProductDTO): Promis
 }
 
 export async function setProductActiveAction(id: number, active: boolean): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
-  await setProductActive(organizationId, id, active);
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await setProductActive(g.session.organizationId, id, active);
   revalidatePath("/products");
   return {};
 }
 
-export async function deleteProductAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteProduct(organizationId, id);
+export async function deleteProductAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteProduct(g.session.organizationId, id);
   revalidatePath("/products");
+  return {};
 }
 
 export async function duplicateProductAction(id: number): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const newId = await duplicateProduct(organizationId, id);
   if (!newId) return { error: "Product not found." };
   revalidatePath("/products");

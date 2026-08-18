@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { listAutomations, createAutomation, toggleAutomation, deleteAutomation, listAutomationRuns, type AutomationRow, type AutomationRunRow } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isTemplateKey, normalizeParams, getTemplate, type AutomationCategory } from "@/lib/crm/automation";
 import { runAutomationsForOrg, runSingleAutomation, previewAutomation } from "@/lib/automation-runner";
 
@@ -46,7 +46,9 @@ export async function listAutomationsAction(category?: AutomationCategory): Prom
 }
 
 export async function createAutomationAction(input: { templateKey: string; name?: string; params?: Record<string, unknown> }): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const tmpl = getTemplate(input.templateKey);
   if (!tmpl || !isTemplateKey(input.templateKey)) return { error: "Unknown automation." };
   const params = normalizeParams(input.templateKey, input.params ?? {});
@@ -59,31 +61,36 @@ export async function createAutomationAction(input: { templateKey: string; name?
 }
 
 export async function toggleAutomationAction(id: number, enabled: boolean): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
-  await toggleAutomation(organizationId, id, enabled);
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await toggleAutomation(g.session.organizationId, id, enabled);
   revalidatePath("/automation/workflows");
   return {};
 }
 
-export async function deleteAutomationAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteAutomation(organizationId, id);
+export async function deleteAutomationAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteAutomation(g.session.organizationId, id);
   revalidatePath("/automation/workflows");
+  return {};
 }
 
 /** Manually run this org's enabled automations now (a "Run now" button + a way
  *  to test without waiting for the cron). Returns the number of tasks created. */
-export async function runAutomationsNowAction(): Promise<{ created: number }> {
-  const { organizationId } = await requireSession();
-  const results = await runAutomationsForOrg(organizationId);
+export async function runAutomationsNowAction(): Promise<{ created: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { created: 0, error: g.error };
+  const results = await runAutomationsForOrg(g.session.organizationId);
   revalidatePath("/automation/notifications");
   return { created: results.reduce((s, x) => s + x.created, 0) };
 }
 
 /** Run a single automation now (the per-row "Run" button). */
-export async function runOneAutomationNowAction(id: number): Promise<{ created: number }> {
-  const { organizationId } = await requireSession();
-  const created = await runSingleAutomation(organizationId, id);
+export async function runOneAutomationNowAction(id: number): Promise<{ created: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { created: 0, error: g.error };
+  const created = await runSingleAutomation(g.session.organizationId, id);
   revalidatePath("/automation/notifications");
   return { created };
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createTask, listTasksPage, setTaskDone, updateTask, deleteTask, getCompany, type TaskStatsRow } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isTaskPriority } from "@/lib/crm/tasks";
 
 export interface Task {
@@ -71,7 +71,9 @@ export async function createTaskAction(input: {
   priority?: string;
   companyId?: number | null;
 }): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.title?.trim()) return { error: "The task needs a title." };
   const priority = input.priority && isTaskPriority(input.priority) ? input.priority : "normal";
   if (input.companyId && !(await getCompany(organizationId, input.companyId))) return { error: "Company not found." };
@@ -87,14 +89,17 @@ export async function createTaskAction(input: {
 }
 
 export async function toggleTaskDoneAction(id: number, done: boolean): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
-  await setTaskDone(organizationId, id, done);
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await setTaskDone(g.session.organizationId, id, done);
   revalidatePath("/tasks");
   return {};
 }
 
 export async function updateTaskAction(id: number, patch: { title?: string; notes?: string; dueDate?: string | null; priority?: string }): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (patch.title !== undefined && !patch.title.trim()) return { error: "The task needs a title." };
   const priority = patch.priority && isTaskPriority(patch.priority) ? patch.priority : undefined;
   await updateTask(organizationId, id, { ...patch, priority });
@@ -102,8 +107,10 @@ export async function updateTaskAction(id: number, patch: { title?: string; note
   return {};
 }
 
-export async function deleteTaskAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteTask(organizationId, id);
+export async function deleteTaskAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteTask(g.session.organizationId, id);
   revalidatePath("/tasks");
+  return {};
 }

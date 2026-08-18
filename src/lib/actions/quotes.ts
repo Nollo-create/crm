@@ -17,7 +17,7 @@ import {
   type QuoteItemRow,
   type ProductRow,
 } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { isQuoteStatus, quoteNumber } from "@/lib/crm/quotes";
 
 const ymd = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : null);
@@ -97,7 +97,9 @@ export async function quotesPageAction(opts: {
 }
 
 export async function createQuoteAction(companyId: number, opts: { notes?: string; validUntil?: string | null } = {}): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   const id = await createQuote(organizationId, companyId, opts);
   revalidatePath("/quotes");
@@ -105,7 +107,9 @@ export async function createQuoteAction(companyId: number, opts: { notes?: strin
 }
 
 export async function duplicateQuoteAction(id: number): Promise<{ id?: number; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const newId = await duplicateQuote(organizationId, id);
   if (!newId) return { error: "Quote not found." };
   revalidatePath("/quotes");
@@ -120,7 +124,9 @@ export async function getQuoteAction(id: number): Promise<QuoteDetail | null> {
 }
 
 export async function updateQuoteStatusAction(id: number, status: string): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!isQuoteStatus(status)) return { error: "Unknown status." };
   await updateQuote(organizationId, id, { status });
   revalidatePath("/quotes");
@@ -129,20 +135,26 @@ export async function updateQuoteStatusAction(id: number, status: string): Promi
 }
 
 export async function updateQuoteAction(id: number, patch: { notes?: string; validUntil?: string | null }): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   await updateQuote(organizationId, id, patch);
   revalidatePath(`/quotes/${id}`);
   return {};
 }
 
-export async function deleteQuoteAction(id: number): Promise<void> {
-  const { organizationId } = await requireSession();
-  await deleteQuote(organizationId, id);
+export async function deleteQuoteAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteQuote(g.session.organizationId, id);
   revalidatePath("/quotes");
+  return {};
 }
 
 export async function addQuoteItemAction(quoteId: number, item: { productId?: number | null; name: string; unitPrice: number; quantity: number }): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!item?.name?.trim()) return { error: "The line needs a name." };
   const q = await getQuote(organizationId, quoteId);
   if (!q) return { error: "Quote not found." };
@@ -159,7 +171,9 @@ export async function addQuoteItemAction(quoteId: number, item: { productId?: nu
 }
 
 export async function setQuoteItemQuantityAction(quoteId: number, itemId: number, quantity: number): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const q = await getQuote(organizationId, quoteId);
   if (!q) return { error: "Quote not found." };
   if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };
@@ -169,7 +183,9 @@ export async function setQuoteItemQuantityAction(quoteId: number, itemId: number
 }
 
 export async function deleteQuoteItemAction(quoteId: number, itemId: number): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   const q = await getQuote(organizationId, quoteId);
   if (!q) return { error: "Quote not found." };
   if (q.quote.status !== "draft") return { error: "Only draft quotes can be edited." };

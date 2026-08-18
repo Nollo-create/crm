@@ -38,7 +38,7 @@ export default async function RolesPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Roles &amp; permissions</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">What each role can do. Assign roles in Users &amp; Teams. <span className="text-muted-foreground/80">Viewer (read-only) is being rolled out and isn&apos;t assignable yet.</span></p>
+        <p className="mt-0.5 text-sm text-muted-foreground">What each role can do. Assign roles in Users &amp; Teams. <span className="text-muted-foreground/80">Viewer is read-only — enforced on every write, server-side.</span></p>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

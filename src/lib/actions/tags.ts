@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { listTags, createTag, tagsForEntity, setEntityTags } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 
 export interface Tag {
   id: number;
@@ -34,7 +34,9 @@ export async function setEntityTagsAction(
   tagIds: number[],
   newTags?: { name: string; color: string }[]
 ): Promise<{ tags: Tag[]; error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { tags: [], error: g.error };
+  const { organizationId } = g.session;
   if (!ENTITY_TYPES.includes(entityType)) return { tags: [], error: "Unknown entity." };
   const ids = [...tagIds];
   for (const nt of (newTags ?? []).slice(0, 20)) {
