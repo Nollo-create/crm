@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, bulkDeleteLeads, bulkSetLeadStatus, type LeadRow } from "@/lib/db";
-import { requireSession, guardWrite } from "@/lib/auth/session";
+import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, bulkDeleteLeads, bulkSetLeadStatus, getOrgFlags, type LeadRow } from "@/lib/db";
+import { requireSession, guardWrite, type SessionUser } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
+import { ownerFilter, canAccessOwned } from "@/lib/crm/record-scope";
 import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
 import { isStageId } from "@/lib/crm/pipeline";
 
@@ -61,6 +62,21 @@ export interface LeadsPage {
   pageCount: number;
 }
 
+/** Record-level scoping (opt-in per org, master-prompt #7). When an owner turns
+ *  on "restrict members", a member only sees/touches leads they own or that are
+ *  unassigned; owners/admins/viewers are unaffected. Off by default → no-ops. */
+async function isRestricted(organizationId: number): Promise<boolean> {
+  const f = await getOrgFlags(organizationId).catch(() => null);
+  return !!f?.restrictMembers;
+}
+/** True if the session may act on this specific lead. One SELECT only when the
+ *  org is restricted and the caller is a member; otherwise free. */
+async function canTouchLead(s: SessionUser, id: number): Promise<boolean> {
+  if (s.role !== "member" || !(await isRestricted(s.organizationId))) return true;
+  const row = await getLead(s.organizationId, id);
+  return !!row && canAccessOwned(s.role, s.userId, true, row.owner_user_id);
+}
+
 export async function leadsPageAction(opts: {
   q?: string;
   status?: string;
@@ -70,7 +86,8 @@ export async function leadsPageAction(opts: {
   page: number;
   pageSize: number;
 }): Promise<LeadsPage> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   const res = await listLeadsPage(organizationId, {
     q: opts.q?.trim() || undefined,
     status: opts.status || undefined,
@@ -79,6 +96,7 @@ export async function leadsPageAction(opts: {
     sortDir: opts.sortDir,
     page: opts.page,
     pageSize: opts.pageSize,
+    ownerScope: ownerFilter("l.owner_user_id", session.role, session.userId, await isRestricted(organizationId)),
   });
   return { rows: res.rows.map(toLead), total: res.total, page: res.page, pageCount: res.pageCount };
 }
@@ -120,7 +138,7 @@ export async function createLeadAction(input: LeadInputDTO): Promise<{ id?: numb
   if (!v.ok) return { error: v.error };
   if (!v.value.name && !v.value.company) return { error: "A lead needs a name or a company." };
   const source = input.source && isLeadSource(input.source) ? input.source : "other";
-  const id = await createLead(organizationId, { ...input, ...v.value, source, status: "new" });
+  const id = await createLead(organizationId, { ...input, ...v.value, source, status: "new", ownerUserId: g.session.userId });
   revalidatePath("/leads");
   return { id };
 }
@@ -171,21 +189,25 @@ export async function setLeadStatusAction(id: number, status: string): Promise<{
   const { organizationId } = g.session;
   if (!isLeadStatus(status)) return { error: "Unknown status." };
   if (status === "converted") return { error: "Use Convert to convert a lead." };
+  if (!(await canTouchLead(g.session, id))) return { error: "Lead not found." };
   await setLeadStatus(organizationId, id, status);
   revalidatePath("/leads");
   return {};
 }
 
 export async function getLeadAction(id: number): Promise<Lead | null> {
-  const { organizationId } = await requireSession();
-  const row = await getLead(organizationId, id);
-  return row ? toLead(row) : null;
+  const session = await requireSession();
+  const row = await getLead(session.organizationId, id);
+  if (!row) return null;
+  if (!canAccessOwned(session.role, session.userId, await isRestricted(session.organizationId), row.owner_user_id)) return null;
+  return toLead(row);
 }
 
 export async function updateLeadAction(id: number, input: LeadInputDTO): Promise<{ error?: string }> {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
+  if (!(await canTouchLead(g.session, id))) return { error: "Lead not found." };
   const v = validated(() => ({
     name: vString("Name", input.name, { max: 190 }),
     company: vString("Company", input.company, { max: 190 }),
@@ -212,6 +234,7 @@ export async function updateLeadAction(id: number, input: LeadInputDTO): Promise
 export async function deleteLeadAction(id: number): Promise<{ error?: string }> {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
+  if (!(await canTouchLead(g.session, id))) return { error: "Lead not found." };
   await deleteLead(g.session.organizationId, id);
   revalidatePath("/leads");
   return {};
@@ -221,7 +244,8 @@ export async function bulkDeleteLeadsAction(ids: number[]): Promise<{ error?: st
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const session = g.session;
-  await bulkDeleteLeads(session.organizationId, ids);
+  const scope = ownerFilter("owner_user_id", session.role, session.userId, await isRestricted(session.organizationId));
+  await bulkDeleteLeads(session.organizationId, ids, scope);
   revalidatePath("/leads");
   await recordAudit(session, "bulk_delete", "lead", null, `${ids.length} lead${ids.length === 1 ? "" : "s"}`);
   return {};
@@ -232,7 +256,8 @@ export async function bulkSetLeadStatusAction(ids: number[], status: string): Pr
   if ("error" in g) return { error: g.error };
   const session = g.session;
   if (!isLeadStatus(status) || status === "converted") return { error: "Pick a status." };
-  await bulkSetLeadStatus(session.organizationId, ids, status);
+  const scope = ownerFilter("owner_user_id", session.role, session.userId, await isRestricted(session.organizationId));
+  await bulkSetLeadStatus(session.organizationId, ids, status, scope);
   revalidatePath("/leads");
   await recordAudit(session, "bulk_update", "lead", null, `set ${status} on ${ids.length}`);
   return {};
@@ -245,6 +270,7 @@ export async function convertLeadAction(
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const session = g.session;
+  if (!(await canTouchLead(session, id))) return { error: "Lead not found." };
   let deal = opts?.deal ?? null;
   if (deal) {
     const title = (deal.title ?? "").trim();

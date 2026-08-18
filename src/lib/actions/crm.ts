@@ -43,6 +43,7 @@ import {
   setDealOpenStage,
   bulkDeleteDeals,
   bulkSetDealStage,
+  getOrgFlags,
   type DealStatsRow,
   type DealWithRefsRow,
   addActivity,
@@ -58,11 +59,27 @@ import {
   type ContactInput,
   type DealInput,
 } from "@/lib/db";
-import { requireSession, guardWrite } from "@/lib/auth/session";
+import { requireSession, guardWrite, type SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
+import { ownerFilter, canAccessOwned } from "@/lib/crm/record-scope";
 import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
+
+/** Record-level scoping (opt-in per org, master-prompt #7). Off by default → the
+ *  helpers below are no-ops. When on, a member is confined to deals they own or
+ *  that are unassigned; owners/admins/viewers are unaffected. */
+async function orgRestricted(organizationId: number): Promise<boolean> {
+  const f = await getOrgFlags(organizationId).catch(() => null);
+  return !!f?.restrictMembers;
+}
+/** True if the session may act on this specific deal. One SELECT only when the
+ *  org is restricted and the caller is a member; otherwise free. */
+async function canTouchDeal(s: SessionUser, id: number): Promise<boolean> {
+  if (s.role !== "member" || !(await orgRestricted(s.organizationId))) return true;
+  const row = await getDeal(s.organizationId, id);
+  return !!row && canAccessOwned(s.role, s.userId, true, row.owner_user_id);
+}
 
 // -------- plain, serialisable shapes for the client
 
@@ -429,12 +446,14 @@ export interface CompanyDetail {
 }
 
 export async function getCompanyAction(id: number): Promise<CompanyDetail | null> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   const c = await getCompany(organizationId, id);
   if (!c) return null;
+  const dealScope = ownerFilter("owner_user_id", session.role, session.userId, await orgRestricted(organizationId));
   const [contacts, deals, activities] = await Promise.all([
     listContacts(organizationId, id),
-    listDeals(organizationId, { companyId: id }),
+    listDeals(organizationId, { companyId: id, ownerScope: dealScope }),
     listActivities(organizationId, id),
   ]);
   const mapped = deals.map(toDeal);
@@ -591,7 +610,7 @@ export async function createDealAction(companyId: number, input: DealInput): Pro
   if (!v.ok) return { error: v.error };
   if (!(await getCompany(organizationId, companyId))) return { error: "Company not found." };
   const stage = input.stage && isStageId(input.stage) ? input.stage : "new";
-  await createDeal(organizationId, companyId, { ...input, ...v.value, stage });
+  await createDeal(organizationId, companyId, { ...input, ...v.value, stage, ownerUserId: g.session.userId });
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -616,6 +635,7 @@ export async function updateDealStageAction(id: number, stage: string): Promise<
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
   if (!isStageId(stage)) return { error: "Unknown stage." };
+  if (!(await canTouchDeal(g.session, id))) return { error: "Deal not found." };
   if (stage === "won") await closeDealWon(organizationId, id);
   else if (stage === "lost") await closeDealLost(organizationId, id, "");
   else await setDealOpenStage(organizationId, id, stage);
@@ -627,6 +647,7 @@ export async function markDealWonAction(id: number): Promise<{ companyId?: numbe
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const session = g.session;
+  if (!(await canTouchDeal(session, id))) return { error: "Deal not found." };
   const r = await closeDealWon(session.organizationId, id);
   if (!r) return { error: "Deal not found." };
   await recordAudit(session, "deal_won", "deal", id, `company #${r.companyId} -> customer`);
@@ -639,6 +660,7 @@ export async function markDealLostAction(id: number, reason: string): Promise<{ 
   if ("error" in g) return { error: g.error };
   const session = g.session;
   if (!isLossReason(reason)) return { error: "Pick a loss reason." };
+  if (!(await canTouchDeal(session, id))) return { error: "Deal not found." };
   const r = await closeDealLost(session.organizationId, id, reason);
   if (!r) return { error: "Deal not found." };
   await recordAudit(session, "deal_lost", "deal", id, reason);
@@ -650,6 +672,7 @@ export async function reopenDealAction(id: number, stage: string): Promise<{ err
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
+  if (!(await canTouchDeal(g.session, id))) return { error: "Deal not found." };
   const target = isStageId(stage) && stage !== "won" && stage !== "lost" ? stage : "negotiation";
   const r = await setDealOpenStage(organizationId, id, target);
   if (!r) return { error: "Deal not found." };
@@ -666,6 +689,7 @@ export async function updateDealAction(
   if ("error" in g) return { error: g.error };
   const { organizationId } = g.session;
   if (patch.stage !== undefined && !isStageId(patch.stage)) return { error: "Unknown stage." };
+  if (!(await canTouchDeal(g.session, id))) return { error: "Deal not found." };
   const check = validated(() => {
     if (patch.title !== undefined) vString("Title", patch.title, { required: true, max: 190 });
     vString("Owner", patch.owner, { max: 120 });
@@ -711,7 +735,8 @@ export async function bulkSetDealStageAction(ids: number[], stage: string): Prom
   if ("error" in g) return { error: g.error };
   const session = g.session;
   if (!isStageId(stage) || stage === "won" || stage === "lost") return { error: "Pick an open stage." };
-  await bulkSetDealStage(session.organizationId, ids, stage);
+  const scope = ownerFilter("owner_user_id", session.role, session.userId, await orgRestricted(session.organizationId));
+  await bulkSetDealStage(session.organizationId, ids, stage, scope);
   revalidatePath("/deals");
   revalidatePath("/pipeline");
   revalidatePath("/");
@@ -726,9 +751,11 @@ export interface DealDetail {
 }
 
 export async function getDealAction(id: number): Promise<DealDetail | null> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   const row: DealWithRefsRow | null = await getDeal(organizationId, id);
   if (!row) return null;
+  if (!canAccessOwned(session.role, session.userId, await orgRestricted(organizationId), row.owner_user_id)) return null;
   const [contacts, activities] = await Promise.all([
     listContacts(organizationId, row.company_id).catch(() => []),
     listDealActivities(organizationId, id).catch(() => []),
@@ -828,8 +855,10 @@ export interface DashboardData {
 }
 
 export async function dashboardAction(): Promise<DashboardData> {
-  const { organizationId } = await requireSession();
-  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId)]);
+  const session = await requireSession();
+  const { organizationId } = session;
+  const dealScope = ownerFilter("owner_user_id", session.role, session.userId, await orgRestricted(organizationId));
+  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId, { ownerScope: dealScope })]);
   const companies = companyRows.map(toCompany);
   const deals = dealRows.map(toDeal);
   const names = new Map(companyRows.map((c) => [c.id, c.name]));
@@ -849,8 +878,10 @@ export async function dashboardAction(): Promise<DashboardData> {
 }
 
 export async function boardAction(): Promise<BoardDeal[]> {
-  const { organizationId } = await requireSession();
-  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId)]);
+  const session = await requireSession();
+  const { organizationId } = session;
+  const dealScope = ownerFilter("owner_user_id", session.role, session.userId, await orgRestricted(organizationId));
+  const [companyRows, dealRows] = await Promise.all([listCompanies(organizationId), listDeals(organizationId, { ownerScope: dealScope })]);
   const names = new Map(companyRows.map((c) => [c.id, c.name]));
   return dealRows.map((r) => ({ ...toDeal(r), companyName: names.get(r.company_id) ?? "—" }));
 }
@@ -870,7 +901,8 @@ export async function dealsPageAction(opts: {
   page: number;
   pageSize: number;
 }): Promise<DealsPage> {
-  const { organizationId } = await requireSession();
+  const session = await requireSession();
+  const { organizationId } = session;
   const res = await listDealsPage(organizationId, {
     q: opts.q?.trim() || undefined,
     stage: opts.stage || undefined,
@@ -878,6 +910,7 @@ export async function dealsPageAction(opts: {
     sortDir: opts.sortDir,
     page: opts.page,
     pageSize: opts.pageSize,
+    ownerScope: ownerFilter("d.owner_user_id", session.role, session.userId, await orgRestricted(organizationId)),
   });
   return {
     rows: res.rows.map((r: DealStatsRow) => ({ ...toDeal(r), companyName: r.company_name })),

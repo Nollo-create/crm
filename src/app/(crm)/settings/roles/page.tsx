@@ -1,8 +1,10 @@
 import { Check, Minus } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can, ROLES, type Permission } from "@/lib/auth/rbac";
+import { getRestrictMembersAction } from "@/lib/actions/access-policy";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { RestrictMembersToggle } from "./restrict-members-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ export default async function RolesPage() {
   }
 
   const me = session.role;
+  const restrict = await getRestrictMembersAction();
 
   return (
     <div className="space-y-4">
@@ -83,6 +86,16 @@ export default async function RolesPage() {
           </table>
         </div>
       </Card>
+
+      {restrict.canManage && (
+        <div className="space-y-2 pt-1">
+          <div>
+            <h2 className="text-sm font-semibold">Record visibility</h2>
+            <p className="mt-0.5 text-2xs text-muted-foreground">An optional, stricter policy for the member role. Enforced server-side on every list and write.</p>
+          </div>
+          <RestrictMembersToggle initialOn={restrict.on} />
+        </div>
+      )}
     </div>
   );
 }

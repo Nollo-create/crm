@@ -281,6 +281,10 @@ export function ensureSchema(): Promise<void> {
       // Lead management fields (Phase 2A — priority + owner on the lead profile).
       await ensureColumn(pool, "crm_leads", "priority", "priority VARCHAR(12) NOT NULL DEFAULT 'normal'");
       await ensureColumn(pool, "crm_leads", "owner", "owner VARCHAR(120) NOT NULL DEFAULT ''");
+      // Record-level access: which user owns a lead/deal (set on create). Null =
+      // unassigned (visible to everyone even when member-restriction is on).
+      await ensureColumn(pool, "crm_leads", "owner_user_id", "owner_user_id INT UNSIGNED NULL");
+      await ensureColumn(pool, "crm_deals", "owner_user_id", "owner_user_id INT UNSIGNED NULL");
       // Deal fields (Phase 3A — primary contact + notes on the deal profile).
       await ensureColumn(pool, "crm_deals", "contact_id", "contact_id INT UNSIGNED NULL");
       await ensureColumn(pool, "crm_deals", "notes", "notes TEXT NULL");
@@ -343,6 +347,7 @@ export interface DealRow extends mysql.RowDataPacket {
   probability: number | null;
   expected_close: Date | null;
   owner: string;
+  owner_user_id: number | null;
   contact_id: number | null;
   notes: string | null;
   closed_at: Date | null;
@@ -688,31 +693,31 @@ export async function bulkSetCompanyStatus(orgId: number, ids: number[], status:
 function cleanIds(ids: number[]): number[] {
   return ids.filter((n) => Number.isInteger(n)).slice(0, 500);
 }
-export async function bulkDeleteLeads(orgId: number, ids: number[]): Promise<void> {
+export async function bulkDeleteLeads(orgId: number, ids: number[], ownerScope?: { sql: string; params: number[] }): Promise<void> {
   const clean = cleanIds(ids);
   if (!clean.length) return;
   await ensureSchema();
-  await getPool().query(`DELETE FROM crm_leads WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [orgId, ...clean]);
+  await getPool().query(`DELETE FROM crm_leads WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})${ownerScope?.sql ?? ""}`, [orgId, ...clean, ...(ownerScope?.params ?? [])]);
 }
-export async function bulkSetLeadStatus(orgId: number, ids: number[], status: string): Promise<void> {
+export async function bulkSetLeadStatus(orgId: number, ids: number[], status: string, ownerScope?: { sql: string; params: number[] }): Promise<void> {
   const clean = cleanIds(ids);
   if (!clean.length) return;
   await ensureSchema();
-  await getPool().query(`UPDATE crm_leads SET status = ? WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [status.slice(0, 20), orgId, ...clean]);
+  await getPool().query(`UPDATE crm_leads SET status = ? WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})${ownerScope?.sql ?? ""}`, [status.slice(0, 20), orgId, ...clean, ...(ownerScope?.params ?? [])]);
 }
-export async function bulkDeleteDeals(orgId: number, ids: number[]): Promise<void> {
+export async function bulkDeleteDeals(orgId: number, ids: number[], ownerScope?: { sql: string; params: number[] }): Promise<void> {
   const clean = cleanIds(ids);
   if (!clean.length) return;
   await ensureSchema();
-  await getPool().query(`DELETE FROM crm_deals WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [orgId, ...clean]);
+  await getPool().query(`DELETE FROM crm_deals WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})${ownerScope?.sql ?? ""}`, [orgId, ...clean, ...(ownerScope?.params ?? [])]);
 }
-export async function bulkSetDealStage(orgId: number, ids: number[], stage: string): Promise<void> {
+export async function bulkSetDealStage(orgId: number, ids: number[], stage: string, ownerScope?: { sql: string; params: number[] }): Promise<void> {
   const clean = cleanIds(ids);
   if (!clean.length) return;
   await ensureSchema();
   await getPool().query(
-    `UPDATE crm_deals SET stage = ?, closed_at = NULL, loss_reason = '' WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`,
-    [stage.slice(0, 20), orgId, ...clean]
+    `UPDATE crm_deals SET stage = ?, closed_at = NULL, loss_reason = '' WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})${ownerScope?.sql ?? ""}`,
+    [stage.slice(0, 20), orgId, ...clean, ...(ownerScope?.params ?? [])]
   );
 }
 
@@ -867,6 +872,7 @@ export interface DealInput {
   probability?: number | null;
   expectedClose?: string | null;
   owner?: string;
+  ownerUserId?: number | null;
   contactId?: number | null;
   notes?: string;
 }
@@ -874,8 +880,8 @@ export interface DealInput {
 export async function createDeal(orgId: number, companyId: number, d: DealInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner, contact_id, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_deals (organization_id, company_id, title, value, stage, probability, expected_close, owner, owner_user_id, contact_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       companyId,
@@ -885,6 +891,7 @@ export async function createDeal(orgId: number, companyId: number, d: DealInput)
       d.probability ?? null,
       d.expectedClose || null,
       (d.owner ?? "").slice(0, 120),
+      d.ownerUserId ?? null,
       d.contactId ?? null,
       (d.notes ?? "").slice(0, 2000),
     ]
@@ -892,18 +899,20 @@ export async function createDeal(orgId: number, companyId: number, d: DealInput)
   return res.insertId;
 }
 
-export async function listDeals(orgId: number, opts: { companyId?: number } = {}): Promise<DealRow[]> {
+export async function listDeals(orgId: number, opts: { companyId?: number; ownerScope?: { sql: string; params: number[] } } = {}): Promise<DealRow[]> {
   await ensureSchema();
+  const scopeSql = opts.ownerScope?.sql ?? "";
+  const scopeParams = opts.ownerScope?.params ?? [];
   if (opts.companyId != null) {
     const [rows] = await getPool().query<DealRow[]>(
-      "SELECT * FROM crm_deals WHERE organization_id = ? AND company_id = ? ORDER BY updated_at DESC",
-      [orgId, opts.companyId]
+      `SELECT * FROM crm_deals WHERE organization_id = ? AND company_id = ?${scopeSql} ORDER BY updated_at DESC`,
+      [orgId, opts.companyId, ...scopeParams]
     );
     return rows;
   }
   const [rows] = await getPool().query<DealRow[]>(
-    "SELECT * FROM crm_deals WHERE organization_id = ? ORDER BY updated_at DESC LIMIT 1000",
-    [orgId]
+    `SELECT * FROM crm_deals WHERE organization_id = ?${scopeSql} ORDER BY updated_at DESC LIMIT 1000`,
+    [orgId, ...scopeParams]
   );
   return rows;
 }
@@ -1039,7 +1048,7 @@ export interface DealsPageResult {
  *  sorted/counted server-side. Sort is allowlisted (buildDealOrderBy). */
 export async function listDealsPage(
   orgId: number,
-  opts: { q?: string; stage?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+  opts: { q?: string; stage?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number; ownerScope?: { sql: string; params: number[] } }
 ): Promise<DealsPageResult> {
   await ensureSchema();
   const where: string[] = ["d.organization_id = ?"];
@@ -1054,7 +1063,8 @@ export async function listDealsPage(
     params.push(opts.stage);
   }
   const joinSql = "FROM crm_deals d JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id";
-  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const whereSql = `WHERE ${where.join(" AND ")}${opts.ownerScope?.sql ?? ""}`;
+  if (opts.ownerScope?.params.length) params.push(...opts.ownerScope.params);
   const pool = getPool();
 
   const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
@@ -1172,6 +1182,7 @@ export interface LeadRow extends mysql.RowDataPacket {
   notes: string;
   priority: string;
   owner: string;
+  owner_user_id: number | null;
   converted_company_id: number | null;
   created_at: Date;
   updated_at: Date;
@@ -1193,6 +1204,7 @@ export interface LeadInput {
   notes?: string;
   priority?: string;
   owner?: string;
+  ownerUserId?: number | null;
 }
 
 function leadScoreOf(l: { website?: string; employees?: number | null; industryMatch?: boolean; annualValue?: number }): number {
@@ -1202,8 +1214,8 @@ function leadScoreOf(l: { website?: string; employees?: number | null; industryM
 export async function createLead(orgId: number, l: LeadInput): Promise<number> {
   await ensureSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    `INSERT INTO crm_leads (organization_id, name, company, title, email, phone, source, status, industry, website, employees, annual_value, industry_match, lead_score, notes, priority, owner)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crm_leads (organization_id, name, company, title, email, phone, source, status, industry, website, employees, annual_value, industry_match, lead_score, notes, priority, owner, owner_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orgId,
       l.name.slice(0, 190),
@@ -1222,6 +1234,7 @@ export async function createLead(orgId: number, l: LeadInput): Promise<number> {
       (l.notes ?? "").slice(0, 500),
       (l.priority ?? "normal").slice(0, 12),
       (l.owner ?? "").slice(0, 120),
+      l.ownerUserId ?? null,
     ]
   );
   return res.insertId;
@@ -1271,7 +1284,7 @@ export interface LeadsPageResult {
 
 export async function listLeadsPage(
   orgId: number,
-  opts: { q?: string; status?: string; source?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+  opts: { q?: string; status?: string; source?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number; ownerScope?: { sql: string; params: number[] } }
 ): Promise<LeadsPageResult> {
   await ensureSchema();
   const where: string[] = ["l.organization_id = ?"];
@@ -1289,7 +1302,8 @@ export async function listLeadsPage(
     where.push("l.source = ?");
     params.push(opts.source);
   }
-  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const whereSql = `WHERE ${where.join(" AND ")}${opts.ownerScope?.sql ?? ""}`;
+  if (opts.ownerScope?.params.length) params.push(...opts.ownerScope.params);
   const pool = getPool();
 
   const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM crm_leads l ${whereSql}`, params);
@@ -2132,6 +2146,8 @@ export function ensureAuthSchema(): Promise<void> {
       await ensureColumn(pool, "crm_organizations", "api_frozen", "api_frozen TINYINT NOT NULL DEFAULT 0");
       await ensureColumn(pool, "crm_organizations", "ai_paused", "ai_paused TINYINT NOT NULL DEFAULT 0");
       await ensureColumn(pool, "crm_organizations", "automations_paused", "automations_paused TINYINT NOT NULL DEFAULT 0");
+      // Record-level access: when on, members see only their own (or unassigned) records.
+      await ensureColumn(pool, "crm_organizations", "restrict_member_visibility", "restrict_member_visibility TINYINT NOT NULL DEFAULT 0");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_users (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2251,18 +2267,20 @@ export interface OrgFlags {
   apiFrozen: boolean;
   aiPaused: boolean;
   automationsPaused: boolean;
+  restrictMembers: boolean;
 }
 
 const ORG_FLAG_COLUMN: Record<string, string> = {
   api: "api_frozen",
   ai: "ai_paused",
   automations: "automations_paused",
+  restrict_members: "restrict_member_visibility",
 };
 
 export async function getOrgFlags(orgId: number): Promise<OrgFlags> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<mysql.RowDataPacket[]>(
-    "SELECT api_frozen, ai_paused, automations_paused FROM crm_organizations WHERE id = ? LIMIT 1",
+    "SELECT api_frozen, ai_paused, automations_paused, restrict_member_visibility FROM crm_organizations WHERE id = ? LIMIT 1",
     [orgId]
   );
   const r = rows[0];
@@ -2270,6 +2288,7 @@ export async function getOrgFlags(orgId: number): Promise<OrgFlags> {
     apiFrozen: !!r?.api_frozen,
     aiPaused: !!r?.ai_paused,
     automationsPaused: !!r?.automations_paused,
+    restrictMembers: !!r?.restrict_member_visibility,
   };
 }
 
