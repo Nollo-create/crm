@@ -33,6 +33,13 @@ const ACTION_LABEL: Record<string, string> = {
   mfa_enable: "turned on 2FA for",
   mfa_disable: "turned off 2FA for",
   mfa_recovery_regen: "regenerated recovery codes for",
+  force_logout_all: "signed everyone out of",
+  emergency_api_on: "froze the API for",
+  emergency_api_off: "resumed the API for",
+  emergency_ai_on: "paused AI for",
+  emergency_ai_off: "resumed AI for",
+  emergency_automations_on: "paused automations for",
+  emergency_automations_off: "resumed automations for",
 };
 
 const verb = (action: string) => ACTION_LABEL[action] ?? action.replace(/_/g, " ");

@@ -11,6 +11,7 @@ import {
   nbaAgingQuotes,
   nbaIdleDeals,
   nbaNewCustomers,
+  getOrgFlags,
   type AutomationRow,
 } from "@/lib/db";
 import { normalizeParams, getTemplate } from "@/lib/crm/automation";
@@ -73,6 +74,9 @@ async function runOne(orgId: number, a: AutomationRow): Promise<number> {
 }
 
 export async function runAutomationsForOrg(orgId: number): Promise<{ automationId: number; created: number }[]> {
+  // Emergency pause: an owner can stop all automations for the org at once.
+  const flags = await getOrgFlags(orgId).catch(() => null);
+  if (flags?.automationsPaused) return [];
   const autos = await listEnabledAutomations(orgId).catch(() => []);
   const out: { automationId: number; created: number }[] = [];
   for (const a of autos) {

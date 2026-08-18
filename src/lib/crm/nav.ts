@@ -35,6 +35,7 @@ import {
   CreditCard,
   KeyRound,
   MonitorSmartphone,
+  Siren,
   Settings,
 } from "lucide-react";
 
@@ -125,6 +126,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Audit Log", href: "/settings/security", icon: KeyRound },
       { label: "Account Security", href: "/settings/sessions", icon: MonitorSmartphone },
       { label: "API", href: "/settings/api", icon: Settings },
+      { label: "Emergency Controls", href: "/settings/emergency", icon: Siren },
     ],
   },
 ];

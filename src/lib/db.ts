@@ -2128,6 +2128,10 @@ export function ensureAuthSchema(): Promise<void> {
       await ensureColumn(pool, "crm_organizations", "billing_name", "billing_name VARCHAR(190) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_organizations", "billing_address", "billing_address VARCHAR(500) NOT NULL DEFAULT ''");
       await ensureColumn(pool, "crm_organizations", "tax_id", "tax_id VARCHAR(40) NOT NULL DEFAULT ''");
+      // Emergency kill-switches (owner-controlled incident response).
+      await ensureColumn(pool, "crm_organizations", "api_frozen", "api_frozen TINYINT NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_organizations", "ai_paused", "ai_paused TINYINT NOT NULL DEFAULT 0");
+      await ensureColumn(pool, "crm_organizations", "automations_paused", "automations_paused TINYINT NOT NULL DEFAULT 0");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_users (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2234,6 +2238,64 @@ export interface OrganizationRow extends mysql.RowDataPacket {
   billing_name: string;
   billing_address: string;
   tax_id: string;
+  api_frozen: number;
+  ai_paused: number;
+  automations_paused: number;
+}
+
+export interface OrgFlags {
+  apiFrozen: boolean;
+  aiPaused: boolean;
+  automationsPaused: boolean;
+}
+
+const ORG_FLAG_COLUMN: Record<string, string> = {
+  api: "api_frozen",
+  ai: "ai_paused",
+  automations: "automations_paused",
+};
+
+export async function getOrgFlags(orgId: number): Promise<OrgFlags> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT api_frozen, ai_paused, automations_paused FROM crm_organizations WHERE id = ? LIMIT 1",
+    [orgId]
+  );
+  const r = rows[0];
+  return {
+    apiFrozen: !!r?.api_frozen,
+    aiPaused: !!r?.ai_paused,
+    automationsPaused: !!r?.automations_paused,
+  };
+}
+
+/** Set one emergency flag. `flag` is an allowlisted key, never raw SQL. */
+export async function setOrgFlag(orgId: number, flag: string, on: boolean): Promise<boolean> {
+  const col = ORG_FLAG_COLUMN[flag];
+  if (!col) return false;
+  await ensureAuthSchema();
+  await getPool().query(`UPDATE crm_organizations SET ${col} = ? WHERE id = ?`, [on ? 1 : 0, orgId]);
+  return true;
+}
+
+/** Force sign-out for the whole org — revoke every session except `keepId`
+ *  (0 to revoke all). Returns how many were revoked. */
+export async function revokeAllOrgSessionsExcept(orgId: number, keepId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "DELETE FROM crm_sessions WHERE organization_id = ? AND id <> ?",
+    [orgId, keepId]
+  );
+  return res.affectedRows ?? 0;
+}
+
+export async function countActiveOrgSessions(orgId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM crm_sessions WHERE organization_id = ? AND expires_at > NOW()",
+    [orgId]
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 export interface UserRow extends mysql.RowDataPacket {
   id: number;

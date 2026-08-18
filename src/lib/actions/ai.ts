@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { aiComplete } from "@/lib/sajtpress";
 import { getAnalytics } from "@/lib/analytics";
 import { getCompanyAction, getDealAction } from "@/lib/actions/crm";
-import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes } from "@/lib/db";
+import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes, getOrgFlags } from "@/lib/db";
 import { quoteNumber } from "@/lib/crm/quotes";
 import { eur } from "@/lib/format";
 import {
@@ -72,7 +72,8 @@ export interface ChatTurn {
 }
 
 export async function aiAssistantAction(question: string, history: ChatTurn[] = []): Promise<AiOut> {
-  await requireSession();
+  const { organizationId } = await requireSession();
+  if ((await getOrgFlags(organizationId).catch(() => null))?.aiPaused) return { text: "", enabled: false };
   const q = question.trim();
   if (!q) return { text: "", enabled: true };
   const ctx = await snapshot().catch(() => "");
@@ -90,7 +91,8 @@ export async function aiAssistantAction(question: string, history: ChatTurn[] = 
 }
 
 export async function companyAnalysisAction(companyId: number, focus: AnalysisFocus = "general"): Promise<AiOut> {
-  await requireSession();
+  const { organizationId } = await requireSession();
+  if ((await getOrgFlags(organizationId).catch(() => null))?.aiPaused) return { text: "", enabled: false };
   const detail = await getCompanyAction(companyId);
   if (!detail) return { text: "", enabled: true, error: "Company not found." };
   const c = detail.company;
@@ -111,7 +113,8 @@ export async function companyAnalysisAction(companyId: number, focus: AnalysisFo
 }
 
 export async function dealInsightAction(dealId: number): Promise<AiOut> {
-  await requireSession();
+  const { organizationId } = await requireSession();
+  if ((await getOrgFlags(organizationId).catch(() => null))?.aiPaused) return { text: "", enabled: false };
   const detail = await getDealAction(dealId);
   if (!detail) return { text: "", enabled: true, error: "Deal not found." };
   const d = detail.deal;
@@ -137,7 +140,8 @@ export async function outreachDraftAction(input: {
   length?: OutreachLength;
   channel?: OutreachChannel;
 }): Promise<AiOut> {
-  await requireSession();
+  const { organizationId } = await requireSession();
+  if ((await getOrgFlags(organizationId).catch(() => null))?.aiPaused) return { text: "", enabled: false };
   const detail = await getCompanyAction(input.companyId);
   if (!detail) return { text: "", enabled: true, error: "Company not found." };
   const c = detail.company;
