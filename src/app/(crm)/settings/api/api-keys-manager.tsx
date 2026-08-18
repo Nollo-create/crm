@@ -195,7 +195,7 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
         </div>
         <p className="text-2xs text-muted-foreground">
           Query params: <code>q</code> (search), <code>sort</code>, <code>dir</code> (asc/desc), <code>page</code>, <code>limit</code> (max 100). Write access
-          isn&apos;t available in v1.
+          isn&apos;t available in v1. Rate limit: <code>120 requests/min</code> per key — over that returns <code>429</code> with a <code>Retry-After</code> header.
         </p>
       </Card>
     </div>
