@@ -53,14 +53,25 @@ async function snapshot(): Promise<string> {
   ].join("\n");
 }
 
-export async function aiAssistantAction(question: string): Promise<AiOut> {
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export async function aiAssistantAction(question: string, history: ChatTurn[] = []): Promise<AiOut> {
   await requireSession();
   const q = question.trim();
   if (!q) return { text: "", enabled: true };
   const ctx = await snapshot().catch(() => "");
+  // Keep the last few turns for follow-up continuity ("and which of those…").
+  const priorTurns = (history || [])
+    .slice(-6)
+    .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${String(t.text || "").slice(0, 1000)}`)
+    .join("\n");
+  const prior = priorTurns ? `Conversation so far:\n${priorTurns}\n\n` : "";
   return aiComplete({
-    system: "You are a concise B2B sales assistant inside the Sajtpress CRM. Use the workspace snapshot to ground your answer; be practical and brief. If numbers aren't in the snapshot, say you don't have them rather than guessing.",
-    prompt: `Workspace snapshot:\n${ctx}\n\nQuestion: ${q}`,
+    system: "You are a concise B2B sales assistant inside the Sajtpress CRM. Use the workspace snapshot to ground your answer; be practical and brief. If the user asks a follow-up, use the conversation so far for context. If numbers aren't in the snapshot, say you don't have them rather than guessing.",
+    prompt: `Workspace snapshot:\n${ctx}\n\n${prior}Question: ${q}`,
     maxTokens: 700,
   });
 }
