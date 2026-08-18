@@ -1857,6 +1857,51 @@ export async function analyticsActivitiesLast30(orgId: number): Promise<number> 
   return Number(rows[0]?.n ?? 0);
 }
 
+// Monthly trend series (last 12 calendar months). SINCE_12 has no user input.
+export interface MonthRow {
+  month: string;
+  n: number;
+  v: number;
+}
+const SINCE_12 = "DATE_SUB(DATE_FORMAT(NOW(),'%Y-%m-01'), INTERVAL 11 MONTH)";
+async function monthlySeries(sql: string, orgId: number): Promise<MonthRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(sql, [orgId]);
+  return rows.map((r) => ({ month: String(r.month), n: Number(r.n), v: Number(r.v ?? 0) }));
+}
+
+export const analyticsWonByMonth = (orgId: number) =>
+  monthlySeries(
+    `SELECT DATE_FORMAT(closed_at,'%Y-%m') AS month, COUNT(*) AS n, COALESCE(SUM(value),0) AS v
+     FROM crm_deals WHERE organization_id = ? AND stage = 'won' AND closed_at IS NOT NULL AND closed_at >= ${SINCE_12}
+     GROUP BY month ORDER BY month ASC`,
+    orgId
+  );
+
+export const analyticsActivitiesByMonth = (orgId: number) =>
+  monthlySeries(
+    `SELECT DATE_FORMAT(created_at,'%Y-%m') AS month, COUNT(*) AS n
+     FROM crm_activities WHERE organization_id = ? AND created_at >= ${SINCE_12}
+     GROUP BY month ORDER BY month ASC`,
+    orgId
+  );
+
+export const analyticsLeadsByMonth = (orgId: number) =>
+  monthlySeries(
+    `SELECT DATE_FORMAT(created_at,'%Y-%m') AS month, COUNT(*) AS n
+     FROM crm_leads WHERE organization_id = ? AND created_at >= ${SINCE_12}
+     GROUP BY month ORDER BY month ASC`,
+    orgId
+  );
+
+export const analyticsDealsCreatedByMonth = (orgId: number) =>
+  monthlySeries(
+    `SELECT DATE_FORMAT(created_at,'%Y-%m') AS month, COUNT(*) AS n, COALESCE(SUM(value),0) AS v
+     FROM crm_deals WHERE organization_id = ? AND created_at >= ${SINCE_12}
+     GROUP BY month ORDER BY month ASC`,
+    orgId
+  );
+
 // -------- next-best-action signals (heuristic worklists; integer args are our
 //          own constants, inlined via Number() so they can't be injected)
 

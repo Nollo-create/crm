@@ -1,11 +1,12 @@
 import { getAnalytics } from "@/lib/analytics";
-import { Kpi, BarList, ChartCard } from "@/components/crm/charts";
+import { Kpi, BarList, ChartCard, TrendBars } from "@/components/crm/charts";
 import { eur } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function SalesAnalyticsPage() {
   const a = await getAnalytics();
+  const wonThisMonth = a.trends.wonByMonth[a.trends.wonByMonth.length - 1] ?? { value: 0, count: 0 };
   return (
     <div className="space-y-4">
       <div>
@@ -16,10 +17,19 @@ export default async function SalesAnalyticsPage() {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label="Open pipeline" value={eur(a.deals.open)} />
         <Kpi label="Weighted" value={eur(a.deals.weighted)} sub="prob-adjusted" />
-        <Kpi label="Won" value={eur(a.deals.won)} tone="text-emerald" />
+        <Kpi label="Won" value={eur(a.deals.won)} tone="text-emerald" sub={`${eur(wonThisMonth.value)} this month`} />
         <Kpi label="Win rate" value={`${a.deals.winRate}%`} sub={`${a.deals.wonCount}W · ${a.deals.lostCount}L`} />
         <Kpi label="Customers" value={String(a.companies.customers)} />
         <Kpi label="Activity 30d" value={String(a.activities.last30)} />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="Won revenue" subtitle="last 12 months">
+          <TrendBars points={a.trends.wonByMonth.map((m) => ({ month: m.month, value: m.value, display: eur(m.value) }))} barClass="bg-emerald" empty="No won deals in the last 12 months." />
+        </ChartCard>
+        <ChartCard title="Activity" subtitle="logged touches · last 12 months">
+          <TrendBars points={a.trends.activitiesByMonth.map((m) => ({ month: m.month, value: m.value, display: String(m.value) }))} empty="No activity logged in the last 12 months." />
+        </ChartCard>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">

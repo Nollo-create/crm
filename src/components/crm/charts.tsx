@@ -56,3 +56,36 @@ export function monthLabel(ym: string): string {
   const idx = Number(m) - 1;
   return `${MONTHS[idx] ?? m} ${y}`;
 }
+/** "2026-03" -> "Mar". */
+export function monthShort(ym: string): string {
+  return MONTHS[Number(ym.split("-")[1]) - 1] ?? ym;
+}
+
+export interface TrendPoint {
+  month: string; // "YYYY-MM"
+  value: number;
+  display?: string;
+}
+
+/** A compact, dependency-free vertical bar trend (e.g. last 12 months). */
+export function TrendBars({ points, barClass, empty }: { points: TrendPoint[]; barClass?: string; empty?: string }) {
+  const hasAny = points.some((p) => p.value > 0);
+  if (!points.length || !hasAny) return <p className="py-8 text-center text-2xs text-muted-foreground">{empty ?? "No data in this period yet."}</p>;
+  const max = Math.max(1, ...points.map((p) => p.value));
+  return (
+    <div className="flex h-32 items-end gap-1">
+      {points.map((p, i) => (
+        <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div className="flex w-full flex-1 items-end">
+            <div
+              className={cn("w-full rounded-t transition-all", barClass ?? "bg-electric")}
+              style={{ height: `${p.value > 0 ? Math.max(3, (p.value / max) * 100) : 0}%` }}
+              title={`${monthLabel(p.month)}: ${p.display ?? String(p.value)}`}
+            />
+          </div>
+          <span className="text-[9px] text-muted-foreground">{monthShort(p.month).charAt(0)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

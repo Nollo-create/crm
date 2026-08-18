@@ -11,6 +11,10 @@ import {
   analyticsActivitiesByType,
   analyticsActivitiesLast30,
   analyticsQuotesByStatus,
+  analyticsWonByMonth,
+  analyticsActivitiesByMonth,
+  analyticsLeadsByMonth,
+  analyticsDealsCreatedByMonth,
 } from "@/lib/db";
 
 export interface KV {
@@ -36,13 +40,31 @@ export interface AnalyticsData {
   leads: { total: number; converted: number; conversionRate: number; byStatus: KV[]; bySource: KV[] };
   activities: { total: number; last30: number; byType: KV[] };
   quotes: { total: number; accepted: number; byStatus: (KV & { value: number })[] };
+  trends: {
+    wonByMonth: { month: string; value: number; count: number }[];
+    activitiesByMonth: { month: string; value: number }[];
+    leadsByMonth: { month: string; value: number }[];
+    dealsCreatedByMonth: { month: string; value: number; count: number }[];
+  };
+}
+
+/** Last 12 calendar months as "YYYY-MM", oldest→newest (server runtime; new Date
+ *  is fine here — the workflow-script ban doesn't apply to app code). */
+function last12Months(): string[] {
+  const now = new Date();
+  const out: string[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
 }
 
 /** All CRM analytics in one pass — computed server-side, degrades to zeros if the
  *  DB is unreachable. Weighting + win rate use the canonical pipeline stages. */
 export async function getAnalytics(): Promise<AnalyticsData> {
   const { organizationId: org } = await requireSession();
-  const [companies, dealStage, owners, forecastRows, leadStatus, leadSource, actType, act30, quoteStatus] = await Promise.all([
+  const [companies, dealStage, owners, forecastRows, leadStatus, leadSource, actType, act30, quoteStatus, wonMonth, actMonth, leadMonth, dealMonth] = await Promise.all([
     analyticsCompanies(org).catch(() => []),
     analyticsDealsByStage(org).catch(() => []),
     analyticsDealsByOwner(org).catch(() => []),
@@ -52,7 +74,23 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     analyticsActivitiesByType(org).catch(() => []),
     analyticsActivitiesLast30(org).catch(() => 0),
     analyticsQuotesByStatus(org).catch(() => []),
+    analyticsWonByMonth(org).catch(() => []),
+    analyticsActivitiesByMonth(org).catch(() => []),
+    analyticsLeadsByMonth(org).catch(() => []),
+    analyticsDealsCreatedByMonth(org).catch(() => []),
   ]);
+
+  const axis = last12Months();
+  const wonM = new Map(wonMonth.map((r) => [r.month, r]));
+  const actM = new Map(actMonth.map((r) => [r.month, r]));
+  const leadM = new Map(leadMonth.map((r) => [r.month, r]));
+  const dealM = new Map(dealMonth.map((r) => [r.month, r]));
+  const trends = {
+    wonByMonth: axis.map((m) => ({ month: m, value: wonM.get(m)?.v ?? 0, count: wonM.get(m)?.n ?? 0 })),
+    activitiesByMonth: axis.map((m) => ({ month: m, value: actM.get(m)?.n ?? 0 })),
+    leadsByMonth: axis.map((m) => ({ month: m, value: leadM.get(m)?.n ?? 0 })),
+    dealsCreatedByMonth: axis.map((m) => ({ month: m, value: dealM.get(m)?.v ?? 0, count: dealM.get(m)?.n ?? 0 })),
+  };
 
   const cmap = new Map(companies.map((c) => [c.status, c]));
   const companiesData = {
@@ -124,5 +162,6 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       accepted: (quoteStatus.find((q) => q.status === "accepted")?.value ?? 0) / 100,
       byStatus: quoteStatus.map((q) => ({ key: q.status, n: q.n, value: q.value / 100 })),
     },
+    trends,
   };
 }
