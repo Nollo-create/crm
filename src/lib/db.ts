@@ -2241,6 +2241,25 @@ export function ensureAuthSchema(): Promise<void> {
       // default to all scopes + no expiry, so they keep working unchanged.
       await ensureColumn(pool, "crm_api_keys", "expires_at", "expires_at TIMESTAMP NULL");
       await ensureColumn(pool, "crm_api_keys", "scopes", "scopes VARCHAR(255) NOT NULL DEFAULT 'companies,contacts,deals'");
+      // Active security alerts (#5): high-severity events an owner should notice,
+      // persisted so they can be acknowledged (not just a scrolling feed).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_security_alerts (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          type VARCHAR(40) NOT NULL DEFAULT '',
+          severity VARCHAR(10) NOT NULL DEFAULT 'medium',
+          message VARCHAR(300) NOT NULL DEFAULT '',
+          actor_email VARCHAR(190) NOT NULL DEFAULT '',
+          meta VARCHAR(500) NOT NULL DEFAULT '',
+          acknowledged_at TIMESTAMP NULL,
+          acknowledged_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_alert_org (organization_id, acknowledged_at, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      // Optional outbound alert channel (owner-set, https+public only). Empty = off.
+      await ensureColumn(pool, "crm_organizations", "security_webhook_url", "security_webhook_url VARCHAR(500) NOT NULL DEFAULT ''");
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2303,6 +2322,89 @@ export async function setOrgFlag(orgId: number, flag: string, on: boolean): Prom
   await ensureAuthSchema();
   await getPool().query(`UPDATE crm_organizations SET ${col} = ? WHERE id = ?`, [on ? 1 : 0, orgId]);
   return true;
+}
+
+// ------------------------------------------------------------ security alerts
+
+export interface SecurityAlertRow extends mysql.RowDataPacket {
+  id: number;
+  type: string;
+  severity: string;
+  message: string;
+  actor_email: string;
+  meta: string;
+  acknowledged_at: Date | null;
+  acknowledged_by: string;
+  created_at: Date;
+}
+
+export interface SecurityAlertInput {
+  type: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  actorEmail?: string;
+  meta?: string;
+}
+
+export async function insertSecurityAlert(orgId: number, a: SecurityAlertInput): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_security_alerts (organization_id, type, severity, message, actor_email, meta)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    [orgId, a.type.slice(0, 40), a.severity.slice(0, 10), a.message.slice(0, 300), (a.actorEmail ?? "").slice(0, 190), (a.meta ?? "").slice(0, 500)]
+  );
+  return res.insertId;
+}
+
+export async function listSecurityAlerts(orgId: number, opts: { onlyActive?: boolean; limit?: number } = {}): Promise<SecurityAlertRow[]> {
+  await ensureAuthSchema();
+  const where = opts.onlyActive ? "AND acknowledged_at IS NULL" : "";
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const [rows] = await getPool().query<SecurityAlertRow[]>(
+    `SELECT * FROM crm_security_alerts WHERE organization_id = ? ${where} ORDER BY id DESC LIMIT ?`,
+    [orgId, limit]
+  );
+  return rows;
+}
+
+export async function countActiveSecurityAlerts(orgId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM crm_security_alerts WHERE organization_id = ? AND acknowledged_at IS NULL",
+    [orgId]
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function acknowledgeSecurityAlert(orgId: number, id: number, byEmail: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_security_alerts SET acknowledged_at = CURRENT_TIMESTAMP, acknowledged_by = ? WHERE organization_id = ? AND id = ? AND acknowledged_at IS NULL",
+    [byEmail.slice(0, 190), orgId, id]
+  );
+}
+
+export async function acknowledgeAllSecurityAlerts(orgId: number, byEmail: string): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "UPDATE crm_security_alerts SET acknowledged_at = CURRENT_TIMESTAMP, acknowledged_by = ? WHERE organization_id = ? AND acknowledged_at IS NULL",
+    [byEmail.slice(0, 190), orgId]
+  );
+  return res.affectedRows ?? 0;
+}
+
+export async function getOrgSecurityWebhook(orgId: number): Promise<string> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT security_webhook_url FROM crm_organizations WHERE id = ? LIMIT 1",
+    [orgId]
+  );
+  return String(rows[0]?.security_webhook_url ?? "");
+}
+
+export async function setOrgSecurityWebhook(orgId: number, url: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_organizations SET security_webhook_url = ? WHERE id = ?", [url.slice(0, 500), orgId]);
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

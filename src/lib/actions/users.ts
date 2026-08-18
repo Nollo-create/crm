@@ -11,6 +11,7 @@ import {
   type UserRow,
 } from "@/lib/db";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 import { requireSession } from "@/lib/auth/session";
 import { can, isRole } from "@/lib/auth/rbac";
 import { inviteRoleError, roleChangeError, statusChangeError } from "@/lib/auth/user-admin";
@@ -92,6 +93,9 @@ export async function setUserRoleAction(userId: number, role: string): Promise<{
 
   await updateUserRole(session.organizationId, userId, role);
   await recordAudit(session, "role_change", "user", userId, `${target.email} → ${role}`);
+  if ((role === "admin" || role === "owner") && target.role !== role) {
+    await recordSecurityAlert(session.organizationId, { type: "role_elevated", severity: "high", message: `${target.email} was granted the ${role} role`, actorEmail: session.email, meta: `by ${session.email}` });
+  }
   revalidatePath("/settings/users");
   return {};
 }

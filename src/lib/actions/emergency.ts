@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { getOrgFlags, setOrgFlag, revokeAllOrgSessionsExcept, countActiveOrgSessions } from "@/lib/db";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 
 // Owner-only incident-response kill switches. Each is enforced server-side at its
 // seam (API auth / AI actions / automation runner) — not just hidden in the UI.
@@ -37,6 +38,10 @@ export async function setEmergencyFlagAction(flag: string, on: boolean): Promise
   if (!FLAGS.has(flag)) return { error: "Unknown control." };
   await setOrgFlag(session.organizationId, flag, on);
   await recordAudit(session, `${AUDIT_PREFIX[flag]}_${on ? "on" : "off"}`, "organization", session.organizationId);
+  if (on) {
+    const LABEL: Record<string, string> = { api: "API access frozen", ai: "AI features paused", automations: "Automations paused" };
+    await recordSecurityAlert(session.organizationId, { type: "emergency_control", severity: "high", message: `Emergency control activated: ${LABEL[flag] ?? flag}`, actorEmail: session.email });
+  }
   revalidatePath("/settings/emergency");
   return {};
 }
@@ -50,6 +55,7 @@ export async function forceLogoutOrgAction(): Promise<{ count: number; error?: s
   const keep = (await getCurrentSessionId()) ?? 0;
   const count = await revokeAllOrgSessionsExcept(session.organizationId, keep);
   await recordAudit(session, "force_logout_all", "organization", session.organizationId, `${count} session${count === 1 ? "" : "s"} revoked`);
+  await recordSecurityAlert(session.organizationId, { type: "force_logout", severity: "high", message: `All other sessions were signed out (${count})`, actorEmail: session.email });
   revalidatePath("/settings/emergency");
   return { count };
 }

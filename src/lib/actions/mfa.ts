@@ -14,6 +14,7 @@ import { isMfaCryptoConfigured, encryptSecret, decryptSecret } from "@/lib/auth/
 import { generateTotpSecret, verifyTotp, otpauthUrl, formatSecretForDisplay, generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/totp";
 import { verifyUserMfaCode } from "@/lib/auth/mfa-verify";
 import { recordAudit } from "@/lib/auth/audit";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -78,6 +79,7 @@ export async function disableMfaAction(code: string): Promise<{ error?: string }
   if (!(await verifyUserMfaCode(session.userId, code))) return { error: "That code didn't match." };
   await disableUserTotp(session.userId);
   await recordAudit(session, "mfa_disable", "user", session.userId);
+  await recordSecurityAlert(session.organizationId, { type: "mfa_disabled", severity: "high", message: "Two-factor authentication was turned off", actorEmail: session.email });
   revalidatePath("/settings/sessions");
   return {};
 }

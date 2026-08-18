@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { getOrgFlags, setOrgFlag, getUserTotp } from "@/lib/db";
 import { recordAudit } from "@/lib/auth/audit";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 import { verifyStepUp, stepUpKind, type StepUpKind } from "@/lib/auth/step-up";
 
 // Owner-only organization security policies. Both are enforced server-side in
@@ -69,6 +70,7 @@ export async function setRequireAdminMfaAction(on: boolean, credential: string):
   if (stepErr) return { error: stepErr };
   await setOrgFlag(session.organizationId, "require_admin_mfa", on);
   await recordAudit(session, `require_admin_mfa_${on ? "on" : "off"}`, "organization", session.organizationId);
+  await recordSecurityAlert(session.organizationId, { type: "policy_change", severity: "high", message: `Policy: require two-factor for admins turned ${on ? "on" : "off"}`, actorEmail: session.email });
   revalidatePath("/settings/roles");
   return {};
 }

@@ -7,6 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { verifyPassword } from "@/lib/auth/password";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
 import { generateApiKey, maskKey, normalizeScopes, scopesToString, expiryFromDays, type ApiScope } from "@/lib/crm/api-keys";
 
@@ -77,6 +78,7 @@ export async function createApiKeyAction(
   const key = generateApiKey();
   await createApiKey(session.organizationId, { name: label, keyHash: key.hash, last4: key.last4, createdByEmail: session.email, expiresAt, scopes });
   await recordAudit(session, "apikey_create", "api_key", null, `created "${label}" (${scopes}${expiresAt ? `, expires ${expiresAt.toISOString().slice(0, 10)}` : ""})`);
+  await recordSecurityAlert(session.organizationId, { type: "apikey_created", severity: "medium", message: `A new API key "${label}" was created`, actorEmail: session.email, meta: scopes });
   revalidatePath("/settings/api");
   return { plain: key.plain };
 }

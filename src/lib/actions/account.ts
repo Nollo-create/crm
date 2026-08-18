@@ -4,6 +4,7 @@ import { requireSession, getCurrentSessionId } from "@/lib/auth/session";
 import { getUserById, updateUserPassword, revokeOtherSessions } from "@/lib/db";
 import { verifyPassword, hashPassword } from "@/lib/auth/password";
 import { recordAudit } from "@/lib/auth/audit";
+import { recordSecurityAlert } from "@/lib/security/alerts";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
 
 /** Change the signed-in user's password. Requires the current password (step-up),
@@ -26,5 +27,6 @@ export async function changePasswordAction(input: { current: string; next: strin
   const keep = (await getCurrentSessionId()) ?? 0;
   const revoked = await revokeOtherSessions(session.userId, keep).catch(() => 0);
   await recordAudit(session, "password_change", "user", session.userId, revoked ? `${revoked} other session${revoked === 1 ? "" : "s"} signed out` : "");
+  await recordSecurityAlert(session.organizationId, { type: "password_changed", severity: "high", message: "An account password was changed", actorEmail: session.email });
   return { ok: true };
 }

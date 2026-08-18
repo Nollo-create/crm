@@ -5,6 +5,7 @@ import { Kpi } from "@/components/crm/charts";
 import { Card } from "@/components/ui/card";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ActiveAlerts, AlertWebhook } from "./security-alerts";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,12 @@ const ACTION_LABEL: Record<string, string> = {
   emergency_api_on: "API frozen",
   emergency_ai_on: "AI paused",
   emergency_automations_on: "Automations paused",
+  require_admin_mfa_on: "Admin 2FA required",
+  require_admin_mfa_off: "Admin 2FA requirement off",
+  restrict_members_on: "Member visibility restricted",
+  restrict_members_off: "Member visibility opened",
+  alert_webhook_set: "Alert webhook set",
+  alert_webhook_clear: "Alert webhook removed",
   delete: "Record deleted",
   bulk_delete: "Bulk delete",
   plan_change: "Plan changed",
@@ -72,6 +79,9 @@ export default async function SecurityOverviewPage() {
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">Your workspace&apos;s security posture, measured from real controls.</p>
       </div>
+
+      {/* Active alerts (renders nothing when there are none) */}
+      <ActiveAlerts alerts={data.activeAlerts} />
 
       {/* Score */}
       <Card className="flex flex-wrap items-center gap-5 p-4">
@@ -161,6 +171,8 @@ export default async function SecurityOverviewPage() {
           </Link>
         </Card>
       </div>
+
+      {data.canManageOrg && <AlertWebhook initialUrl={data.webhookUrl} />}
 
       {data.grade === "at-risk" && (
         <p className="flex items-center gap-1.5 text-2xs text-danger"><AlertTriangle size={12} /> Address the high-severity items above to raise your score.</p>
