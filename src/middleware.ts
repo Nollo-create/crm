@@ -1,34 +1,76 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 
-// A coarse gate only: is a session cookie present? The real, DB-backed check
-// happens in the (crm) layout via requireSession(). Runs on the Edge runtime,
-// so it must not import anything Node-only (hence the dep-free constant).
+// Two jobs, both per-request:
+//  1. A coarse auth gate — is a session cookie present? The real, DB-backed check
+//     happens in the (crm) layout via requireSession().
+//  2. A per-request Content-Security-Policy with a fresh nonce. The nonce is
+//     forwarded on the request headers so Next tags its own bootstrap scripts,
+//     and passed to next-themes in the root layout for its inline theme script.
+// Runs on the Edge runtime, so no Node-only imports (crypto.randomUUID + btoa are
+// Web-standard globals; the session constant is dependency-free).
 
 const PUBLIC = ["/login", "/setup", "/sso"];
 
-export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  const isPublic =
+function isPublicPath(pathname: string): boolean {
+  return (
     PUBLIC.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
-    // App Router metadata assets (favicon, apple icon, manifest) must load on the
-    // public /login page too, so never gate them behind auth.
+    // App Router metadata assets must load on the public /login page too.
     /^\/(icon|apple-icon|opengraph-image|twitter-image)\.\w+$/.test(pathname) ||
-    pathname === "/manifest.webmanifest";
+    pathname === "/manifest.webmanifest"
+  );
+}
 
-  if (isPublic) return NextResponse.next();
+function buildCsp(nonce: string): string {
+  const prod = process.env.NODE_ENV === "production";
+  // Prod: strict — scripts must carry the nonce; strict-dynamic lets those load
+  // the chunked bundles. Dev: relaxed so Next's HMR (eval + inline) keeps working.
+  const scriptSrc = prod ? `'self' 'nonce-${nonce}' 'strict-dynamic'` : `'self' 'unsafe-inline' 'unsafe-eval'`;
+  return [
+    `default-src 'self'`,
+    `script-src ${scriptSrc}`,
+    // Inline styles: next/font @font-face + component style attributes.
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: blob:`,
+    `font-src 'self' data:`,
+    `connect-src 'self'`,
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+    `frame-ancestors 'none'`,
+    `frame-src 'none'`,
+    `upgrade-insecure-requests`,
+  ].join("; ");
+}
 
-  if (!req.cookies.has(SESSION_COOKIE)) {
+export function middleware(req: NextRequest): NextResponse {
+  const { pathname } = req.nextUrl;
+
+  const nonce = btoa(crypto.randomUUID());
+  const csp = buildCsp(nonce);
+
+  // Auth gate for protected routes.
+  if (!isPublicPath(pathname) && !req.cookies.has(SESSION_COOKIE)) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirectRes = NextResponse.redirect(url);
+    redirectRes.headers.set("Content-Security-Policy", csp);
+    return redirectRes;
   }
-  return NextResponse.next();
+
+  // Forward the nonce + CSP on the request so Next can nonce its scripts, and set
+  // the CSP on the response so the browser enforces it.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
 }
 
 export const config = {
