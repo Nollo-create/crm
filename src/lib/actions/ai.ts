@@ -3,7 +3,7 @@
 import { requireSession } from "@/lib/auth/session";
 import { aiComplete } from "@/lib/sajtpress";
 import { getAnalytics } from "@/lib/analytics";
-import { getCompanyAction } from "@/lib/actions/crm";
+import { getCompanyAction, getDealAction } from "@/lib/actions/crm";
 import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes } from "@/lib/db";
 import { quoteNumber } from "@/lib/crm/quotes";
 import { eur } from "@/lib/format";
@@ -82,6 +82,25 @@ export async function companyAnalysisAction(companyId: number): Promise<AiOut> {
     system: "You are a B2B account strategist. Analyse this account and reply in plain text with short sections: Health (one line), Opportunities (2 bullets), Risks (2 bullets), Recommended next step (one line). Be concrete; base it only on the data given.",
     prompt: ctx,
     maxTokens: 900,
+  });
+}
+
+export async function dealInsightAction(dealId: number): Promise<AiOut> {
+  await requireSession();
+  const detail = await getDealAction(dealId);
+  if (!detail) return { text: "", enabled: true, error: "Deal not found." };
+  const d = detail.deal;
+  const ctx = [
+    `Deal: ${d.title}`,
+    `Company: ${d.companyName} · Value: ${eur(d.value)} · Stage: ${d.stage} · Probability: ${d.probability ?? "-"}%`,
+    `Expected close: ${d.expectedClose ?? "-"} · Owner: ${d.owner || "-"} · Primary contact: ${d.contactName ?? "-"}`,
+    d.notes ? `Notes: ${d.notes}` : "",
+    `Recent activity: ${detail.activities.slice(0, 6).map((a) => `${a.type}: ${a.summary}`).join("; ") || "none"}`,
+  ].filter(Boolean).join("\n");
+  return aiComplete({
+    system: "You are a B2B deal coach. Analyse this single deal and reply in plain text with short sections: Momentum (one line), Risks (2 bullets), Next best move (one line). Be concrete and base it only on the data given.",
+    prompt: ctx,
+    maxTokens: 700,
   });
 }
 

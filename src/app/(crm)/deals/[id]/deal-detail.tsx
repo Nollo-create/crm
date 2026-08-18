@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass, CheckCircle2, XCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass, CheckCircle2, XCircle, RotateCcw, Sparkles, Loader2 } from "lucide-react";
 import {
   getDealAction,
   updateDealAction,
@@ -16,6 +16,8 @@ import {
 } from "@/lib/actions/crm";
 import { OPEN_STAGES, stageLabel, weightedValue, LOSS_REASONS, LOSS_REASON_LABEL } from "@/lib/crm/pipeline";
 import { TagEditor } from "@/components/crm/tag-editor";
+import { AiOutput } from "@/components/crm/ai-output";
+import { dealInsightAction, type AiOut } from "@/lib/actions/ai";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,15 @@ export function DealDetail({ id }: { id: number }) {
   const [note, setNote] = useState({ type: "note", summary: "" });
   const [lostOpen, setLostOpen] = useState(false);
   const [lossReason, setLossReason] = useState<string>(LOSS_REASONS[0]);
+  const [aiResult, setAiResult] = useState<AiOut | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  async function analyze() {
+    setAiLoading(true);
+    const r = await dealInsightAction(id).catch(() => null);
+    setAiLoading(false);
+    setAiResult(r);
+  }
 
   async function load() {
     const res = await getDealAction(id).catch(() => null);
@@ -326,9 +337,17 @@ export function DealDetail({ id }: { id: number }) {
           )}
 
           <div className="ai-surface p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold text-royal"><Compass size={15} /> Deal insights</p>
-            <p className="mt-2 text-xs text-muted-foreground">Risk, momentum and the next move for this deal — from the Sajtpress AI.</p>
-            <span className="soon-badge mt-2 inline-block">soon</span>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-sm font-semibold text-royal"><Compass size={15} /> Deal insights</p>
+              <Button size="sm" variant="outline" onClick={analyze} disabled={aiLoading}>
+                {aiLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Analyze
+              </Button>
+            </div>
+            {aiResult || aiLoading ? (
+              <div className="mt-3"><AiOutput loading={aiLoading} result={aiResult} /></div>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Momentum, risks and the next move for this deal — from the Sajtpress AI.</p>
+            )}
           </div>
         </div>
       </div>
