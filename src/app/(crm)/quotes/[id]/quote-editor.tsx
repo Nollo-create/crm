@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useCanWrite } from "@/components/crm/role-context";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<string, Tone> = { draft: "neutral", sent: "electric", accepted: "emerald", declined: "danger" };
@@ -33,6 +34,7 @@ const money = (euros: number) => "€" + euros.toLocaleString("en-US", { minimum
 export function QuoteEditor({ id }: { id: number }) {
   const router = useRouter();
   const { toast } = useToast();
+  const canWrite = useCanWrite();
   const [d, setD] = useState<QuoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -89,7 +91,7 @@ export function QuoteEditor({ id }: { id: number }) {
 
   const items = d.items;
   const total = items.reduce((s, i) => s + i.lineTotal, 0);
-  const editable = d.quote.status === "draft";
+  const editable = d.quote.status === "draft" && canWrite;
 
   async function changeStatus(status: string) {
     setD((prev) => (prev ? { ...prev, quote: { ...prev.quote, status } } : prev));
@@ -165,28 +167,34 @@ export function QuoteEditor({ id }: { id: number }) {
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 print:hidden">
-            <Select value={d.quote.status} onChange={(e) => changeStatus(e.target.value)} className="h-8 w-auto text-xs">
-              {QUOTE_STATUSES.map((s) => <option key={s} value={s}>{QUOTE_STATUS_LABEL[s]}</option>)}
-            </Select>
-            <Button size="sm" variant="outline" onClick={duplicate} disabled={dupBusy} title="Duplicate as a new draft">
-              {dupBusy ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />} Duplicate
-            </Button>
+            {canWrite && (
+              <>
+                <Select value={d.quote.status} onChange={(e) => changeStatus(e.target.value)} className="h-8 w-auto text-xs">
+                  {QUOTE_STATUSES.map((s) => <option key={s} value={s}>{QUOTE_STATUS_LABEL[s]}</option>)}
+                </Select>
+                <Button size="sm" variant="outline" onClick={duplicate} disabled={dupBusy} title="Duplicate as a new draft">
+                  {dupBusy ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />} Duplicate
+                </Button>
+              </>
+            )}
             <Button size="sm" variant="outline" onClick={() => typeof window !== "undefined" && window.print()} title="Print / save as PDF">
               <Printer size={13} /> Print
             </Button>
-            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete quote" onClick={removeQuote}>
-              <Trash2 size={15} />
-            </Button>
+            {canWrite && (
+              <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete quote" onClick={removeQuote}>
+                <Trash2 size={15} />
+              </Button>
+            )}
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <label className="text-2xs text-muted-foreground">
             Valid until
-            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} onBlur={commitHeader} className="mt-1 h-9" />
+            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} onBlur={commitHeader} disabled={!canWrite} className="mt-1 h-9" />
           </label>
           <label className="text-2xs text-muted-foreground">
             Notes
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={commitHeader} placeholder="Optional" className="mt-1 h-9" />
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={commitHeader} placeholder="Optional" disabled={!canWrite} className="mt-1 h-9" />
           </label>
         </div>
       </Card>

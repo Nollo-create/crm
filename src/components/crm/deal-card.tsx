@@ -5,6 +5,7 @@ import { GripVertical, CalendarClock } from "lucide-react";
 import { STAGES, weightedValue, stage, dealCloseInfo, type StageId } from "@/lib/crm/pipeline";
 import type { BoardDeal } from "@/lib/actions/crm";
 import { Select } from "@/components/ui/input";
+import { useCanWrite } from "@/components/crm/role-context";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -40,12 +41,14 @@ export function DealCard({
   dragging?: boolean;
 }) {
   const router = useRouter();
+  const canWrite = useCanWrite();
   const prob = d.probability != null ? d.probability : stage(d.stage).probability;
   const close = dealCloseInfo(d.expectedClose);
   return (
     <div
-      draggable
+      draggable={canWrite}
       onDragStart={(e) => {
+        if (!canWrite) return;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(d.id));
         onDragStart?.(d.id);
@@ -53,7 +56,8 @@ export function DealCard({
       onDragEnd={() => onDragEnd?.()}
       onClick={() => router.push(`/deals/${d.id}`)}
       className={cn(
-        "group cursor-grab rounded-lg border border-border bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-electric/40 hover:shadow-card active:cursor-grabbing",
+        "group rounded-lg border border-border bg-card p-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-electric/40 hover:shadow-card",
+        canWrite ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
         dragging && "opacity-40"
       )}
     >
@@ -86,17 +90,19 @@ export function DealCard({
         </p>
       )}
 
-      <div className="mt-2 border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
-        <Select
-          value={d.stage}
-          onChange={(e) => onMove(d.id, e.target.value)}
-          className="h-7 w-full border-transparent bg-secondary/50 text-2xs hover:bg-secondary"
-        >
-          {STAGES.map((st) => (
-            <option key={st.id} value={st.id}>{st.label}</option>
-          ))}
-        </Select>
-      </div>
+      {canWrite && (
+        <div className="mt-2 border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
+          <Select
+            value={d.stage}
+            onChange={(e) => onMove(d.id, e.target.value)}
+            className="h-7 w-full border-transparent bg-secondary/50 text-2xs hover:bg-secondary"
+          >
+            {STAGES.map((st) => (
+              <option key={st.id} value={st.id}>{st.label}</option>
+            ))}
+          </Select>
+        </div>
+      )}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import {
 } from "@/lib/actions/crm";
 import { STAGES, stageLabel, weightedValue, leadScore } from "@/lib/crm/pipeline";
 import { Card } from "@/components/ui/card";
+import { useCanWrite } from "@/components/crm/role-context";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -75,6 +76,7 @@ export function CompanyDetail({ id }: { id: number }) {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
+  const canWrite = useCanWrite();
   const [addC, setAddC] = useState(false);
   const [addD, setAddD] = useState(false);
 
@@ -179,9 +181,11 @@ export function CompanyDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => { setTab("deals"); setAddD(true); }}>
-              <Plus size={14} /> Deal
-            </Button>
+            {canWrite && (
+              <Button size="sm" variant="outline" onClick={() => { setTab("deals"); setAddD(true); }}>
+                <Plus size={14} /> Deal
+              </Button>
+            )}
             <a href={primaryEmail ? `mailto:${primaryEmail}` : undefined} className={cn(!primaryEmail && "pointer-events-none opacity-40")}>
               <Button size="icon" variant="ghost" title="Email primary contact"><Mail size={15} /></Button>
             </a>
@@ -191,36 +195,42 @@ export function CompanyDetail({ id }: { id: number }) {
             <Button size="sm" variant="ghost" className="text-royal opacity-70" title="AI analysis — soon" disabled>
               <Sparkles size={14} /> Analyze
             </Button>
-            <Select
-              value={c.status}
-              onChange={(e) =>
-                run(() =>
-                  updateCompanyAction(c.id, {
-                    name: c.name, industry: c.industry, city: c.city, website: c.website,
-                    employees: c.employees, annualValue: c.annualValue, status: e.target.value,
-                    accountManager: c.accountManager, industryMatch: c.industryMatch,
-                  })
-                )
-              }
-              className="h-8 w-auto text-xs"
-            >
-              {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="text-muted-foreground hover:text-danger"
-              title="Delete company"
-              onClick={() => {
-                if (typeof window !== "undefined" && window.confirm(`Delete ${c.name} and all its records?`))
-                  deleteCompanyAction(c.id).then((r) => {
-                    if (r?.error) window.alert(r.error);
-                    else window.location.href = "/companies";
-                  });
-              }}
-            >
-              <Trash2 size={15} />
-            </Button>
+            {canWrite ? (
+              <Select
+                value={c.status}
+                onChange={(e) =>
+                  run(() =>
+                    updateCompanyAction(c.id, {
+                      name: c.name, industry: c.industry, city: c.city, website: c.website,
+                      employees: c.employees, annualValue: c.annualValue, status: e.target.value,
+                      accountManager: c.accountManager, industryMatch: c.industryMatch,
+                    })
+                  )
+                }
+                className="h-8 w-auto text-xs"
+              >
+                {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            ) : (
+              <Badge tone="neutral">{STATUS_LABEL[c.status] ?? c.status}</Badge>
+            )}
+            {canWrite && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-muted-foreground hover:text-danger"
+                title="Delete company"
+                onClick={() => {
+                  if (typeof window !== "undefined" && window.confirm(`Delete ${c.name} and all its records?`))
+                    deleteCompanyAction(c.id).then((r) => {
+                      if (r?.error) window.alert(r.error);
+                      else window.location.href = "/companies";
+                    });
+                }}
+              >
+                <Trash2 size={15} />
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -270,16 +280,18 @@ export function CompanyDetail({ id }: { id: number }) {
               <div className="mt-4 border-t border-border pt-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">Account details</p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (!editDetails) setDetails({ legalName: c.legalName, phone: c.phone, email: c.email, country: c.country, address: c.address, vatId: c.vatId, description: c.description });
-                      setEditDetails((v) => !v);
-                    }}
-                  >
-                    {editDetails ? <X size={14} /> : <Pencil size={14} />} {editDetails ? "Close" : "Edit"}
-                  </Button>
+                  {canWrite && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!editDetails) setDetails({ legalName: c.legalName, phone: c.phone, email: c.email, country: c.country, address: c.address, vatId: c.vatId, description: c.description });
+                        setEditDetails((v) => !v);
+                      }}
+                    >
+                      {editDetails ? <X size={14} /> : <Pencil size={14} />} {editDetails ? "Close" : "Edit"}
+                    </Button>
+                  )}
                 </div>
                 {editDetails ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -366,7 +378,7 @@ export function CompanyDetail({ id }: { id: number }) {
                         <p className="truncate text-2xs text-muted-foreground">{[ct.email, ct.phone].filter(Boolean).join(" · ") || "—"}</p>
                         {inf.stars > 0 && <p className="mt-0.5 text-2xs text-warning">{"★".repeat(inf.stars)}<span className="text-muted-foreground"> {inf.label}</span></p>}
                       </div>
-                      <button onClick={() => run(() => deleteContactAction(ct.id, c.id))} className="text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                      {canWrite && <button onClick={() => run(() => deleteContactAction(ct.id, c.id))} className="text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>}
                     </div>
                   );
                 })}
@@ -396,14 +408,18 @@ export function CompanyDetail({ id }: { id: number }) {
                   <div key={dl.id} className="rounded-lg border border-border p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <Link href={`/deals/${dl.id}`} className="min-w-0 truncate text-sm font-medium hover:text-electric hover:underline">{dl.title}</Link>
-                      <button onClick={() => run(() => deleteDealAction(dl.id, c.id))} className="shrink-0 text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
+                      {canWrite && <button onClick={() => run(() => deleteDealAction(dl.id, c.id))} className="shrink-0 text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                       <span className="font-semibold tabular">{eur(dl.value)}</span>
                       <span className="text-muted-foreground">weighted {eur(weightedValue(dl))}</span>
-                      <Select value={dl.stage} onChange={(e) => run(() => updateDealStageAction(dl.id, e.target.value))} className="ml-auto h-7 w-auto text-2xs">
-                        {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                      </Select>
+                      {canWrite ? (
+                        <Select value={dl.stage} onChange={(e) => run(() => updateDealStageAction(dl.id, e.target.value))} className="ml-auto h-7 w-auto text-2xs">
+                          {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </Select>
+                      ) : (
+                        <span className="ml-auto text-2xs text-muted-foreground">{STAGES.find((s) => s.id === dl.stage)?.label ?? dl.stage}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -415,15 +431,17 @@ export function CompanyDetail({ id }: { id: number }) {
           {tab === "timeline" && (
             <Card className="p-4 sm:p-5">
               <p className="flex items-center gap-2 text-sm font-semibold"><ActivityIcon size={15} className="text-royal" /> Timeline</p>
-              <div className="mt-3 flex gap-2">
-                <Select value={note.type} onChange={(e) => setNote({ ...note, type: e.target.value })} className="h-9 w-28 shrink-0">
-                  {["note", "call", "email", "meeting", "quote"].map((t) => <option key={t} value={t}>{t}</option>)}
-                </Select>
-                <Input placeholder="What happened?" value={note.summary} onChange={(e) => setNote({ ...note, summary: e.target.value })} className="h-9" />
-                <Button size="sm" disabled={busy || !note.summary.trim()} onClick={() => run(async () => { const r = await addActivityAction({ companyId: c.id, type: note.type, summary: note.summary }); if (!r.error) setNote({ type: "note", summary: "" }); return r; })}>
-                  <Plus size={13} /> Log
-                </Button>
-              </div>
+              {canWrite && (
+                <div className="mt-3 flex gap-2">
+                  <Select value={note.type} onChange={(e) => setNote({ ...note, type: e.target.value })} className="h-9 w-28 shrink-0">
+                    {["note", "call", "email", "meeting", "quote"].map((t) => <option key={t} value={t}>{t}</option>)}
+                  </Select>
+                  <Input placeholder="What happened?" value={note.summary} onChange={(e) => setNote({ ...note, summary: e.target.value })} className="h-9" />
+                  <Button size="sm" disabled={busy || !note.summary.trim()} onClick={() => run(async () => { const r = await addActivityAction({ companyId: c.id, type: note.type, summary: note.summary }); if (!r.error) setNote({ type: "note", summary: "" }); return r; })}>
+                    <Plus size={13} /> Log
+                  </Button>
+                </div>
+              )}
               <div className="mt-4 space-y-3 border-l border-border pl-4">
                 {d.activities.map((a) => (
                   <div key={a.id} className="relative">
@@ -514,12 +532,15 @@ function DetailInput({ label, value, onChange }: { label: string; value: string;
   );
 }
 function SectionHead({ title, Icon, onAdd, adding }: { title: string; Icon: typeof Users; onAdd: () => void; adding: boolean }) {
+  const canWrite = useCanWrite();
   return (
     <div className="flex items-center justify-between">
       <p className="flex items-center gap-2 text-sm font-semibold"><Icon size={15} className="text-electric" /> {title}</p>
-      <Button size="sm" variant="ghost" onClick={onAdd}>
-        {adding ? <X size={14} /> : <Plus size={14} />} {adding ? "Close" : "Add"}
-      </Button>
+      {canWrite && (
+        <Button size="sm" variant="ghost" onClick={onAdd}>
+          {adding ? <X size={14} /> : <Plus size={14} />} {adding ? "Close" : "Add"}
+        </Button>
+      )}
     </div>
   );
 }
