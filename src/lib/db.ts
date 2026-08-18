@@ -1902,6 +1902,25 @@ export const analyticsDealsCreatedByMonth = (orgId: number) =>
     orgId
   );
 
+export interface TopDealRow {
+  id: number;
+  title: string;
+  companyName: string;
+  value: number;
+  stage: string;
+}
+export async function analyticsTopOpenDeals(orgId: number, limit: number): Promise<TopDealRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT d.id, d.title, d.value, d.stage, co.name AS company_name
+     FROM crm_deals d JOIN crm_companies co ON co.id = d.company_id AND co.organization_id = d.organization_id
+     WHERE d.organization_id = ? AND d.stage NOT IN ('won','lost')
+     ORDER BY d.value DESC LIMIT ?`,
+    [orgId, Number(limit) || 8]
+  );
+  return rows.map((r) => ({ id: Number(r.id), title: String(r.title), companyName: String(r.company_name), value: Number(r.value), stage: String(r.stage) }));
+}
+
 // -------- next-best-action signals (heuristic worklists; integer args are our
 //          own constants, inlined via Number() so they can't be injected)
 

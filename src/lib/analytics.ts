@@ -15,6 +15,7 @@ import {
   analyticsActivitiesByMonth,
   analyticsLeadsByMonth,
   analyticsDealsCreatedByMonth,
+  analyticsTopOpenDeals,
 } from "@/lib/db";
 
 export interface KV {
@@ -46,6 +47,7 @@ export interface AnalyticsData {
     leadsByMonth: { month: string; value: number }[];
     dealsCreatedByMonth: { month: string; value: number; count: number }[];
   };
+  topOpenDeals: { id: number; title: string; companyName: string; value: number; stage: string }[];
 }
 
 /** Last 12 calendar months as "YYYY-MM", oldest→newest (server runtime; new Date
@@ -79,6 +81,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     analyticsLeadsByMonth(org).catch(() => []),
     analyticsDealsCreatedByMonth(org).catch(() => []),
   ]);
+  const topOpenDeals = await analyticsTopOpenDeals(org, 8).catch(() => []);
 
   const axis = last12Months();
   const wonM = new Map(wonMonth.map((r) => [r.month, r]));
@@ -163,5 +166,6 @@ export async function getAnalytics(): Promise<AnalyticsData> {
       byStatus: quoteStatus.map((q) => ({ key: q.status, n: q.n, value: q.value / 100 })),
     },
     trends,
+    topOpenDeals,
   };
 }
