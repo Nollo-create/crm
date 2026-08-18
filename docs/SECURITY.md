@@ -10,6 +10,10 @@ Principle throughout: **never trust the client.** Every permission and tenant
 boundary is enforced **server-side**. Hidden buttons and disabled inputs are UX,
 never authorization.
 
+**Related documents:** [`THREAT-MODEL.md`](THREAT-MODEL.md) (assets, boundaries,
+STRIDE threats), [`INCIDENT-RESPONSE.md`](INCIDENT-RESPONSE.md) (breach runbook),
+[`DISASTER-RECOVERY.md`](DISASTER-RECOVERY.md) (backup & restore).
+
 ## Defense in depth
 
 ```
@@ -29,6 +33,8 @@ No single layer is load-bearing on its own.
 | **Two-factor (TOTP)** | `lib/auth/totp.ts` (RFC 6238), seed encrypted at rest (`lib/auth/crypto.ts`, AES-256-GCM), recovery codes (single-use hashes), login challenge step | `totp.test.ts` (RFC vectors), `crypto.test.ts` (round-trip + tamper) |
 | **Sessions** | `lib/auth/session.ts` — DB-backed opaque token, cookie `httpOnly`+`Secure`(prod)+`SameSite=Lax`; only the SHA-256 is stored; status re-checked each request | `tokens.test.ts`; reviewed |
 | **RBAC** | `lib/auth/rbac.ts` rank model (owner > admin > member > viewer) + `can()`, enforced per action. Every mutating action is gated by `guardWrite()` (`record:write`); admin actions by `can()`. **Viewer** is fully read-only — server-blocked on all writes, with the write UI hidden client-side too | `rbac.test.ts`, `user-admin.test.ts` |
+| **Record-level RBAC** *(opt-in)* | `lib/crm/record-scope.ts` (pure, tested) — when an owner enables "restrict members," a member sees/edits only leads & deals they own or that are unassigned. Off by default; drives the list `WHERE` fragment and single-record + bulk guards | `record-scope.test.ts`; DB paths tsc/build-verified |
+| **Admin-enforced MFA + step-up** *(opt-in)* | `lib/auth/mfa-policy.ts` gates every org-management mutation on privileged users having TOTP; `lib/auth/step-up.ts` re-verifies the owner (fresh code or password) when changing org security policy. Anti-lockout guarded | Reviewed; enforced at each action |
 | **Input validation** | `lib/crm/validate.ts` (pure, tested) — length/format/range/enum checks at the action boundary before any query; cleaned values merged, never blind-spread | `validate.test.ts` |
 | **Rate limiting** | `lib/rate-limit.ts` (in-memory, injectable clock): login (per-IP + per-email), setup, MFA enroll/verify, password change, API-key creation, and the public API (`/api/v1`: per-key + per-IP, `429` + `Retry-After`) | `rate-limit.test.ts` |
 | **Security headers** | `next.config.mjs` `headers()` — HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` | curl `-I` on responses |
@@ -38,6 +44,8 @@ No single layer is load-bearing on its own.
 | **Audit log** | `crm_audit_logs` (+ IP + user agent) via `recordAudit`/`recordAuthEvent`; viewer with filters | Reviewed; events verified in the feed |
 | **Security score** | `lib/crm/security-score.ts` — real, measured, explained (admins-without-MFA is the heaviest factor) | `security-score.test.ts` |
 | **Emergency controls** | `actions/emergency.ts` — force sign-out, freeze API, pause AI, pause automations; enforced at each seam (`api/auth`, AI actions, automation runner) | Reviewed; owner-gated + audited |
+| **Active security alerts** | `lib/security/alerts.ts` — high-severity events (MFA off, role elevated, key created, emergency switch, policy change, password change) persisted for acknowledgement + optional outbound webhook; egress SSRF-guarded (`lib/crm/webhook-url.ts`) | `webhook-url.test.ts`; seams reviewed |
+| **AI prompt-injection boundary** | `lib/ai/prompt-guard.ts` (pure, tested) — untrusted CRM data & chat history fenced in unforgeable markers, control tokens stripped, standing guard in every system prompt; AI is generation-only, tenant + record scoped, no tools | `prompt-guard.test.ts` |
 
 ## Authentication & session lifecycle
 
@@ -66,6 +74,20 @@ require admin/owner.
   write UI is also hidden client-side (`RoleProvider` + `useCanWrite()`, from the
   session role) so a viewer never sees a control they can't use. Hiding the UI is
   UX only — the server checks are the boundary.
+- **Record-level scoping (opt-in).** An owner can turn on "restrict members to
+  their own records" (Settings → Roles). When on, a member only sees and edits
+  leads and deals they own or that are unassigned; owners, admins and viewers are
+  unaffected. Enforced server-side on every list, get, write and bulk path
+  (`record-scope.ts`), including the pipeline board, dashboard and company
+  profile. Off by default — legacy unassigned records stay visible so nothing
+  disappears when it's first enabled. Verify against the production DB before
+  enabling.
+- **Admin-enforced MFA (opt-in).** An owner can require every admin/owner to have
+  two-factor before they can manage the org (`mfa-policy.ts`, enforced at every
+  org-management action, not just hidden). Enrolling MFA is never gated, so a
+  blocked admin can always comply; the toggle refuses to enable if the owner
+  lacks MFA (anti-lockout). Changing this or the record-scope policy requires
+  **step-up** re-authentication (`step-up.ts`).
 
 ## Data protection
 
@@ -73,8 +95,10 @@ require admin/owner.
   seed, encrypted with AES-256-GCM (key from `MFA_ENCRYPTION_KEY`, kept separate
   from the data). Everything else is a hash (sessions, API keys, recovery codes)
   or an environment variable.
-- **API keys:** `crmk_` prefix, SHA-256 stored, shown once, read-only scope,
-  revocable, org-freezable.
+- **API keys:** `crmk_` prefix, SHA-256 stored, shown once, read-only, revocable,
+  org-freezable. Each key can be limited to specific **scopes**
+  (companies/contacts/deals — a request outside its scope returns `403`) and
+  given an **expiry** after which it stops authenticating.
 - **Bulk / ingress operations** (imports, bulk delete/update) are audited.
 - **Public API** is read-only, key-scoped to one tenant by construction, and
   paginated (max 100/page). No CORS header is sent → default-deny for browsers.
@@ -89,7 +113,11 @@ At `/settings/emergency` an owner can, immediately and server-side:
 - **Pause automations** (the runner skips the org).
 
 Plus, from elsewhere: revoke individual sessions/API keys, disable users, force
-password reset (by disabling then re-inviting). Every emergency action is audited.
+password reset (by disabling then re-inviting). Every emergency action is audited,
+and high-severity events raise an **active alert** (acknowledgeable, optionally
+webhook-delivered). The full breach runbook — detect → triage → contain →
+eradicate → recover → post-mortem, each step mapped to these controls — is in
+[`INCIDENT-RESPONSE.md`](INCIDENT-RESPONSE.md).
 
 ## Deployment requirements (env)
 
@@ -122,18 +150,21 @@ Stated honestly rather than hidden:
   the OAuth flows hardened.
 - **No file uploads** yet → the upload-security controls (MIME/signature checks,
   out-of-webroot storage, malware scan) are unbuilt because there is no surface.
-- **AI prompt-injection isolation** is partial: the CRM builds prompts
-  server-side from org-scoped data, so cross-tenant leakage isn't possible via
-  the current actions, but there is no formal system/user/data/content boundary
-  enforcement for future tool-using agents.
-- **Access is role-level, not record-level.** The four roles are org-wide; there
-  is no per-owner or per-team scoping yet (e.g. "reps see only their assigned
-  leads/deals"). The rank model is designed to extend to it, but a member today
-  can read/edit every record in the org.
+- **AI prompt-injection:** there is now a real boundary (`prompt-guard.ts` —
+  fencing + control-token stripping + a standing system guard) applied to all
+  four generation-only agents. The residual is inherent to LLMs — a determined
+  injection can still influence *text output* — but the model has no tools, no
+  writes, and only org + record-scoped data, so the blast radius is bounded to
+  the operator's own view. Re-evaluate if tool-using agents are ever added.
+- **Record-level RBAC is opt-in.** Per-owner scoping for leads/deals now exists
+  (`record-scope.ts`) but is **off by default** and should be DB-verified before
+  an owner enables it. Companies/contacts remain org-wide by design.
 - **Rate limiting is process-local** (single Passenger process today). Back it
   with Redis if the app is ever horizontally scaled.
-- **MFA has no QR code** (manual key entry only) and **no admin-enforced MFA**
-  (it's opt-in; the security score flags admins who haven't enabled it).
+- **MFA has no QR code** (manual key entry only). Admin-enforced MFA now exists
+  as an opt-in org policy; the security score still flags admins without it.
+- **Alert delivery** is in-app plus an optional webhook — the CRM has **no native
+  SMTP**, so email/paging must go through that webhook (Slack/Discord/gateway).
 - **`sharp`/libvips** advisory accepted as above.
 - **No automated CI** — the gate (tsc + tests + build + `npm run audit`) is run
   locally before each deploy; there is no server-side pipeline enforcing it.
