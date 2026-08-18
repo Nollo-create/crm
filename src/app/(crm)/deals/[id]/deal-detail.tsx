@@ -295,13 +295,15 @@ export function DealDetail({ id }: { id: number }) {
           {/* Timeline */}
           <Card className="p-4 sm:p-5">
             <p className="flex items-center gap-2 text-sm font-semibold"><ActivityIcon size={15} className="text-royal" /> Timeline</p>
-            <div className="mt-3 flex gap-2">
-              <Select value={note.type} onChange={(e) => setNote({ ...note, type: e.target.value })} className="h-9 w-28 shrink-0">
-                {["note", "call", "email", "meeting"].map((t) => <option key={t} value={t}>{t}</option>)}
-              </Select>
-              <Input placeholder="What happened?" value={note.summary} onChange={(e) => setNote({ ...note, summary: e.target.value })} className="h-9" />
-              <Button size="sm" disabled={busy || !note.summary.trim()} onClick={logActivity}>Log</Button>
-            </div>
+            {canWrite && (
+              <div className="mt-3 flex gap-2">
+                <Select value={note.type} onChange={(e) => setNote({ ...note, type: e.target.value })} className="h-9 w-28 shrink-0">
+                  {["note", "call", "email", "meeting"].map((t) => <option key={t} value={t}>{t}</option>)}
+                </Select>
+                <Input placeholder="What happened?" value={note.summary} onChange={(e) => setNote({ ...note, summary: e.target.value })} className="h-9" />
+                <Button size="sm" disabled={busy || !note.summary.trim()} onClick={logActivity}>Log</Button>
+              </div>
+            )}
             <div className="mt-4 space-y-3 border-l border-border pl-4">
               {d.activities.map((a) => (
                 <div key={a.id} className="relative">
