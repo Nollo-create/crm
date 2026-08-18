@@ -1,9 +1,18 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { countUsers, createOrganization, createUser, getUserByEmail, setUserLastLogin } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { startSession, endSession } from "@/lib/auth/session";
+import { checkRateLimit, resetRateLimit, retryMessage } from "@/lib/rate-limit";
+
+/** Best-effort client IP from the proxy chain (cPanel/Passenger sets these). */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  const fwd = h.get("x-forwarded-for");
+  return (fwd ? fwd.split(",")[0].trim() : "") || h.get("x-real-ip") || "unknown";
+}
 
 // A dummy hash to verify against when no user matches, so login timing doesn't
 // reveal whether an email exists.
@@ -19,6 +28,11 @@ const validEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 /** First-run bootstrap: create the first organization + owner. Allowed only
  *  while the instance has zero users. */
 export async function setupAction(input: { orgName: string; name: string; email: string; password: string }): Promise<{ ok?: true; error?: string }> {
+  // Setup is one-time, but throttle it anyway so it can't be hammered pre-owner.
+  const ip = await clientIp();
+  const rl = checkRateLimit(`setup:ip:${ip}`, { limit: 5, windowMs: 60 * 60_000, blockMs: 30 * 60_000 });
+  if (!rl.ok) return { error: retryMessage(rl.retryAfter) };
+
   let n: number;
   try {
     n = await countUsers();
@@ -42,6 +56,17 @@ export async function setupAction(input: { orgName: string; name: string; email:
 
 export async function loginAction(input: { email: string; password: string }): Promise<{ ok?: true; error?: string }> {
   const email = input.email.trim().toLowerCase();
+
+  // Brute-force protection: throttle by IP (credential stuffing) and by email
+  // (targeted). Generous enough that a real person mistyping never notices.
+  const ip = await clientIp();
+  const ipKey = `login:ip:${ip}`;
+  const emailKey = `login:email:${email}`;
+  const ipRl = checkRateLimit(ipKey, { limit: 15, windowMs: 5 * 60_000, blockMs: 15 * 60_000 });
+  if (!ipRl.ok) return { error: retryMessage(ipRl.retryAfter) };
+  const emRl = checkRateLimit(emailKey, { limit: 8, windowMs: 5 * 60_000, blockMs: 15 * 60_000 });
+  if (!emRl.ok) return { error: retryMessage(emRl.retryAfter) };
+
   let user;
   try {
     user = await getUserByEmail(email);
@@ -52,6 +77,9 @@ export async function loginAction(input: { email: string; password: string }): P
   const ok = await verifyPassword(input.password, user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) return { error: "Invalid email or password." };
 
+  // Success: clear this user's/IP's counters so earlier fumbles don't linger.
+  resetRateLimit(emailKey);
+  resetRateLimit(ipKey);
   await startSession(user.id, user.organization_id);
   await setUserLastLogin(user.id).catch(() => {});
   return { ok: true };

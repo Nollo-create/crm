@@ -21,6 +21,25 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
+  // Baseline security headers on every response. These are safe, browser-standard
+  // hardening (no CSP yet — a nonce-based CSP is a separate, browser-verified
+  // step so it can't silently break rendering). HSTS only takes effect over
+  // HTTPS, which production (crm.sajtpress.rs) already is.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
