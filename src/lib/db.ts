@@ -2155,6 +2155,10 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_session_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Device/session metadata for the "active sessions" view (idempotent for prod).
+      await ensureColumn(pool, "crm_sessions", "ip", "ip VARCHAR(45) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_sessions", "user_agent", "user_agent VARCHAR(255) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_sessions", "last_used_at", "last_used_at TIMESTAMP NULL");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_audit_logs (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2223,6 +2227,9 @@ export interface SessionRow extends mysql.RowDataPacket {
   user_id: number;
   organization_id: number;
   token_hash: string;
+  ip: string;
+  user_agent: string;
+  last_used_at: Date | null;
   created_at: Date;
   expires_at: Date;
 }
@@ -2444,13 +2451,15 @@ export interface NewSession {
   organizationId: number;
   tokenHash: string;
   expiresAt: Date;
+  ip?: string;
+  userAgent?: string;
 }
 
 export async function createSession(s: NewSession): Promise<void> {
   await ensureAuthSchema();
   await getPool().query(
-    "INSERT INTO crm_sessions (user_id, organization_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-    [s.userId, s.organizationId, s.tokenHash, s.expiresAt]
+    "INSERT INTO crm_sessions (user_id, organization_id, token_hash, expires_at, ip, user_agent, last_used_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+    [s.userId, s.organizationId, s.tokenHash, s.expiresAt, (s.ip ?? "").slice(0, 45), (s.userAgent ?? "").slice(0, 255)]
   );
 }
 
@@ -2461,6 +2470,42 @@ export async function getSessionByTokenHash(tokenHash: string): Promise<SessionR
     [tokenHash]
   );
   return rows[0] ?? null;
+}
+
+/** Refresh "last active" (throttled by the caller so it isn't a write per request). */
+export async function touchSession(tokenHash: string): Promise<void> {
+  try {
+    await getPool().query("UPDATE crm_sessions SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = ?", [tokenHash]);
+  } catch {
+    /* a failed timestamp must never fail the request */
+  }
+}
+
+/** A user's active sessions (their own devices), most-recently-used first. */
+export async function listSessionsForUser(userId: number): Promise<SessionRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SessionRow[]>(
+    `SELECT * FROM crm_sessions WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP
+     ORDER BY (last_used_at IS NULL), last_used_at DESC, id DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+/** Revoke one of the user's own sessions (scoped by user_id so no cross-user). */
+export async function revokeSessionById(userId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_sessions WHERE id = ? AND user_id = ?", [id, userId]);
+}
+
+/** Log out everywhere else: revoke all of the user's sessions except `keepId`. */
+export async function revokeOtherSessions(userId: number, keepId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "DELETE FROM crm_sessions WHERE user_id = ? AND id <> ?",
+    [userId, keepId]
+  );
+  return res.affectedRows ?? 0;
 }
 
 export async function deleteSessionByTokenHash(tokenHash: string): Promise<void> {

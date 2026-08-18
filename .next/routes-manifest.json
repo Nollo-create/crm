@@ -315,6 +315,12 @@
       "namedRegex": "^/settings/security(?:/)?$"
     },
     {
+      "page": "/settings/sessions",
+      "regex": "^/settings/sessions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/sessions(?:/)?$"
+    },
+    {
       "page": "/settings/users",
       "regex": "^/settings/users(?:/)?$",
       "routeKeys": {},

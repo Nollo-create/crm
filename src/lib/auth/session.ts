@@ -1,10 +1,22 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { generateSessionToken, hashToken, SESSION_COOKIE, SESSION_TTL_DAYS } from "./tokens";
 import { toRole, type Role } from "./rbac";
-import { createSession, deleteSessionByTokenHash, getSessionByTokenHash, getUserById } from "@/lib/db";
+import { createSession, deleteSessionByTokenHash, getSessionByTokenHash, getUserById, touchSession } from "@/lib/db";
 import { integration } from "@/lib/config";
+
+/** Best-effort IP + user agent for the current request (empty outside one). */
+async function sessionRequestContext(): Promise<{ ip: string; userAgent: string }> {
+  try {
+    const h = await headers();
+    const fwd = h.get("x-forwarded-for");
+    const ip = ((fwd ? fwd.split(",")[0].trim() : "") || h.get("x-real-ip") || "").slice(0, 45);
+    return { ip, userAgent: (h.get("user-agent") || "").slice(0, 255) };
+  } catch {
+    return { ip: "", userAgent: "" };
+  }
+}
 
 // The session boundary. A DB-backed opaque token in an httpOnly cookie; the
 // cookie holds the raw token, the DB holds only its SHA-256. Everything that
@@ -25,10 +37,14 @@ export async function getSession(): Promise<SessionUser | null> {
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
-  const row = await getSessionByTokenHash(hashToken(raw)).catch(() => null);
+  const tokenHash = hashToken(raw);
+  const row = await getSessionByTokenHash(tokenHash).catch(() => null);
   if (!row) return null;
   const user = await getUserById(row.user_id).catch(() => null);
   if (!user || user.status !== "active") return null;
+  // Refresh "last active" at most every ~5 minutes (not a write per request).
+  const lastUsed = row.last_used_at ? new Date(row.last_used_at).getTime() : 0;
+  if (Date.now() - lastUsed > 5 * 60_000) void touchSession(tokenHash);
   return {
     userId: user.id,
     organizationId: user.organization_id,
@@ -63,7 +79,8 @@ export interface IssuedSession {
 export async function issueSession(userId: number, organizationId: number): Promise<IssuedSession> {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
-  await createSession({ userId, organizationId, tokenHash: hashToken(token), expiresAt });
+  const ctx = await sessionRequestContext();
+  await createSession({ userId, organizationId, tokenHash: hashToken(token), expiresAt, ip: ctx.ip, userAgent: ctx.userAgent });
   return {
     name: SESSION_COOKIE,
     value: token,
@@ -91,4 +108,14 @@ export async function endSession(): Promise<void> {
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (raw) await deleteSessionByTokenHash(hashToken(raw)).catch(() => {});
   jar.delete(SESSION_COOKIE);
+}
+
+/** The DB id of the session behind the current cookie — so the sessions view can
+ *  mark "this device" and "log out others" can keep it. null if not signed in. */
+export async function getCurrentSessionId(): Promise<number | null> {
+  const jar = await cookies();
+  const raw = jar.get(SESSION_COOKIE)?.value;
+  if (!raw) return null;
+  const row = await getSessionByTokenHash(hashToken(raw)).catch(() => null);
+  return row?.id ?? null;
 }

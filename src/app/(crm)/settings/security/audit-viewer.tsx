@@ -28,6 +28,8 @@ const ACTION_LABEL: Record<string, string> = {
   login_failed: "failed to sign in",
   logout: "signed out",
   setup: "set up the workspace",
+  session_revoke: "revoked a",
+  session_revoke_all: "revoked other",
 };
 
 const verb = (action: string) => ACTION_LABEL[action] ?? action.replace(/_/g, " ");
