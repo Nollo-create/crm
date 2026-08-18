@@ -58,7 +58,7 @@ import {
   type ContactInput,
   type DealInput,
 } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/auth/audit";
 import { validated, vString, vInt } from "@/lib/crm/validate";
@@ -346,7 +346,9 @@ export async function bulkSetStatusAction(ids: number[], status: string): Promis
 }
 
 export async function createCompanyAction(input: CompanyInput): Promise<{ id?: number; error?: string }> {
-  const session = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
   const v = validated(() => ({
     name: vString("Name", input.name, { required: true, max: 190 }),
     industry: vString("Industry", input.industry, { max: 120 }),
@@ -365,7 +367,9 @@ export async function createCompanyAction(input: CompanyInput): Promise<{ id?: n
 }
 
 export async function updateCompanyAction(id: number, input: CompanyInput): Promise<{ error?: string }> {
-  const { organizationId } = await requireSession();
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
   if (!input?.name?.trim()) return { error: "The company needs a name." };
   await updateCompany(organizationId, id, { ...input, name: input.name.trim() });
   revalidatePath(`/companies/${id}`);

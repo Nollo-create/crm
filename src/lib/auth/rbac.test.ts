@@ -22,8 +22,24 @@ describe("rbac", () => {
     expect(can("admin", "org:manage")).toBe(false);
   });
 
+  it("viewer is read-only: can read, cannot write/delete/manage", () => {
+    expect(can("viewer", "company:read")).toBe(true);
+    expect(can("viewer", "deal:read")).toBe(true);
+    expect(can("viewer", "company:write")).toBe(false);
+    expect(can("viewer", "record:write")).toBe(false);
+    expect(can("viewer", "company:delete")).toBe(false);
+    expect(can("viewer", "member:manage")).toBe(false);
+  });
+
+  it("member and up have the general record:write gate", () => {
+    expect(can("member", "record:write")).toBe(true);
+    expect(can("admin", "record:write")).toBe(true);
+    expect(can("owner", "record:write")).toBe(true);
+  });
+
   it("validates and normalises roles", () => {
     expect(isRole("owner")).toBe(true);
+    expect(isRole("viewer")).toBe(true);
     expect(isRole("root")).toBe(false);
     expect(toRole("admin")).toBe("admin");
     expect(toRole("nonsense")).toBe("member");

@@ -2,7 +2,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { generateSessionToken, hashToken, SESSION_COOKIE, SESSION_TTL_DAYS } from "./tokens";
-import { toRole, type Role } from "./rbac";
+import { toRole, can, type Role } from "./rbac";
 import { createSession, deleteSessionByTokenHash, getSessionByTokenHash, getUserById, touchSession } from "@/lib/db";
 import { integration } from "@/lib/config";
 
@@ -59,6 +59,14 @@ export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) redirect("/login");
   return session;
+}
+
+/** Write gate for mutating actions: the session, or an error a read-only (viewer)
+ *  role gets back. Server-side authorization — the UI hiding buttons is not it. */
+export async function guardWrite(): Promise<{ session: SessionUser } | { error: string }> {
+  const session = await requireSession();
+  if (!can(session.role, "record:write")) return { error: "Your role is read-only — ask an admin for edit access." };
+  return { session };
 }
 
 export interface IssuedSession {

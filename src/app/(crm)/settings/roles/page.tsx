@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const PERMISSIONS: { key: Permission; label: string }[] = [
-  { key: "company:read", label: "View companies & contacts" },
-  { key: "company:write", label: "Create & edit records" },
+  { key: "company:read", label: "View records" },
+  { key: "record:write", label: "Create & edit records" },
   { key: "company:delete", label: "Delete companies" },
   { key: "deal:delete", label: "Delete deals" },
   { key: "member:manage", label: "Manage users" },
@@ -19,6 +19,7 @@ const ROLE_DESC: Record<string, string> = {
   owner: "Full control, including the organization and other owners.",
   admin: "Manage users and delete records; can't touch owners or org settings.",
   member: "Create and edit records (companies, contacts, deals, tasks…).",
+  viewer: "Read-only access to every record — can't create, edit or delete.",
 };
 
 export default async function RolesPage() {
@@ -37,10 +38,10 @@ export default async function RolesPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Roles &amp; permissions</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">What each role can do. Assign roles in Users &amp; Teams.</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">What each role can do. Assign roles in Users &amp; Teams. <span className="text-muted-foreground/80">Viewer (read-only) is being rolled out and isn&apos;t assignable yet.</span></p>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {ROLES.map((r) => (
           <Card key={r} className={cn("p-3", r === me && "border-electric ring-1 ring-electric/30")}>
             <p className="flex items-center gap-1.5 text-sm font-semibold capitalize">
