@@ -19,12 +19,25 @@ export function BillingManager({ data }: { data: BillingData }) {
   const router = useRouter();
   const [switching, setSwitching] = useState<string | null>(null);
 
+  const [cycle, setCycle] = useState<"monthly" | "annual">("monthly");
+
   // billing details form
   const [name, setName] = useState(data.billing.name);
   const [email, setEmail] = useState(data.billing.email);
   const [address, setAddress] = useState(data.billing.address);
   const [taxId, setTaxId] = useState(data.billing.taxId);
   const [savingInfo, setSavingInfo] = useState(false);
+
+  // Annual = 10× monthly (two months free). Display only — no provider is wired.
+  const priceOf = (monthly: number): string => {
+    if (monthly === 0) return "Free";
+    return cycle === "annual" ? `€${monthly * 10}` : `€${monthly}`;
+  };
+  const per = cycle === "annual" ? "/yr" : "/mo";
+
+  // Smallest plan whose limits still cover current usage (pure client calc).
+  const usedByResource: Record<string, number> = Object.fromEntries(data.usage.map((u) => [u.resource, u.used]));
+  const recommendedKey = data.plans.find((p) => RESOURCES.every((r) => p.limits[r.key] < 0 || (usedByResource[r.key] ?? 0) <= p.limits[r.key]))?.key;
 
   async function switchPlan(key: string) {
     if (key === data.planKey) return;
@@ -44,7 +57,7 @@ export function BillingManager({ data }: { data: BillingData }) {
     toast("Billing details saved", { tone: "success" });
   }
 
-  const priceLabel = data.plan.priceEur === 0 ? "Free" : `€${data.plan.priceEur}/mo`;
+  const priceLabel = data.plan.priceEur === 0 ? "Free" : `${priceOf(data.plan.priceEur)}${per}`;
 
   return (
     <div className="max-w-4xl space-y-4">
@@ -94,18 +107,40 @@ export function BillingManager({ data }: { data: BillingData }) {
 
       {/* Plans */}
       <div>
-        <p className="mb-2 text-sm font-semibold">Plans</p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Plans</p>
+          <div className="flex items-center gap-2">
+            {cycle === "annual" && <span className="rounded-full bg-emerald/12 px-2 py-0.5 text-[10px] font-medium text-emerald">2 months free</span>}
+            <div className="flex gap-0.5 rounded-lg border border-border p-0.5">
+              {(["monthly", "annual"] as const).map((c) => (
+                <button key={c} onClick={() => setCycle(c)} className={cn("rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors", cycle === c ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {recommendedKey && recommendedKey !== data.planKey && (
+          <p className="mb-2 flex items-center gap-1.5 text-2xs text-muted-foreground">
+            <TrendingUp size={12} className="text-emerald" /> Based on your current usage, the{" "}
+            <span className="font-medium text-foreground">{data.plans.find((p) => p.key === recommendedKey)?.name}</span> plan is the best fit.
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {data.plans.map((p) => {
             const current = p.key === data.planKey;
             return (
               <Card key={p.key} className={cn("flex flex-col p-3.5", p.highlight && "ring-1 ring-electric/40", current && "border-electric")}>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-1">
                   <p className="text-sm font-semibold">{p.name}</p>
-                  {current && <span className="rounded-full bg-electric/12 px-2 py-0.5 text-[10px] font-medium text-electric">Current</span>}
+                  {current ? (
+                    <span className="rounded-full bg-electric/12 px-2 py-0.5 text-[10px] font-medium text-electric">Current</span>
+                  ) : p.key === recommendedKey ? (
+                    <span className="rounded-full bg-emerald/12 px-2 py-0.5 text-[10px] font-medium text-emerald">Recommended</span>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-lg font-semibold tabular">
-                  {p.priceEur === 0 ? "Free" : <>€{p.priceEur}<span className="text-2xs font-normal text-muted-foreground">/mo</span></>}
+                  {p.priceEur === 0 ? "Free" : <>{priceOf(p.priceEur)}<span className="text-2xs font-normal text-muted-foreground">{per}</span></>}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{p.tagline}</p>
                 <ul className="mt-2.5 space-y-1 border-t border-border pt-2.5">

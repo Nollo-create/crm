@@ -6,6 +6,9 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { integration, isConnected } from "@/lib/config";
 import { webappReachable } from "@/lib/sajtpress";
+import { getPlan, DEFAULT_PLAN_KEY } from "@/lib/crm/billing";
+
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
 // -------- organization
 
@@ -15,6 +18,8 @@ export interface OrgSettings {
   createdAt: string;
   userCount: number;
   canManage: boolean;
+  planName: string;
+  roleName: string;
 }
 
 export async function orgSettingsAction(): Promise<OrgSettings | null> {
@@ -22,12 +27,15 @@ export async function orgSettingsAction(): Promise<OrgSettings | null> {
   const org = await getOrganization(session.organizationId).catch(() => null);
   if (!org) return null;
   const userCount = await countOrgUsers(session.organizationId).catch(() => 0);
+  const plan = getPlan(org.plan || DEFAULT_PLAN_KEY) ?? getPlan(DEFAULT_PLAN_KEY);
   return {
     name: org.name,
     slug: org.slug,
     createdAt: new Date(org.created_at).toISOString(),
     userCount,
     canManage: can(session.role, "org:manage"),
+    planName: plan?.name ?? "Pro",
+    roleName: ROLE_LABEL[session.role] ?? session.role,
   };
 }
 

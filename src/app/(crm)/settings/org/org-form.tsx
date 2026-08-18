@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Loader2, CreditCard, Users2, ShieldCheck, CalendarDays } from "lucide-react";
 import { updateOrgAction, type OrgSettings } from "@/lib/actions/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,26 @@ export function OrgForm({ data }: { data: OrgSettings }) {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Organization</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">Your workspace details.</p>
+      </div>
+
+      {/* Overview */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Link href="/settings/billing" className="group rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-electric/40">
+          <p className="flex items-center gap-1 text-2xs uppercase tracking-wide text-muted-foreground"><CreditCard size={11} /> Plan</p>
+          <p className="mt-0.5 text-sm font-semibold">{data.planName}</p>
+        </Link>
+        <Link href="/settings/users" className="group rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-electric/40">
+          <p className="flex items-center gap-1 text-2xs uppercase tracking-wide text-muted-foreground"><Users2 size={11} /> Members</p>
+          <p className="mt-0.5 text-sm font-semibold tabular">{data.userCount}</p>
+        </Link>
+        <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+          <p className="flex items-center gap-1 text-2xs uppercase tracking-wide text-muted-foreground"><ShieldCheck size={11} /> Your role</p>
+          <p className="mt-0.5 text-sm font-semibold">{data.roleName}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+          <p className="flex items-center gap-1 text-2xs uppercase tracking-wide text-muted-foreground"><CalendarDays size={11} /> Created</p>
+          <p className="mt-0.5 text-sm font-semibold">{timeAgo(data.createdAt)}</p>
+        </div>
       </div>
 
       <Card className="space-y-3 p-4">
