@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Building2, Users, Target, Handshake, CheckSquare, Plus, CornerDownLeft, Loader2 } from "lucide-react";
-import { searchCompaniesAction, type SearchHit } from "@/lib/actions/crm";
+import { globalSearchAction, type GlobalSearchResults, type GlobalHit } from "@/lib/actions/crm";
 import { crmNav } from "@/lib/crm/nav";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,7 @@ const COMMANDS: FlatItem[] = [...NAV_COMMANDS, ...CREATE_COMMANDS];
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [results, setResults] = useState<GlobalSearchResults>({ companies: [], contacts: [], leads: [], deals: [] });
   const [searching, setSearching] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +45,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (open) {
       setQ("");
-      setHits([]);
+      setResults({ companies: [], contacts: [], leads: [], deals: [] });
       setActive(0);
       const t = setTimeout(() => inputRef.current?.focus(), 30);
       return () => clearTimeout(t);
@@ -56,14 +56,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (!open) return;
     const s = q.trim();
     if (!s) {
-      setHits([]);
+      setResults({ companies: [], contacts: [], leads: [], deals: [] });
       setSearching(false);
       return;
     }
     setSearching(true);
     const t = setTimeout(async () => {
-      const r = await searchCompaniesAction(s).catch(() => []);
-      setHits(r);
+      const r = await globalSearchAction(s).catch(() => ({ companies: [], contacts: [], leads: [], deals: [] }));
+      setResults(r);
       setSearching(false);
     }, 180);
     return () => clearTimeout(t);
@@ -72,16 +72,16 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const flat = useMemo<FlatItem[]>(() => {
     const s = q.trim().toLowerCase();
     const cmds = s ? COMMANDS.filter((c) => c.label.toLowerCase().includes(s)) : COMMANDS;
-    const companyHits: FlatItem[] = hits.map((h) => ({
-      key: `hit-${h.id}`,
-      group: "Companies",
-      label: h.name,
-      sub: h.city || undefined,
-      icon: Building2,
-      href: `/companies/${h.id}`,
-    }));
-    return [...cmds, ...companyHits];
-  }, [q, hits]);
+    const mk = (group: string, icon: Icon, base: string, arr: GlobalHit[]): FlatItem[] =>
+      arr.map((h) => ({ key: `${group}-${h.id}`, group, label: h.name, sub: h.sub || undefined, icon, href: `${base}/${h.id}` }));
+    return [
+      ...cmds,
+      ...mk("Companies", Building2, "/companies", results.companies),
+      ...mk("Contacts", Users, "/contacts", results.contacts),
+      ...mk("Leads", Target, "/leads", results.leads),
+      ...mk("Deals", Handshake, "/deals", results.deals),
+    ];
+  }, [q, results]);
 
   useEffect(() => {
     setActive(0);

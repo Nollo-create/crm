@@ -31,6 +31,7 @@ import {
   createDeal,
   listDeals,
   listDealsPage,
+  listLeadsPage,
   updateDeal,
   deleteDeal,
   getDeal,
@@ -273,6 +274,42 @@ export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
   if (!s) return [];
   const rows = await listCompanies(organizationId, { q: s });
   return rows.slice(0, 8).map((r) => ({ id: r.id, name: r.name, city: r.city, status: r.status }));
+}
+
+export interface GlobalHit {
+  id: number;
+  name: string;
+  sub: string;
+}
+export interface GlobalSearchResults {
+  companies: GlobalHit[];
+  contacts: GlobalHit[];
+  leads: GlobalHit[];
+  deals: GlobalHit[];
+}
+
+/** One-shot cross-entity search for the ⌘K palette — companies, contacts, leads
+ *  and deals, each org-scoped and reusing the existing (injection-safe) list
+ *  layer. A failure in one entity degrades to an empty group, never the whole. */
+export async function globalSearchAction(q: string): Promise<GlobalSearchResults> {
+  const { organizationId } = await requireSession();
+  const s = q.trim();
+  if (!s) return { companies: [], contacts: [], leads: [], deals: [] };
+  const [companies, contacts, leads, deals] = await Promise.all([
+    listCompanies(organizationId, { q: s })
+      .then((r) => r.slice(0, 5).map((c): GlobalHit => ({ id: c.id, name: c.name, sub: c.city || c.industry || "" })))
+      .catch(() => [] as GlobalHit[]),
+    listContactsPage(organizationId, { q: s, sortKey: "name", sortDir: 1, page: 1, pageSize: 5 })
+      .then((r) => r.rows.map((c): GlobalHit => ({ id: c.id, name: c.name, sub: c.company_name || c.role || "" })))
+      .catch(() => [] as GlobalHit[]),
+    listLeadsPage(organizationId, { q: s, sortKey: "score", sortDir: -1, page: 1, pageSize: 5 })
+      .then((r) => r.rows.map((l): GlobalHit => ({ id: l.id, name: l.name || l.company || "Lead", sub: l.name && l.company ? l.company : l.title || "" })))
+      .catch(() => [] as GlobalHit[]),
+    listDealsPage(organizationId, { q: s, sortKey: "value", sortDir: -1, page: 1, pageSize: 5 })
+      .then((r) => r.rows.map((d): GlobalHit => ({ id: d.id, name: d.title, sub: d.company_name || "" })))
+      .catch(() => [] as GlobalHit[]),
+  ]);
+  return { companies, contacts, leads, deals };
 }
 
 export async function bulkDeleteCompaniesAction(ids: number[]): Promise<{ error?: string }> {
