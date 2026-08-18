@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   createQuote,
+  duplicateQuote,
   listQuotesPage,
   getQuote,
   updateQuote,
@@ -101,6 +102,14 @@ export async function createQuoteAction(companyId: number, opts: { notes?: strin
   const id = await createQuote(organizationId, companyId, opts);
   revalidatePath("/quotes");
   return { id };
+}
+
+export async function duplicateQuoteAction(id: number): Promise<{ id?: number; error?: string }> {
+  const { organizationId } = await requireSession();
+  const newId = await duplicateQuote(organizationId, id);
+  if (!newId) return { error: "Quote not found." };
+  revalidatePath("/quotes");
+  return { id: newId };
 }
 
 export async function getQuoteAction(id: number): Promise<QuoteDetail | null> {

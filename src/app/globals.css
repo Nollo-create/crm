@@ -156,3 +156,18 @@
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Print: strip the app chrome (sidebar + top bar) so a quote — or any page —
+   prints clean. Use Tailwind's `print:hidden` on page-level non-print controls. */
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  body {
+    background: #fff !important;
+  }
+}

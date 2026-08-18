@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, X } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, X, Copy, Printer } from "lucide-react";
 import {
   getQuoteAction,
+  duplicateQuoteAction,
   updateQuoteStatusAction,
   updateQuoteAction,
   deleteQuoteAction,
@@ -38,6 +39,7 @@ export function QuoteEditor({ id }: { id: number }) {
   const [notes, setNotes] = useState("");
   const [validUntil, setValidUntil] = useState("");
 
+  const [dupBusy, setDupBusy] = useState(false);
   const [addForm, setAddForm] = useState<{ productId: number | null; name: string; unitPrice: string; quantity: string }>({ productId: null, name: "", unitPrice: "", quantity: "1" });
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<ProductHit[]>([]);
@@ -97,6 +99,14 @@ export function QuoteEditor({ id }: { id: number }) {
       void load();
     }
   }
+  async function duplicate() {
+    setDupBusy(true);
+    const r = await duplicateQuoteAction(id);
+    setDupBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Quote duplicated — opening the copy", { tone: "success" });
+    if (r.id) router.push(`/quotes/${r.id}`);
+  }
   function commitHeader() {
     void updateQuoteAction(id, { notes, validUntil: validUntil || null });
   }
@@ -138,7 +148,7 @@ export function QuoteEditor({ id }: { id: number }) {
 
   return (
     <div className="space-y-4">
-      <Link href="/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/quotes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground print:hidden">
         <ArrowLeft size={15} /> Quotes
       </Link>
 
@@ -154,10 +164,16 @@ export function QuoteEditor({ id }: { id: number }) {
               <Building2 size={13} /> {d.quote.companyName}
             </Link>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 print:hidden">
             <Select value={d.quote.status} onChange={(e) => changeStatus(e.target.value)} className="h-8 w-auto text-xs">
               {QUOTE_STATUSES.map((s) => <option key={s} value={s}>{QUOTE_STATUS_LABEL[s]}</option>)}
             </Select>
+            <Button size="sm" variant="outline" onClick={duplicate} disabled={dupBusy} title="Duplicate as a new draft">
+              {dupBusy ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />} Duplicate
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => typeof window !== "undefined" && window.print()} title="Print / save as PDF">
+              <Printer size={13} /> Print
+            </Button>
             <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-danger" title="Delete quote" onClick={removeQuote}>
               <Trash2 size={15} />
             </Button>

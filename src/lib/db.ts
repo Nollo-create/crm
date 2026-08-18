@@ -1628,6 +1628,18 @@ export async function createQuote(orgId: number, companyId: number, opts: { note
   return res.insertId;
 }
 
+/** Clone a quote (+ its line items) into a new draft for the same company. */
+export async function duplicateQuote(orgId: number, id: number): Promise<number | null> {
+  await ensureSchema();
+  const src = await getQuote(orgId, id);
+  if (!src) return null;
+  const newId = await createQuote(orgId, src.quote.company_id, { notes: src.quote.notes, validUntil: null });
+  for (const it of src.items) {
+    await addQuoteItem(orgId, newId, { productId: it.product_id, name: it.name, unitPriceCents: it.unit_price_cents, quantity: it.quantity });
+  }
+  return newId;
+}
+
 export interface QuotesPageResult {
   rows: QuoteStatsRow[];
   total: number;
