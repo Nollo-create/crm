@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Loader2, X, ChevronLeft, ChevronRight, Building2, StickyNote, Phone, Mail, CalendarDays, FileText } from "lucide-react";
+import { Plus, Search, Loader2, X, ChevronLeft, ChevronRight, Building2, StickyNote, Phone, Mail, CalendarDays, FileText, Trash2 } from "lucide-react";
 import {
   activitiesPageAction,
   addActivityAction,
+  deleteActivityAction,
   searchCompaniesAction,
   type ActivityFeedItem,
   type SearchHit,
@@ -33,6 +34,13 @@ const SORTS = [
   { id: "oldest", label: "Oldest", dir: 1 as const },
 ];
 
+const RANGES = [
+  { id: 0, label: "All time" },
+  { id: 7, label: "Last 7 days" },
+  { id: 30, label: "Last 30 days" },
+  { id: 90, label: "Last 90 days" },
+];
+
 // Singular/plural noun per feed, for the header count + the log button.
 const NOUN: Record<string, [string, string]> = {
   meeting: ["meeting", "meetings"],
@@ -54,6 +62,7 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [type, setType] = useState("");
+  const [since, setSince] = useState(0); // days back; 0 = all time
   const [sortId, setSortId] = useState("newest");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -79,7 +88,7 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
     let cancelled = false;
     setLoading(true);
     const dir = SORTS.find((s) => s.id === sortId)?.dir ?? -1;
-    activitiesPageAction({ q: debouncedQ, type: activeType, sortKey: "created", sortDir: dir, page, pageSize })
+    activitiesPageAction({ q: debouncedQ, type: activeType, sinceDays: since || undefined, sortKey: "created", sortDir: dir, page, pageSize })
       .then((res) => {
         if (cancelled) return;
         setRows(res.rows);
@@ -100,9 +109,16 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, activeType, sortId, page, pageSize, reloadKey]);
+  }, [debouncedQ, activeType, since, sortId, page, pageSize, reloadKey]);
 
   const refetch = () => setReloadKey((k) => k + 1);
+
+  async function remove(id: number) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete this ${singular}?`)) return;
+    await deleteActivityAction(id);
+    toast(`${singular[0].toUpperCase()}${singular.slice(1)} deleted`, { tone: "success" });
+    refetch();
+  }
 
   useEffect(() => {
     if (!showAdd) return;
@@ -212,7 +228,10 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
             ))}
           </div>
         )}
-        <Select value={sortId} onChange={(e) => { setSortId(e.target.value); setPage(1); }} className="ml-auto h-9 w-auto text-xs">
+        <Select value={String(since)} onChange={(e) => { setSince(Number(e.target.value)); setPage(1); }} className="ml-auto h-9 w-auto text-xs">
+          {RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </Select>
+        <Select value={sortId} onChange={(e) => { setSortId(e.target.value); setPage(1); }} className="h-9 w-auto text-xs">
           {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </Select>
       </div>
@@ -232,7 +251,7 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
             {rows.map((a) => {
               const Icon = TYPE_ICON[a.type] ?? StickyNote;
               return (
-                <li key={a.id} className="flex items-start gap-3 px-4 py-3">
+                <li key={a.id} className="group flex items-start gap-3 px-4 py-3">
                   <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full", TYPE_STYLE[a.type] ?? "bg-secondary text-muted-foreground")}>
                     <Icon size={14} />
                   </span>
@@ -250,7 +269,10 @@ export function ActivityFeed({ title, fixedType }: { title: string; fixedType?: 
                       )}
                     </div>
                   </div>
-                  <span className="shrink-0 text-2xs text-muted-foreground">{timeAgo(a.createdAt)}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-2xs text-muted-foreground">{timeAgo(a.createdAt)}</span>
+                    <button onClick={() => remove(a.id)} className="text-muted-foreground opacity-0 transition-opacity hover:text-danger group-hover:opacity-100" title={`Delete ${singular}`} aria-label="Delete"><Trash2 size={13} /></button>
+                  </div>
                 </li>
               );
             })}

@@ -1112,7 +1112,7 @@ export interface ActivitiesPageResult {
  *  filtered/sorted/counted server-side. Sort is allowlisted. */
 export async function listActivitiesPage(
   orgId: number,
-  opts: { q?: string; type?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+  opts: { q?: string; type?: string; sinceDays?: number; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
 ): Promise<ActivitiesPageResult> {
   await ensureSchema();
   const where: string[] = ["a.organization_id = ?"];
@@ -1125,6 +1125,10 @@ export async function listActivitiesPage(
   if (opts.type) {
     where.push("a.type = ?");
     params.push(opts.type);
+  }
+  if (opts.sinceDays && opts.sinceDays > 0) {
+    // Number-coerced interpolation (injection-safe), matching the nba* helpers.
+    where.push(`a.created_at >= DATE_SUB(NOW(), INTERVAL ${Math.floor(opts.sinceDays)} DAY)`);
   }
   const joinSql = "FROM crm_activities a JOIN crm_companies co ON co.id = a.company_id AND co.organization_id = a.organization_id";
   const whereSql = `WHERE ${where.join(" AND ")}`;
@@ -1140,6 +1144,11 @@ export async function listActivitiesPage(
     [...params, pageSize, offset]
   );
   return { rows, total, page, pageCount };
+}
+
+export async function deleteActivity(orgId: number, id: number): Promise<void> {
+  await ensureSchema();
+  await getPool().query("DELETE FROM crm_activities WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 // -------------------------------------------------------------------- leads

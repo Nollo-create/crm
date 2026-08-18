@@ -48,6 +48,7 @@ import {
   addActivity,
   listActivities,
   listActivitiesPage,
+  deleteActivity,
   type ActivityStatsRow,
   type CompanyRow,
   type ContactRow,
@@ -683,6 +684,7 @@ export interface ActivitiesPage {
 export async function activitiesPageAction(opts: {
   q?: string;
   type?: string;
+  sinceDays?: number;
   sortKey: string;
   sortDir: 1 | -1;
   page: number;
@@ -692,6 +694,7 @@ export async function activitiesPageAction(opts: {
   const res = await listActivitiesPage(organizationId, {
     q: opts.q?.trim() || undefined,
     type: opts.type || undefined,
+    sinceDays: opts.sinceDays,
     sortKey: opts.sortKey,
     sortDir: opts.sortDir,
     page: opts.page,
@@ -703,6 +706,13 @@ export async function activitiesPageAction(opts: {
     page: res.page,
     pageCount: res.pageCount,
   };
+}
+
+export async function deleteActivityAction(id: number): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  await deleteActivity(organizationId, id);
+  revalidatePath("/activities");
+  return {};
 }
 
 // ------------------------------------------------------------- dashboard + board
