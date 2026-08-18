@@ -2143,6 +2143,30 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_user_org (organization_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Two-factor (TOTP) — secret stored ENCRYPTED (app-level, key in env).
+      await ensureColumn(pool, "crm_users", "totp_secret", "totp_secret VARCHAR(255) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_users", "totp_enabled", "totp_enabled TINYINT NOT NULL DEFAULT 0");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_recovery_codes (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          user_id INT UNSIGNED NOT NULL,
+          code_hash CHAR(64) NOT NULL,
+          used_at TIMESTAMP NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_recovery_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_mfa_challenges (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          user_id INT UNSIGNED NOT NULL,
+          token_hash CHAR(64) NOT NULL,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_mfa_token (token_hash),
+          INDEX idx_mfa_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_sessions (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2219,6 +2243,8 @@ export interface UserRow extends mysql.RowDataPacket {
   password_hash: string;
   role: string;
   status: string;
+  totp_secret: string;
+  totp_enabled: number;
   created_at: Date;
   last_login_at: Date | null;
 }
@@ -2518,6 +2544,90 @@ export async function deleteExpiredSessions(): Promise<void> {
   await getPool().query("DELETE FROM crm_sessions WHERE expires_at <= CURRENT_TIMESTAMP");
 }
 
+// -------- MFA (two-factor)
+
+/** Store a (encrypted) TOTP secret as PENDING — not yet enabled until confirmed. */
+export async function setUserTotpSecret(userId: number, encryptedSecret: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?", [encryptedSecret.slice(0, 255), userId]);
+}
+
+export async function enableUserTotp(userId: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET totp_enabled = 1 WHERE id = ?", [userId]);
+}
+
+/** Turn MFA off and wipe the secret + recovery codes. */
+export async function disableUserTotp(userId: number): Promise<void> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  await pool.query("UPDATE crm_users SET totp_secret = '', totp_enabled = 0 WHERE id = ?", [userId]);
+  await pool.query("DELETE FROM crm_recovery_codes WHERE user_id = ?", [userId]);
+}
+
+export async function getUserTotp(userId: number): Promise<{ secret: string; enabled: boolean } | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT totp_secret, totp_enabled FROM crm_users WHERE id = ? LIMIT 1", [userId]);
+  const r = rows[0];
+  return r ? { secret: String(r.totp_secret ?? ""), enabled: !!r.totp_enabled } : null;
+}
+
+/** Replace all of a user's recovery-code hashes atomically. */
+export async function replaceRecoveryCodes(userId: number, hashes: string[]): Promise<void> {
+  await ensureAuthSchema();
+  const conn = await getPool().getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("DELETE FROM crm_recovery_codes WHERE user_id = ?", [userId]);
+    for (const h of hashes) {
+      await conn.query("INSERT INTO crm_recovery_codes (user_id, code_hash) VALUES (?, ?)", [userId, h]);
+    }
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+/** Spend a recovery code (single-use). true only if it existed and was unused. */
+export async function consumeRecoveryCode(userId: number, codeHash: string): Promise<boolean> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "UPDATE crm_recovery_codes SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND code_hash = ? AND used_at IS NULL",
+    [userId, codeHash]
+  );
+  return (res.affectedRows ?? 0) > 0;
+}
+
+export async function countUnusedRecoveryCodes(userId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_recovery_codes WHERE user_id = ? AND used_at IS NULL", [userId]);
+  return Number(rows[0]?.n ?? 0);
+}
+
+// Short-lived login challenge: after the password step, before the TOTP step.
+export async function createMfaChallenge(userId: number, tokenHash: string, expiresAt: Date): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("INSERT INTO crm_mfa_challenges (user_id, token_hash, expires_at) VALUES (?, ?, ?)", [userId, tokenHash, expiresAt]);
+}
+
+export async function getMfaChallenge(tokenHash: string): Promise<{ userId: number } | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT user_id FROM crm_mfa_challenges WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP LIMIT 1",
+    [tokenHash]
+  );
+  const r = rows[0];
+  return r ? { userId: Number(r.user_id) } : null;
+}
+
+export async function deleteMfaChallenge(tokenHash: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_mfa_challenges WHERE token_hash = ?", [tokenHash]);
+}
+
 // -------- audit log
 
 export interface AuditRow extends mysql.RowDataPacket {
@@ -2579,6 +2689,7 @@ export interface SecurityOverviewMetrics {
   failedLogins24h: number;
   users: number;
   admins: number;
+  adminsWithoutMfa: number;
   apiKeysEnabled: number;
   apiKeysIdle: number;
 }
@@ -2591,14 +2702,15 @@ export async function securityOverview(orgId: number): Promise<SecurityOverviewM
     const [rows] = await pool.query<mysql.RowDataPacket[]>(sql, [orgId]);
     return Number(rows[0]?.n ?? 0);
   };
-  const [activeSessions, staleSessions, failedLogins24h, users, admins, apiKeysEnabled, apiKeysIdle] = await Promise.all([
+  const [activeSessions, staleSessions, failedLogins24h, users, admins, adminsWithoutMfa, apiKeysEnabled, apiKeysIdle] = await Promise.all([
     one("SELECT COUNT(*) AS n FROM crm_sessions WHERE organization_id = ? AND expires_at > NOW()"),
     one("SELECT COUNT(*) AS n FROM crm_sessions WHERE organization_id = ? AND expires_at > NOW() AND COALESCE(last_used_at, created_at) < NOW() - INTERVAL 30 DAY"),
     one("SELECT COUNT(*) AS n FROM crm_audit_logs WHERE organization_id = ? AND action = 'login_failed' AND created_at >= NOW() - INTERVAL 24 HOUR"),
     one("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ?"),
     one("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ? AND role IN ('owner','admin')"),
+    one("SELECT COUNT(*) AS n FROM crm_users WHERE organization_id = ? AND role IN ('owner','admin') AND status = 'active' AND totp_enabled = 0"),
     one("SELECT COUNT(*) AS n FROM crm_api_keys WHERE organization_id = ? AND enabled = 1"),
     one("SELECT COUNT(*) AS n FROM crm_api_keys WHERE organization_id = ? AND enabled = 1 AND COALESCE(last_used_at, created_at) < NOW() - INTERVAL 90 DAY"),
   ]);
-  return { activeSessions, staleSessions, failedLogins24h, users, admins, apiKeysEnabled, apiKeysIdle };
+  return { activeSessions, staleSessions, failedLogins24h, users, admins, adminsWithoutMfa, apiKeysEnabled, apiKeysIdle };
 }

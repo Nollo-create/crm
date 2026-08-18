@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { MfaCard } from "@/components/crm/mfa-card";
 
 const isMobile = (device: string) => /iphone|ipad|android/i.test(device);
 
@@ -57,13 +58,17 @@ export function SessionsManager() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-            <ShieldCheck size={18} className="text-electric" /> Active sessions
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Devices signed in to your account. Revoke any you don&apos;t recognize.</p>
-        </div>
+      <div>
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <ShieldCheck size={18} className="text-electric" /> Account security
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">Two-factor authentication and the devices signed in to your account.</p>
+      </div>
+
+      <MfaCard />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <p className="text-sm font-semibold">Active sessions</p>
         {others > 0 && (
           <Button size="sm" variant="outline" onClick={revokeAll} disabled={revokingAll}>
             {revokingAll ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Log out other sessions

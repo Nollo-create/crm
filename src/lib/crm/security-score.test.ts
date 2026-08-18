@@ -7,6 +7,7 @@ const clean: SecurityMetrics = {
   failedLogins24h: 0,
   users: 3,
   admins: 1,
+  adminsWithoutMfa: 0,
   apiKeysEnabled: 1,
   apiKeysIdle: 0,
 };
@@ -17,6 +18,13 @@ describe("computeSecurityScore", () => {
     expect(r.score).toBe(100);
     expect(r.grade).toBe("strong");
     expect(r.findings).toHaveLength(0);
+  });
+
+  it("admins without two-factor is the heaviest, high-severity factor", () => {
+    const r = computeSecurityScore({ ...clean, adminsWithoutMfa: 2 });
+    expect(r.score).toBe(76); // -12 * 2
+    expect(r.findings[0].severity).toBe("high");
+    expect(r.findings[0].title).toContain("two-factor");
   });
 
   it("a failed-login spike is a high finding and drops the score", () => {

@@ -2,9 +2,8 @@
 // §62, §77). Every deduction is a measured control with a reason and a fix link.
 // Pure so it's unit-tested; the metrics come from the data layer.
 //
-// Deliberately scores only SHIPPED, measurable controls. MFA isn't built yet, so
-// it is NOT scored here (penalizing for an unshipped feature would be misleading);
-// it's surfaced separately as "coming soon" and folded into the score in Phase 4.
+// Scores only SHIPPED, measurable controls. Two-factor is the heaviest factor:
+// admins without it are the biggest account-takeover risk.
 
 export interface SecurityMetrics {
   activeSessions: number;
@@ -12,6 +11,7 @@ export interface SecurityMetrics {
   failedLogins24h: number;
   users: number;
   admins: number;
+  adminsWithoutMfa: number; // owners/admins with 2FA off
   apiKeysEnabled: number;
   apiKeysIdle: number; // enabled but unused 90+ days
 }
@@ -36,6 +36,16 @@ const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n
 export function computeSecurityScore(m: SecurityMetrics): SecurityScore {
   const findings: Finding[] = [];
   let score = 100;
+
+  if (m.adminsWithoutMfa > 0) {
+    findings.push({
+      severity: "high",
+      title: `${m.adminsWithoutMfa} admin${m.adminsWithoutMfa === 1 ? "" : "s"} without two-factor`,
+      detail: "Admin accounts are the highest-value target. Turn on two-factor under Account security.",
+      href: "/settings/sessions",
+    });
+    score -= clamp(m.adminsWithoutMfa * 12, 0, 30);
+  }
 
   if (m.failedLogins24h >= 10) {
     findings.push({

@@ -123,7 +123,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Billing", href: "/settings/billing", icon: CreditCard },
       { label: "Security", href: "/settings/security-overview", icon: ShieldCheck },
       { label: "Audit Log", href: "/settings/security", icon: KeyRound },
-      { label: "Active Sessions", href: "/settings/sessions", icon: MonitorSmartphone },
+      { label: "Account Security", href: "/settings/sessions", icon: MonitorSmartphone },
       { label: "API", href: "/settings/api", icon: Settings },
     ],
   },

@@ -17,6 +17,8 @@ const SECURITY_ACTIONS = new Set([
   "apikey_disable",
   "session_revoke",
   "session_revoke_all",
+  "mfa_enable",
+  "mfa_disable",
   "delete",
   "bulk_delete",
   "plan_change",

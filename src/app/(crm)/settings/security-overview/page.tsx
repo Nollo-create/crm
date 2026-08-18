@@ -24,7 +24,7 @@ const CONTROLS: { label: string; on: boolean; note: string }[] = [
   { label: "Sign-in rate limiting", on: true, note: "Per-IP and per-account" },
   { label: "Audit logging", on: true, note: "With IP + user agent" },
   { label: "Sessions hashed at rest", on: true, note: "Only the SHA-256 is stored" },
-  { label: "Two-factor authentication", on: false, note: "Coming in a later release" },
+  { label: "Two-factor authentication", on: true, note: "Authenticator app + recovery codes" },
 ];
 
 const ACTION_LABEL: Record<string, string> = {
@@ -38,6 +38,8 @@ const ACTION_LABEL: Record<string, string> = {
   apikey_disable: "API key disabled",
   session_revoke: "Session revoked",
   session_revoke_all: "Signed out other sessions",
+  mfa_enable: "Two-factor enabled",
+  mfa_disable: "Two-factor disabled",
   delete: "Record deleted",
   bulk_delete: "Bulk delete",
   plan_change: "Plan changed",
