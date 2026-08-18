@@ -37,7 +37,7 @@ export interface AnalyticsData {
     avgOpen: number;
   };
   forecast: { month: string; expected: number; weighted: number }[];
-  owners: { owner: string; won: number; open: number; n: number }[];
+  owners: { owner: string; won: number; open: number; n: number; wonCount: number; lostCount: number }[];
   leads: { total: number; converted: number; conversionRate: number; byStatus: KV[]; bySource: KV[] };
   activities: { total: number; last30: number; byType: KV[] };
   quotes: { total: number; accepted: number; byStatus: (KV & { value: number })[] };

@@ -1817,6 +1817,8 @@ export interface OwnerRow {
   won: number;
   open: number;
   n: number;
+  wonCount: number;
+  lostCount: number;
 }
 export async function analyticsDealsByOwner(orgId: number): Promise<OwnerRow[]> {
   await ensureSchema();
@@ -1824,11 +1826,13 @@ export async function analyticsDealsByOwner(orgId: number): Promise<OwnerRow[]> 
     `SELECT COALESCE(NULLIF(owner, ''), 'Unassigned') AS owner,
        COALESCE(SUM(CASE WHEN stage = 'won' THEN value ELSE 0 END), 0) AS won,
        COALESCE(SUM(CASE WHEN stage NOT IN ('won','lost') THEN value ELSE 0 END), 0) AS open,
+       COALESCE(SUM(CASE WHEN stage = 'won' THEN 1 ELSE 0 END), 0) AS won_n,
+       COALESCE(SUM(CASE WHEN stage = 'lost' THEN 1 ELSE 0 END), 0) AS lost_n,
        COUNT(*) AS n
      FROM crm_deals WHERE organization_id = ? GROUP BY owner ORDER BY won DESC, open DESC LIMIT 20`,
     [orgId]
   );
-  return rows.map((r) => ({ owner: String(r.owner), won: Number(r.won), open: Number(r.open), n: Number(r.n) }));
+  return rows.map((r) => ({ owner: String(r.owner), won: Number(r.won), open: Number(r.open), n: Number(r.n), wonCount: Number(r.won_n), lostCount: Number(r.lost_n) }));
 }
 
 export interface ForecastRow {
