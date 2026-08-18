@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { SavedViews } from "@/components/crm/saved-views";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -259,6 +260,16 @@ export default function DealsPage() {
           <option value="">All stages</option>
           {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </Select>
+        <SavedViews
+          storageKey="crm-deal-views"
+          current={{ q, stage, sortKey: sort.key, sortDir: sort.dir }}
+          onApply={(s) => {
+            setQ(String(s.q ?? ""));
+            setStage(String(s.stage ?? ""));
+            if (s.sortKey) setSort({ key: s.sortKey as DealSortKey, dir: s.sortDir === 1 ? 1 : -1 });
+            setPage(1);
+          }}
+        />
       </div>
 
       {/* Bulk bar */}

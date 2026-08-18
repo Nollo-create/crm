@@ -27,6 +27,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { LeadImport } from "@/components/crm/lead-import";
+import { SavedViews } from "@/components/crm/saved-views";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -265,6 +266,17 @@ export default function LeadsPage() {
           <option value="">All sources</option>
           {LEAD_SOURCES.map((s) => <option key={s} value={s}>{LEAD_SOURCE_LABEL[s]}</option>)}
         </Select>
+        <SavedViews
+          storageKey="crm-lead-views"
+          current={{ q, status, source, sortKey: sort.key, sortDir: sort.dir }}
+          onApply={(s) => {
+            setQ(String(s.q ?? ""));
+            setStatus(String(s.status ?? ""));
+            setSource(String(s.source ?? ""));
+            if (s.sortKey) setSort({ key: s.sortKey as LeadSortKey, dir: s.sortDir === 1 ? 1 : -1 });
+            setPage(1);
+          }}
+        />
       </div>
 
       {/* Bulk bar */}
