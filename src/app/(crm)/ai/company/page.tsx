@@ -3,18 +3,39 @@
 import { useEffect, useState } from "react";
 import { ScanSearch, Building2, X } from "lucide-react";
 import { companyAnalysisAction, type AiOut } from "@/lib/actions/ai";
-import { searchCompaniesAction, type SearchHit } from "@/lib/actions/crm";
-import { Input } from "@/components/ui/input";
+import { type AnalysisFocus } from "@/lib/crm/ai-options";
+import { searchCompaniesAction, getCompanyAction, type SearchHit } from "@/lib/actions/crm";
+import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AiOutput } from "@/components/crm/ai-output";
+
+const FOCUSES: { id: AnalysisFocus; label: string }[] = [
+  { id: "general", label: "Balanced review" },
+  { id: "growth", label: "Growth & upsell" },
+  { id: "risk", label: "Risk & retention" },
+  { id: "competitive", label: "Competitive angle" },
+];
 
 export default function CompanyAnalysisPage() {
   const [companyId, setCompanyId] = useState(0);
   const [companyName, setCompanyName] = useState("");
   const [companyQuery, setCompanyQuery] = useState("");
   const [companyResults, setCompanyResults] = useState<SearchHit[]>([]);
+  const [focus, setFocus] = useState<AnalysisFocus>("general");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AiOut | null>(null);
+
+  // Deep link: /ai/company?companyId=NN prefills the account (e.g. from a profile).
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("companyId"));
+    if (!id) return;
+    getCompanyAction(id).then((d) => {
+      if (d) {
+        setCompanyId(d.company.id);
+        setCompanyName(d.company.name);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const s = companyQuery.trim();
@@ -30,7 +51,7 @@ export default function CompanyAnalysisPage() {
     if (!companyId) return;
     setLoading(true);
     setResult(null);
-    const r = await companyAnalysisAction(companyId).catch(() => ({ text: "", enabled: false }));
+    const r = await companyAnalysisAction(companyId, focus).catch(() => ({ text: "", enabled: false }));
     setResult(r);
     setLoading(false);
   }
@@ -42,8 +63,8 @@ export default function CompanyAnalysisPage() {
         <p className="mt-0.5 text-sm text-muted-foreground">AI reads an account&apos;s data and surfaces opportunities, risks and a next step.</p>
       </div>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative min-w-[200px] flex-1">
           {companyId ? (
             <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-3 text-sm">
               <span className="truncate"><Building2 size={13} className="mr-1 inline text-muted-foreground" />{companyName}</span>
@@ -66,6 +87,9 @@ export default function CompanyAnalysisPage() {
             </>
           )}
         </div>
+        <Select value={focus} onChange={(e) => setFocus(e.target.value as AnalysisFocus)} className="h-10 w-auto text-sm" title="Analysis focus">
+          {FOCUSES.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+        </Select>
         <Button onClick={analyze} disabled={loading || !companyId}><ScanSearch size={15} /> Analyze</Button>
       </div>
 

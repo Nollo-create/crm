@@ -7,6 +7,18 @@ import { getCompanyAction, getDealAction } from "@/lib/actions/crm";
 import { nbaStaleAccounts, nbaOverdueDeals, nbaHotLeads, nbaAgingQuotes } from "@/lib/db";
 import { quoteNumber } from "@/lib/crm/quotes";
 import { eur } from "@/lib/format";
+import {
+  ANALYSIS_FOCUS,
+  isAnalysisFocus,
+  isOutreachTone,
+  isOutreachLength,
+  isOutreachChannel,
+  TONE_WORD,
+  type AnalysisFocus,
+  type OutreachTone,
+  type OutreachLength,
+  type OutreachChannel,
+} from "@/lib/crm/ai-options";
 
 export interface AiOut {
   text: string;
@@ -76,7 +88,7 @@ export async function aiAssistantAction(question: string, history: ChatTurn[] = 
   });
 }
 
-export async function companyAnalysisAction(companyId: number): Promise<AiOut> {
+export async function companyAnalysisAction(companyId: number, focus: AnalysisFocus = "general"): Promise<AiOut> {
   await requireSession();
   const detail = await getCompanyAction(companyId);
   if (!detail) return { text: "", enabled: true, error: "Company not found." };
@@ -89,8 +101,9 @@ export async function companyAnalysisAction(companyId: number): Promise<AiOut> {
     `Deals: ${detail.deals.map((d) => `${d.title} [${d.stage}, ${eur(d.value)}]`).join("; ") || "none"}`,
     `Recent activity: ${detail.activities.slice(0, 5).map((a) => `${a.type}: ${a.summary}`).join("; ") || "none"}`,
   ].join("\n");
+  const focusLine = ANALYSIS_FOCUS[isAnalysisFocus(focus) ? focus : "general"];
   return aiComplete({
-    system: "You are a B2B account strategist. Analyse this account and reply in plain text with short sections: Health (one line), Opportunities (2 bullets), Risks (2 bullets), Recommended next step (one line). Be concrete; base it only on the data given.",
+    system: `You are a B2B account strategist. ${focusLine} Reply in plain text with those short sections. Be concrete; base it only on the data given.`,
     prompt: ctx,
     maxTokens: 900,
   });
@@ -115,20 +128,37 @@ export async function dealInsightAction(dealId: number): Promise<AiOut> {
   });
 }
 
-export async function outreachDraftAction(input: { companyId: number; goal?: string }): Promise<AiOut> {
+export async function outreachDraftAction(input: {
+  companyId: number;
+  contactId?: number;
+  goal?: string;
+  tone?: OutreachTone;
+  length?: OutreachLength;
+  channel?: OutreachChannel;
+}): Promise<AiOut> {
   await requireSession();
   const detail = await getCompanyAction(input.companyId);
   if (!detail) return { text: "", enabled: true, error: "Company not found." };
   const c = detail.company;
-  const contact = detail.contacts[0];
+  const contact = (input.contactId ? detail.contacts.find((ct) => ct.id === input.contactId) : null) ?? detail.contacts[0];
   const goal = (input.goal ?? "").trim() || "book a short intro call";
+  const tone = isOutreachTone(input.tone ?? "") ? (input.tone as OutreachTone) : "warm";
+  const length = isOutreachLength(input.length ?? "") ? (input.length as OutreachLength) : "standard";
+  const channel = isOutreachChannel(input.channel ?? "") ? (input.channel as OutreachChannel) : "email";
+
   const ctx = [
     `Recipient: ${contact ? `${contact.name}${contact.role ? `, ${contact.role}` : ""}` : "the main contact"} at ${c.name} (${c.industry || "business"}, ${c.city || "unknown location"}).`,
-    `Goal of the email: ${goal}.`,
+    `Goal of the message: ${goal}.`,
     detail.summary.open > 0 ? `We have ${eur(detail.summary.open)} of open pipeline with them.` : "",
   ].filter(Boolean).join("\n");
+
+  const format =
+    channel === "linkedin"
+      ? `Write a ${TONE_WORD[tone]} LinkedIn connection/DM message (no subject line, under 60 words, ${length === "short" ? "2-3" : "3-4"} sentences).`
+      : `Write a ${TONE_WORD[tone]} B2B outreach email: a Subject line, then a ${length === "short" ? "3-4" : "4-6"} sentence body.`;
+
   return aiComplete({
-    system: "You draft short, warm, professional B2B outreach emails. Return a Subject line then a 4-6 sentence body in plain text. Use the given details — never leave placeholders like [Name]. This is a DRAFT for the rep to review and send manually; do not claim it was sent.",
+    system: `You draft ${TONE_WORD[tone]} B2B outreach. ${format} Reply in plain text. Use the given details — never leave placeholders like [Name]. This is a DRAFT for the rep to review and send manually; do not claim it was sent.`,
     prompt: ctx,
     maxTokens: 500,
   });
