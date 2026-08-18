@@ -43,3 +43,30 @@ export function extractBearer(headerValue: string | null, apiKeyHeader?: string 
   const m = /^Bearer\s+(.+)$/i.exec(headerValue.trim());
   return m ? m[1].trim() : null;
 }
+
+// ---- Scopes: a key can be limited to a subset of the read-only resources ----
+
+export const API_SCOPES = ["companies", "contacts", "deals"] as const;
+export type ApiScope = (typeof API_SCOPES)[number];
+
+/** Sanitize a scope list (array or comma string) to known values; an empty or
+ *  all-invalid input falls back to every scope (back-compat for old keys). */
+export function normalizeScopes(raw: unknown): ApiScope[] {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  const clean = arr.map((s) => String(s).trim()).filter((s): s is ApiScope => (API_SCOPES as readonly string[]).includes(s));
+  return clean.length ? [...new Set(clean)] : [...API_SCOPES];
+}
+export const scopesToString = (scopes: ApiScope[]): string => normalizeScopes(scopes).join(",");
+export const hasScope = (scopes: ApiScope[], needed: ApiScope): boolean => scopes.includes(needed);
+
+// ---- Expiry ----
+
+export const API_KEY_EXPIRY_DAYS = [30, 90, 365] as const;
+
+/** A day count (or null/0 = never) → an expiry Date. `now` is injectable for
+ *  tests. Capped at 10 years. */
+export function expiryFromDays(days: number | null | undefined, now: number = Date.now()): Date | null {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return null;
+  return new Date(now + Math.min(3650, Math.floor(d)) * 86_400_000);
+}

@@ -1,18 +1,20 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { extractBearer, isApiKeyFormat, hashKey } from "@/lib/crm/api-keys";
+import { extractBearer, isApiKeyFormat, hashKey, normalizeScopes, hasScope, type ApiScope } from "@/lib/crm/api-keys";
 import { findEnabledApiKeyByHash, touchApiKey, getOrgFlags } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { unauthorized } from "./respond";
+import { apiError, unauthorized } from "./respond";
 
 // Authenticate a public API request from its bearer key. The org is derived from
 // the key itself, so every downstream query is org-scoped by construction — a key
 // can only ever read its own tenant's data. Failure is always a plain null (the
-// route turns it into a 401); we never leak why.
+// route turns it into a 401); we never leak why. Expired/disabled keys don't
+// authenticate (the DB lookup filters them).
 
 export interface ApiAuth {
   organizationId: number;
   keyId: number;
+  scopes: ApiScope[];
 }
 
 export async function authenticateApiKey(req: NextRequest): Promise<ApiAuth | null> {
@@ -24,7 +26,13 @@ export async function authenticateApiKey(req: NextRequest): Promise<ApiAuth | nu
   const flags = await getOrgFlags(found.organizationId).catch(() => null);
   if (flags?.apiFrozen) return null;
   void touchApiKey(found.id); // best-effort usage stamp, never blocks
-  return { organizationId: found.organizationId, keyId: found.id };
+  return { organizationId: found.organizationId, keyId: found.id, scopes: normalizeScopes(found.scopes) };
+}
+
+/** Guard a resource route against the key's scopes. Returns a 403 to return
+ *  as-is, or null when the key is allowed. */
+export function requireScope(auth: ApiAuth, scope: ApiScope): NextResponse | null {
+  return hasScope(auth.scopes, scope) ? null : apiError(403, `This key isn't scoped for "${scope}".`);
 }
 
 function apiClientIp(req: NextRequest): string {

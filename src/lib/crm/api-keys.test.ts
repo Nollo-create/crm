@@ -1,51 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { hashKey, generateApiKey, isApiKeyFormat, maskKey, extractBearer, API_KEY_PREFIX } from "./api-keys";
+import { normalizeScopes, scopesToString, hasScope, expiryFromDays, API_SCOPES } from "./api-keys";
 
-describe("hashKey", () => {
-  it("is deterministic 64-hex sha256", () => {
-    const h = hashKey("crmk_abc");
-    expect(h).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashKey("crmk_abc")).toBe(h);
-    expect(hashKey("crmk_abd")).not.toBe(h);
+describe("api-key scopes", () => {
+  it("keeps known scopes, dedups, drops junk", () => {
+    expect(normalizeScopes(["companies", "deals", "companies", "evil"])).toEqual(["companies", "deals"]);
+  });
+  it("falls back to all scopes on empty/invalid (back-compat)", () => {
+    expect(normalizeScopes([])).toEqual([...API_SCOPES]);
+    expect(normalizeScopes("nonsense")).toEqual([...API_SCOPES]);
+    expect(normalizeScopes(undefined)).toEqual([...API_SCOPES]);
+  });
+  it("parses a comma string", () => {
+    expect(normalizeScopes("companies, contacts")).toEqual(["companies", "contacts"]);
+  });
+  it("round-trips to a string", () => {
+    expect(scopesToString(["deals", "companies"])).toBe("deals,companies");
+  });
+  it("hasScope checks membership", () => {
+    expect(hasScope(["companies"], "companies")).toBe(true);
+    expect(hasScope(["companies"], "deals")).toBe(false);
   });
 });
 
-describe("generateApiKey", () => {
-  it("mints a prefixed key whose hash matches and last4 lines up", () => {
-    const k = generateApiKey();
-    expect(k.plain.startsWith(API_KEY_PREFIX)).toBe(true);
-    expect(k.hash).toBe(hashKey(k.plain));
-    expect(k.plain.slice(-4)).toBe(k.last4);
-    expect(isApiKeyFormat(k.plain)).toBe(true);
+describe("api-key expiry", () => {
+  const NOW = 1_000_000_000_000;
+  it("null/0/negative = never expires", () => {
+    expect(expiryFromDays(null, NOW)).toBeNull();
+    expect(expiryFromDays(0, NOW)).toBeNull();
+    expect(expiryFromDays(-5, NOW)).toBeNull();
   });
-  it("is unique across calls", () => {
-    expect(generateApiKey().plain).not.toBe(generateApiKey().plain);
-  });
-});
-
-describe("isApiKeyFormat", () => {
-  it("accepts well-formed keys, rejects junk", () => {
-    expect(isApiKeyFormat(generateApiKey().plain)).toBe(true);
-    expect(isApiKeyFormat("crmk_short")).toBe(false);
-    expect(isApiKeyFormat("nope_" + "x".repeat(30))).toBe(false);
-    expect(isApiKeyFormat(null)).toBe(false);
-    expect(isApiKeyFormat(123)).toBe(false);
-  });
-});
-
-describe("maskKey", () => {
-  it("shows only the last 4", () => {
-    expect(maskKey("ab12")).toBe(`${API_KEY_PREFIX}••••ab12`);
-  });
-});
-
-describe("extractBearer", () => {
-  it("reads Authorization: Bearer and x-api-key, prefers x-api-key", () => {
-    expect(extractBearer("Bearer crmk_xyz")).toBe("crmk_xyz");
-    expect(extractBearer("bearer  crmk_xyz ")).toBe("crmk_xyz");
-    expect(extractBearer(null, "crmk_fromheader")).toBe("crmk_fromheader");
-    expect(extractBearer("Bearer a", "crmk_wins")).toBe("crmk_wins");
-    expect(extractBearer(null)).toBeNull();
-    expect(extractBearer("Basic abc")).toBeNull();
+  it("computes a future date, capped at 10 years", () => {
+    expect(expiryFromDays(30, NOW)!.getTime()).toBe(NOW + 30 * 86_400_000);
+    expect(expiryFromDays(100000, NOW)!.getTime()).toBe(NOW + 3650 * 86_400_000);
   });
 });

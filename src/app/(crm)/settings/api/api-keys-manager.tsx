@@ -11,8 +11,10 @@ import {
 } from "@/lib/actions/api-keys";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Input, Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { API_SCOPES, API_KEY_EXPIRY_DAYS } from "@/lib/crm/api-keys";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,8 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
+  const [expiry, setExpiry] = useState<number>(0); // 0 = never
+  const [scopes, setScopes] = useState<string[]>([...API_SCOPES]);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [reveal, setReveal] = useState<string | null>(null);
@@ -53,14 +57,21 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
     }
   }
 
+  function toggleScope(s: string) {
+    setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
   async function create() {
+    if (scopes.length === 0) return toast("Pick at least one scope.", { tone: "error" });
     setCreating(true);
-    const r = await createApiKeyAction(name, pw);
+    const r = await createApiKeyAction(name, pw, { expiresInDays: expiry || null, scopes });
     setCreating(false);
     if (r.error) return toast(r.error, { tone: "error" });
     setReveal(r.plain ?? null);
     setName("");
     setPw("");
+    setExpiry(0);
+    setScopes([...API_SCOPES]);
     router.refresh();
   }
   async function toggle(id: number, enabled: boolean) {
@@ -118,18 +129,37 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
 
       {/* Create */}
       {data.canManage && (
-        <Card className="flex flex-wrap items-end gap-2 p-4">
-          <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
-            New key label
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zapier, internal script" className="mt-1" />
-          </label>
-          <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
-            Your password
-            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Confirm it's you" className="mt-1" autoComplete="current-password" />
-          </label>
-          <Button size="sm" onClick={create} disabled={creating || !pw}>
-            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create key
-          </Button>
+        <Card className="space-y-3 p-4">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
+              New key label
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zapier, internal script" className="mt-1" />
+            </label>
+            <label className="min-w-[160px] flex-1 text-2xs uppercase tracking-wide text-muted-foreground">
+              Your password
+              <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Confirm it's you" className="mt-1" autoComplete="current-password" />
+            </label>
+            <label className="text-2xs uppercase tracking-wide text-muted-foreground">
+              Expires
+              <Select value={String(expiry)} onChange={(e) => setExpiry(Number(e.target.value))} className="mt-1 h-9 w-auto text-xs">
+                <option value="0">Never</option>
+                {API_KEY_EXPIRY_DAYS.map((d) => <option key={d} value={d}>{d} days</option>)}
+              </Select>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-2xs uppercase tracking-wide text-muted-foreground">Scopes</span>
+              {API_SCOPES.map((s) => (
+                <button key={s} onClick={() => toggleScope(s)} className={cn("rounded-full border px-2.5 py-1 text-2xs font-medium capitalize transition-colors", scopes.includes(s) ? "border-electric/40 bg-electric/10 text-electric" : "border-border text-muted-foreground hover:text-foreground")}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" onClick={create} disabled={creating || !pw}>
+              {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create key
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -153,10 +183,14 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
             <Card key={k.id} className={cn("flex items-center gap-3 p-3", !k.enabled && "opacity-60")}>
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-electric/12 text-electric"><KeyRound size={15} /></span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{k.name}</p>
+                <p className="flex items-center gap-2 truncate text-sm font-medium">
+                  {k.name}
+                  {k.expired && <Badge tone="danger">Expired</Badge>}
+                </p>
                 <p className="truncate text-2xs text-muted-foreground">
-                  <code>{k.masked}</code> · {k.requestCount} req{k.requestCount === 1 ? "" : "s"} ·{" "}
+                  <code>{k.masked}</code> · {k.scopes.join(", ")} · {k.requestCount} req{k.requestCount === 1 ? "" : "s"} ·{" "}
                   {k.lastUsedAt ? `used ${timeAgo(k.lastUsedAt)}` : "never used"}
+                  {k.expiresAt && ` · ${k.expired ? "expired" : "expires"} ${timeAgo(k.expiresAt)}`}
                 </p>
               </div>
               {data.canManage && (
@@ -201,7 +235,9 @@ export function ApiKeysManager({ data }: { data: ApiKeysData }) {
         </div>
         <p className="text-2xs text-muted-foreground">
           Query params: <code>q</code> (search), <code>sort</code>, <code>dir</code> (asc/desc), <code>page</code>, <code>limit</code> (max 100). Write access
-          isn&apos;t available in v1. Rate limit: <code>120 requests/min</code> per key — over that returns <code>429</code> with a <code>Retry-After</code> header.
+          isn&apos;t available in v1. A key can be limited to specific <strong>scopes</strong> (companies/contacts/deals — a request outside its
+          scope returns <code>403</code>) and given an <strong>expiry</strong> (after which it stops authenticating). Rate limit:
+          <code>120 requests/min</code> per key — over that returns <code>429</code> with a <code>Retry-After</code> header.
         </p>
       </Card>
     </div>

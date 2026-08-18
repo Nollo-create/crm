@@ -2220,6 +2220,10 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_apikey_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // API-key expiry + scopes (added later; idempotent for prod). Existing keys
+      // default to all scopes + no expiry, so they keep working unchanged.
+      await ensureColumn(pool, "crm_api_keys", "expires_at", "expires_at TIMESTAMP NULL");
+      await ensureColumn(pool, "crm_api_keys", "scopes", "scopes VARCHAR(255) NOT NULL DEFAULT 'companies,contacts,deals'");
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2412,6 +2416,8 @@ export interface ApiKeyRow extends mysql.RowDataPacket {
   enabled: number;
   last_used_at: Date | null;
   request_count: number;
+  expires_at: Date | null;
+  scopes: string;
   created_at: Date;
 }
 
@@ -2426,12 +2432,12 @@ export async function listApiKeys(orgId: number): Promise<ApiKeyRow[]> {
 
 export async function createApiKey(
   orgId: number,
-  input: { name: string; keyHash: string; last4: string; createdByEmail: string }
+  input: { name: string; keyHash: string; last4: string; createdByEmail: string; expiresAt?: Date | null; scopes?: string }
 ): Promise<number> {
   await ensureAuthSchema();
   const [res] = await getPool().query<mysql.ResultSetHeader>(
-    "INSERT INTO crm_api_keys (organization_id, name, key_hash, last4, created_by_email) VALUES (?, ?, ?, ?, ?)",
-    [orgId, input.name.slice(0, 120), input.keyHash.slice(0, 64), input.last4.slice(0, 8), input.createdByEmail.slice(0, 190)]
+    "INSERT INTO crm_api_keys (organization_id, name, key_hash, last4, created_by_email, expires_at, scopes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [orgId, input.name.slice(0, 120), input.keyHash.slice(0, 64), input.last4.slice(0, 8), input.createdByEmail.slice(0, 190), input.expiresAt ?? null, (input.scopes || "companies,contacts,deals").slice(0, 255)]
   );
   return res.insertId;
 }
@@ -2448,14 +2454,14 @@ export async function deleteApiKey(orgId: number, id: number): Promise<void> {
 
 /** Resolve an incoming key hash to its org — the API auth lookup. NOT org-scoped
  *  (the key *is* the identity). Only enabled keys authenticate. */
-export async function findEnabledApiKeyByHash(hash: string): Promise<{ id: number; organizationId: number } | null> {
+export async function findEnabledApiKeyByHash(hash: string): Promise<{ id: number; organizationId: number; scopes: string } | null> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<ApiKeyRow[]>(
-    "SELECT id, organization_id FROM crm_api_keys WHERE key_hash = ? AND enabled = 1 LIMIT 1",
+    "SELECT id, organization_id, scopes FROM crm_api_keys WHERE key_hash = ? AND enabled = 1 AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1",
     [hash]
   );
   const r = rows[0];
-  return r ? { id: r.id, organizationId: r.organization_id } : null;
+  return r ? { id: r.id, organizationId: r.organization_id, scopes: r.scopes } : null;
 }
 
 /** Best-effort usage stamp; never blocks a request. */

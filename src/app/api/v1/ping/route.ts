@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   return apiJson({
     ok: true,
     version: "v1",
-    scope: "read",
+    access: "read",
+    scopes: auth.scopes,
     organization: { id: auth.organizationId, name: org?.name ?? "" },
   });
 }

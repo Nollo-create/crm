@@ -7,7 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { verifyPassword } from "@/lib/auth/password";
 import { recordAudit } from "@/lib/auth/audit";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
-import { generateApiKey, maskKey } from "@/lib/crm/api-keys";
+import { generateApiKey, maskKey, normalizeScopes, scopesToString, expiryFromDays, type ApiScope } from "@/lib/crm/api-keys";
 
 const MAX_KEYS = 20;
 
@@ -20,6 +20,9 @@ export interface ApiKeyView {
   requestCount: number;
   createdBy: string;
   createdAt: string;
+  expiresAt: string | null;
+  expired: boolean;
+  scopes: ApiScope[];
 }
 
 export interface ApiKeysData {
@@ -41,13 +44,20 @@ export async function listApiKeysAction(): Promise<ApiKeysData> {
       requestCount: r.request_count,
       createdBy: r.created_by_email,
       createdAt: new Date(r.created_at).toISOString(),
+      expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+      expired: !!r.expires_at && new Date(r.expires_at).getTime() < Date.now(),
+      scopes: normalizeScopes(r.scopes),
     })),
   };
 }
 
 /** Create a key and return its plaintext ONCE. After this it can never be shown
  *  again (we store only the hash). */
-export async function createApiKeyAction(name: string, password: string): Promise<{ plain?: string; error?: string }> {
+export async function createApiKeyAction(
+  name: string,
+  password: string,
+  opts: { expiresInDays?: number | null; scopes?: string[] } = {}
+): Promise<{ plain?: string; error?: string }> {
   const session = await requireSession();
   if (!can(session.role, "org:manage")) return { error: "Only an owner can create API keys." };
   // Step-up: a new key grants standing programmatic access, so re-verify the
@@ -59,9 +69,11 @@ export async function createApiKeyAction(name: string, password: string): Promis
   const label = (name || "").trim().slice(0, 120) || "API key";
   const existing = await listApiKeys(session.organizationId).catch(() => []);
   if (existing.length >= MAX_KEYS) return { error: `You can have at most ${MAX_KEYS} keys. Revoke one first.` };
+  const scopes = scopesToString(normalizeScopes(opts.scopes));
+  const expiresAt = expiryFromDays(opts.expiresInDays ?? null);
   const key = generateApiKey();
-  await createApiKey(session.organizationId, { name: label, keyHash: key.hash, last4: key.last4, createdByEmail: session.email });
-  await recordAudit(session, "apikey_create", "api_key", null, `created "${label}"`);
+  await createApiKey(session.organizationId, { name: label, keyHash: key.hash, last4: key.last4, createdByEmail: session.email, expiresAt, scopes });
+  await recordAudit(session, "apikey_create", "api_key", null, `created "${label}" (${scopes}${expiresAt ? `, expires ${expiresAt.toISOString().slice(0, 10)}` : ""})`);
   revalidatePath("/settings/api");
   return { plain: key.plain };
 }
