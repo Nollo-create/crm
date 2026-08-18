@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, type LeadRow } from "@/lib/db";
+import { createLead, listLeadsPage, setLeadStatus, deleteLead, convertLead, getLead, updateLead, bulkDeleteLeads, bulkSetLeadStatus, type LeadRow } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
 import { isLeadSource, isLeadStatus, isLeadPriority } from "@/lib/crm/leads";
@@ -176,6 +176,21 @@ export async function deleteLeadAction(id: number): Promise<void> {
   const { organizationId } = await requireSession();
   await deleteLead(organizationId, id);
   revalidatePath("/leads");
+}
+
+export async function bulkDeleteLeadsAction(ids: number[]): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  await bulkDeleteLeads(organizationId, ids);
+  revalidatePath("/leads");
+  return {};
+}
+
+export async function bulkSetLeadStatusAction(ids: number[], status: string): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  if (!isLeadStatus(status) || status === "converted") return { error: "Pick a status." };
+  await bulkSetLeadStatus(organizationId, ids, status);
+  revalidatePath("/leads");
+  return {};
 }
 
 export async function convertLeadAction(

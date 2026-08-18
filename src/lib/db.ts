@@ -610,6 +610,38 @@ export async function bulkSetCompanyStatus(orgId: number, ids: number[], status:
   await getPool().query(`UPDATE crm_companies SET status = ? WHERE organization_id = ? AND id IN (${ph})`, [status.slice(0, 20), orgId, ...clean]);
 }
 
+// -------- bulk ops for leads & deals (org-scoped, capped, ?-bound like companies)
+function cleanIds(ids: number[]): number[] {
+  return ids.filter((n) => Number.isInteger(n)).slice(0, 500);
+}
+export async function bulkDeleteLeads(orgId: number, ids: number[]): Promise<void> {
+  const clean = cleanIds(ids);
+  if (!clean.length) return;
+  await ensureSchema();
+  await getPool().query(`DELETE FROM crm_leads WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [orgId, ...clean]);
+}
+export async function bulkSetLeadStatus(orgId: number, ids: number[], status: string): Promise<void> {
+  const clean = cleanIds(ids);
+  if (!clean.length) return;
+  await ensureSchema();
+  await getPool().query(`UPDATE crm_leads SET status = ? WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [status.slice(0, 20), orgId, ...clean]);
+}
+export async function bulkDeleteDeals(orgId: number, ids: number[]): Promise<void> {
+  const clean = cleanIds(ids);
+  if (!clean.length) return;
+  await ensureSchema();
+  await getPool().query(`DELETE FROM crm_deals WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`, [orgId, ...clean]);
+}
+export async function bulkSetDealStage(orgId: number, ids: number[], stage: string): Promise<void> {
+  const clean = cleanIds(ids);
+  if (!clean.length) return;
+  await ensureSchema();
+  await getPool().query(
+    `UPDATE crm_deals SET stage = ?, closed_at = NULL, loss_reason = '' WHERE organization_id = ? AND id IN (${clean.map(() => "?").join(",")})`,
+    [stage.slice(0, 20), orgId, ...clean]
+  );
+}
+
 // ----------------------------------------------------------------- contacts
 
 export interface ContactInput {

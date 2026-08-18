@@ -9,6 +9,8 @@ import {
   setLeadStatusAction,
   deleteLeadAction,
   convertLeadAction,
+  bulkDeleteLeadsAction,
+  bulkSetLeadStatusAction,
   type Lead,
 } from "@/lib/actions/leads";
 import {
@@ -54,6 +56,8 @@ export default function LeadsPage() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowAdd(true);
   }, []);
@@ -95,6 +99,39 @@ export default function LeadsPage() {
   }, [debouncedQ, status, source, sort, page, pageSize, reloadKey]);
 
   const refetch = () => setReloadKey((k) => k + 1);
+  useEffect(() => setSelected(new Set()), [debouncedQ, status, source, page, pageSize, reloadKey]);
+
+  const openRows = rows.filter((l) => l.status !== "converted");
+  const allSelected = openRows.length > 0 && openRows.every((l) => selected.has(l.id));
+  function toggleRow(id: number) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(openRows.map((l) => l.id)));
+  }
+  async function bulkStatus(next: string) {
+    setBulkBusy(true);
+    const r = await bulkSetLeadStatusAction([...selected], next);
+    setBulkBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Status updated", { tone: "success" });
+    setSelected(new Set());
+    refetch();
+  }
+  async function bulkRemove() {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${selected.size} lead${selected.size === 1 ? "" : "s"}?`)) return;
+    setBulkBusy(true);
+    await bulkDeleteLeadsAction([...selected]);
+    setBulkBusy(false);
+    toast("Leads deleted", { tone: "success" });
+    setSelected(new Set());
+    refetch();
+  }
 
   function toggleSort(key: LeadSortKey) {
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "score" ? -1 : 1 }));
@@ -230,12 +267,28 @@ export default function LeadsPage() {
         </Select>
       </div>
 
+      {/* Bulk bar */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Select onChange={(e) => { if (e.target.value) bulkStatus(e.target.value); e.currentTarget.value = ""; }} defaultValue="" className="h-8 w-auto text-xs" disabled={bulkBusy}>
+              <option value="" disabled>Set status…</option>
+              {OPEN_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
+            </Select>
+            <Button size="sm" variant="danger" onClick={bulkRemove} disabled={bulkBusy}><Trash2 size={13} /> Delete</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}><X size={13} /> Clear</Button>
+          </div>
+        </div>
+      )}
+
       {/* Table (desktop) */}
       <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-2 py-2"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-electric" aria-label="Select all" /></th>
                 <Th label="Lead" k="name" sort={sort} onSort={toggleSort} />
                 <Th label="Source" k="source" sort={sort} onSort={toggleSort} />
                 <Th label="Score" k="score" sort={sort} onSort={toggleSort} align="right" />
@@ -246,11 +299,11 @@ export default function LeadsPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}><td className="px-3 py-3" colSpan={5}><Skeleton className="h-4 w-full" /></td></tr>
+                  <tr key={i}><td className="px-3 py-3" colSpan={6}><Skeleton className="h-4 w-full" /></td></tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-12 text-center text-sm text-muted-foreground">
                     {hasFilters ? "No matches." : "No leads yet — add your first lead."}
                   </td>
                 </tr>
@@ -259,6 +312,7 @@ export default function LeadsPage() {
                   const converted = l.status === "converted";
                   return (
                     <tr key={l.id} className="transition-colors hover:bg-secondary/40">
+                      <td className="w-8 px-2 py-2.5">{!converted && <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleRow(l.id)} className="h-3.5 w-3.5 accent-electric" aria-label="Select lead" />}</td>
                       <td className="px-3 py-2.5">
                         <button onClick={() => router.push(`/leads/${l.id}`)} className="text-left">
                           <p className="font-medium hover:text-electric hover:underline">{l.name || l.company || "—"}</p>

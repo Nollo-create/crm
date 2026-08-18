@@ -41,6 +41,8 @@ import {
   closeDealWon,
   closeDealLost,
   setDealOpenStage,
+  bulkDeleteDeals,
+  bulkSetDealStage,
   type DealStatsRow,
   type DealWithRefsRow,
   addActivity,
@@ -597,6 +599,27 @@ export async function deleteDealAction(id: number, companyId: number): Promise<{
   await deleteDeal(session.organizationId, id);
   await recordAudit(session, "delete", "deal", id);
   revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/deals");
+  revalidatePath("/pipeline");
+  revalidatePath("/");
+  return {};
+}
+
+export async function bulkDeleteDealsAction(ids: number[]): Promise<{ error?: string }> {
+  const session = await requireSession();
+  if (!can(session.role, "deal:delete")) return { error: "Only admins can delete deals." };
+  await bulkDeleteDeals(session.organizationId, ids);
+  await recordAudit(session, "bulk_delete", "deal", null, `${ids.length} deals`);
+  revalidatePath("/deals");
+  revalidatePath("/pipeline");
+  revalidatePath("/");
+  return {};
+}
+
+export async function bulkSetDealStageAction(ids: number[], stage: string): Promise<{ error?: string }> {
+  const { organizationId } = await requireSession();
+  if (!isStageId(stage) || stage === "won" || stage === "lost") return { error: "Pick an open stage." };
+  await bulkSetDealStage(organizationId, ids, stage);
   revalidatePath("/deals");
   revalidatePath("/pipeline");
   revalidatePath("/");

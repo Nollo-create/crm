@@ -9,11 +9,13 @@ import {
   createDealAction,
   updateDealStageAction,
   deleteDealAction,
+  bulkDeleteDealsAction,
+  bulkSetDealStageAction,
   searchCompaniesAction,
   type BoardDeal,
   type SearchHit,
 } from "@/lib/actions/crm";
-import { STAGES, stageLabel, weightedValue, dealCloseInfo, isStageId, type StageId } from "@/lib/crm/pipeline";
+import { STAGES, OPEN_STAGES, stageLabel, weightedValue, dealCloseInfo, isStageId, type StageId } from "@/lib/crm/pipeline";
 import { STAGE_TONE } from "@/components/crm/deal-card";
 import type { DealSortKey } from "@/lib/crm/deal-query";
 import { Card } from "@/components/ui/card";
@@ -57,6 +59,8 @@ export default function DealsPage() {
   const [busy, setBusy] = useState(false);
   const [companyQuery, setCompanyQuery] = useState("");
   const [companyResults, setCompanyResults] = useState<SearchHit[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -93,6 +97,38 @@ export default function DealsPage() {
   }, [debouncedQ, stage, sort, page, pageSize, reloadKey]);
 
   const refetch = () => setReloadKey((k) => k + 1);
+  useEffect(() => setSelected(new Set()), [debouncedQ, stage, sort, page, pageSize, reloadKey]);
+  const allSelected = rows.length > 0 && rows.every((d) => selected.has(d.id));
+  function toggleRow(id: number) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(rows.map((d) => d.id)));
+  }
+  async function bulkStage(next: string) {
+    setBulkBusy(true);
+    const r = await bulkSetDealStageAction([...selected], next);
+    setBulkBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Stage updated", { tone: "success" });
+    setSelected(new Set());
+    refetch();
+  }
+  async function bulkRemove() {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${selected.size} deal${selected.size === 1 ? "" : "s"}?`)) return;
+    setBulkBusy(true);
+    const r = await bulkDeleteDealsAction([...selected]);
+    setBulkBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Deals deleted", { tone: "success" });
+    setSelected(new Set());
+    refetch();
+  }
 
   useEffect(() => {
     if (!showAdd) return;
@@ -225,12 +261,28 @@ export default function DealsPage() {
         </Select>
       </div>
 
+      {/* Bulk bar */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-electric/40 bg-electric/[0.06] px-3 py-2">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Select onChange={(e) => { if (e.target.value) bulkStage(e.target.value); e.currentTarget.value = ""; }} defaultValue="" className="h-8 w-auto text-xs" disabled={bulkBusy}>
+              <option value="" disabled>Move to stage…</option>
+              {OPEN_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </Select>
+            <Button size="sm" variant="danger" onClick={bulkRemove} disabled={bulkBusy}><Trash2 size={13} /> Delete</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}><X size={13} /> Clear</Button>
+          </div>
+        </div>
+      )}
+
       {/* Table (desktop) */}
       <Card className="hidden overflow-hidden p-0 md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="border-b border-border bg-card text-2xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-2 py-2"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-electric" aria-label="Select all" /></th>
                 <Th label="Deal" k="title" sort={sort} onSort={toggleSort} />
                 <Th label="Company" k="company" sort={sort} onSort={toggleSort} />
                 <Th label="Value" k="value" sort={sort} onSort={toggleSort} align="right" />
@@ -242,11 +294,11 @@ export default function DealsPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}><td className="px-3 py-3" colSpan={6}><Skeleton className="h-4 w-full" /></td></tr>
+                  <tr key={i}><td className="px-3 py-3" colSpan={7}><Skeleton className="h-4 w-full" /></td></tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-3 py-12 text-center text-sm text-muted-foreground">
                     {hasFilters ? "No matches." : "No deals yet — add your first deal."}
                   </td>
                 </tr>
@@ -255,6 +307,7 @@ export default function DealsPage() {
                   const close = dealCloseInfo(d.expectedClose);
                   return (
                     <tr key={d.id} className="transition-colors hover:bg-secondary/40">
+                      <td className="w-8 px-2 py-2.5"><input type="checkbox" checked={selected.has(d.id)} onChange={() => toggleRow(d.id)} className="h-3.5 w-3.5 accent-electric" aria-label="Select deal" /></td>
                       <td className="px-3 py-2.5 cursor-pointer" onClick={() => router.push(`/deals/${d.id}`)}>
                         <p className="font-medium">{d.title}</p>
                         {d.owner && <p className="text-2xs text-muted-foreground">{d.owner}</p>}
