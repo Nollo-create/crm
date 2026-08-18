@@ -34,6 +34,7 @@ export interface NbaItem {
   subtitle: string;
   href: string;
   priority: number;
+  companyId?: number;
 }
 
 export async function nextBestActionsAction(): Promise<NbaItem[]> {
@@ -45,8 +46,8 @@ export async function nextBestActionsAction(): Promise<NbaItem[]> {
     nbaAgingQuotes(org, 7, 5).catch(() => []),
   ]);
   const items: NbaItem[] = [];
-  for (const d of overdue) items.push({ kind: "deal", title: `Follow up: ${d.title}`, subtitle: `${d.companyName} · ${d.days}d overdue`, href: `/companies/${d.companyId}`, priority: 100 + d.days });
-  for (const s of stale) items.push({ kind: "account", title: `Re-engage ${s.name}`, subtitle: s.lastDays == null ? "No activity logged" : `${s.lastDays}d since last touch`, href: `/companies/${s.id}`, priority: 80 + (s.lastDays ?? 90) });
+  for (const d of overdue) items.push({ kind: "deal", title: `Follow up: ${d.title}`, subtitle: `${d.companyName} · ${d.days}d overdue`, href: `/companies/${d.companyId}`, priority: 100 + d.days, companyId: d.companyId });
+  for (const s of stale) items.push({ kind: "account", title: `Re-engage ${s.name}`, subtitle: s.lastDays == null ? "No activity logged" : `${s.lastDays}d since last touch`, href: `/companies/${s.id}`, priority: 80 + (s.lastDays ?? 90), companyId: s.id });
   for (const q of quotes) items.push({ kind: "quote", title: `Chase ${quoteNumber(q.id)}`, subtitle: `${q.companyName} · sent ${q.days}d ago`, href: `/quotes/${q.id}`, priority: 70 + q.days });
   for (const l of hot) items.push({ kind: "lead", title: `Work lead ${l.name || l.company}`, subtitle: `Score ${l.score}${l.company && l.name ? ` · ${l.company}` : ""}`, href: "/leads", priority: 60 + l.score / 10 });
   return items.sort((a, b) => b.priority - a.priority).slice(0, 15);
