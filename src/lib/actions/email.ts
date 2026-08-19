@@ -1,30 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { randomBytes } from "node:crypto";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
-import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend, emailSendStats, emailSendsByRep, listRecentEmailSends } from "@/lib/db";
-import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
-import { sendMail, sendBulk, type SmtpConfig, type MailMessage } from "@/lib/email/send";
+import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend, emailSendStats, emailSendsByRep, listRecentEmailSends, createScheduledEmail, listScheduledEmails, cancelScheduledEmail, type ScheduledEmailRow } from "@/lib/db";
+import { encryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
+import { sendMail, sendBulk, type MailMessage } from "@/lib/email/send";
+import { loadSmtpConfig, publicBaseUrl } from "@/lib/email/mailbox";
 import { buildEmailHtml } from "@/lib/crm/email-html";
 import { applyTemplate, templateVars, BULK_MAX } from "@/lib/crm/email-template";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
-
-/** Public origin of this CRM (for the tracking-pixel URL in outgoing email). */
-async function publicBaseUrl(): Promise<string> {
-  try {
-    const host = (await headers()).get("host");
-    if (!host) return "";
-    return `${process.env.NODE_ENV === "production" ? "https" : "http"}://${host}`;
-  } catch {
-    return "";
-  }
-}
 
 export interface EmailSettingsView {
   canManage: boolean;
@@ -111,28 +100,6 @@ export async function saveEmailSettingsAction(input: EmailSettingsDTO): Promise<
   await recordAudit(session, "email_settings_update", "organization", session.organizationId, `${v.value.host}:${v.value.port}`);
   revalidatePath("/settings/email");
   return {};
-}
-
-/** Load + decrypt the org's mailbox into a ready-to-send config. Internal. */
-async function loadSmtpConfig(orgId: number, opts: { requireEnabled?: boolean } = {}): Promise<{ config?: SmtpConfig; error?: string }> {
-  const row = await getEmailSettings(orgId).catch(() => null);
-  if (!row?.host) return { error: "No mailbox is configured. Ask an owner to set one up in Settings → Email." };
-  if (opts.requireEnabled && !row.enabled) return { error: "The mailbox isn't active yet. Ask an owner to enable it in Settings → Email." };
-  const password = row.password_enc ? decryptSecret(row.password_enc) : "";
-  if (row.password_enc && password === null) {
-    return { error: "Could not read the saved password — was MFA_ENCRYPTION_KEY changed? Re-enter it below." };
-  }
-  return {
-    config: {
-      host: row.host,
-      port: row.port,
-      secure: !!row.secure,
-      username: row.username,
-      password: password ?? "",
-      fromName: row.from_name,
-      fromEmail: row.from_email,
-    },
-  };
 }
 
 export async function sendTestEmailAction(to: string): Promise<{ ok?: true; error?: string }> {
@@ -248,6 +215,89 @@ export async function sendEmailAction(input: {
   if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
   revalidatePath("/emails");
   return { ok: true };
+}
+
+// -------------------------------------------------------------- scheduled send
+
+const MAX_SCHEDULE_MS = 365 * 24 * 60 * 60_000; // 1 year out, max
+
+/** Queue an email to be sent later by the cron. member+; validated. `sendAt` is
+ *  an absolute ISO timestamp from the client. */
+export async function scheduleEmailAction(input: {
+  to: string;
+  subject: string;
+  body: string;
+  sendAt: string;
+  contactId?: number | null;
+  companyId?: number | null;
+  dealId?: number | null;
+  track?: boolean;
+}): Promise<{ ok?: true; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
+
+  const when = new Date(input.sendAt);
+  if (isNaN(when.getTime())) return { error: "Pick a valid date and time." };
+  if (when.getTime() < Date.now() + 60_000) return { error: "Pick a time at least a minute from now." };
+  if (when.getTime() > Date.now() + MAX_SCHEDULE_MS) return { error: "That's too far out — schedule within a year." };
+
+  const v = validated(() => ({
+    to: vEmail("Recipient", input.to),
+    subject: vString("Subject", input.subject, { required: true, max: 300 }),
+    body: vString("Message", input.body, { required: true, max: 20000 }),
+  }));
+  if (!v.ok) return { error: v.error };
+  if (!v.value.to) return { error: "Enter a recipient." };
+
+  // Confirm a mailbox exists now (so we fail fast, not silently at send time).
+  const loaded = await loadSmtpConfig(session.organizationId, { requireEnabled: true });
+  if (loaded.error) return { error: loaded.error };
+
+  await createScheduledEmail(session.organizationId, {
+    scheduledBy: session.email,
+    toEmail: v.value.to,
+    subject: v.value.subject,
+    body: v.value.body,
+    contactId: input.contactId ?? null,
+    companyId: input.companyId ?? null,
+    dealId: input.dealId ?? null,
+    track: input.track !== false,
+    sendAt: when,
+  });
+  await recordAudit(session, "email_scheduled", "contact", input.contactId ?? null, `${v.value.to} · ${when.toISOString()}`);
+  revalidatePath("/emails/scheduled");
+  return { ok: true };
+}
+
+export interface ScheduledEmailView {
+  id: number;
+  to: string;
+  subject: string;
+  scheduledBy: string;
+  sendAt: string;
+  status: string;
+  error: string;
+  companyId: number | null;
+}
+
+function toScheduled(r: ScheduledEmailRow): ScheduledEmailView {
+  return { id: r.id, to: r.to_email, subject: r.subject, scheduledBy: r.scheduled_by, sendAt: new Date(r.send_at).toISOString(), status: r.status, error: r.error, companyId: r.company_id };
+}
+
+export async function listScheduledEmailsAction(): Promise<ScheduledEmailView[]> {
+  const { organizationId } = await requireSession();
+  const rows = await listScheduledEmails(organizationId, 50).catch(() => []);
+  return rows.map(toScheduled);
+}
+
+export async function cancelScheduledEmailAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await cancelScheduledEmail(g.session.organizationId, id);
+  await recordAudit(g.session, "email_schedule_cancel", "email", id);
+  revalidatePath("/emails/scheduled");
+  return {};
 }
 
 // -------------------------------------------------------------- bulk / mail-merge

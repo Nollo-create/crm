@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { distinctAutomationOrgs } from "@/lib/db";
 import { runAutomationsForOrg } from "@/lib/automation-runner";
+import { processDueScheduledEmails } from "@/lib/email/scheduled-runner";
 
 // The automation runner's cron seam. A scheduler (cPanel cron job, or the
 // webapp's cron) hits this every few minutes with the shared CRON_SECRET, and it
@@ -34,7 +35,9 @@ async function run(req: NextRequest) {
     const results = await runAutomationsForOrg(org).catch(() => []);
     created += results.reduce((s, x) => s + x.created, 0);
   }
-  return NextResponse.json({ ok: true, orgs: orgs.length, created });
+  // Deliver any "send later" emails whose time has come.
+  const email = await processDueScheduledEmails().catch(() => ({ sent: 0, failed: 0 }));
+  return NextResponse.json({ ok: true, orgs: orgs.length, created, emailsSent: email.sent, emailsFailed: email.failed });
 }
 
 export const GET = run;

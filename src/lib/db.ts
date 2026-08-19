@@ -2311,6 +2311,28 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_send_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Scheduled ("send later") emails — the cron tick delivers due ones.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_scheduled_emails (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          scheduled_by VARCHAR(190) NOT NULL DEFAULT '',
+          to_email VARCHAR(190) NOT NULL DEFAULT '',
+          subject VARCHAR(300) NOT NULL DEFAULT '',
+          body TEXT NULL,
+          contact_id INT UNSIGNED NULL,
+          company_id INT UNSIGNED NULL,
+          deal_id INT UNSIGNED NULL,
+          track TINYINT NOT NULL DEFAULT 1,
+          send_at TIMESTAMP NOT NULL,
+          status VARCHAR(12) NOT NULL DEFAULT 'pending',
+          error VARCHAR(300) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sent_at TIMESTAMP NULL,
+          INDEX idx_sched_due (status, send_at),
+          INDEX idx_sched_org (organization_id, status, send_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2659,6 +2681,70 @@ export async function listRecentEmailSends(orgId: number, limit = 25): Promise<R
     [orgId, Math.min(Math.max(limit, 1), 100)]
   );
   return rows;
+}
+
+// ---------------------------------------------------------- scheduled emails
+
+export interface ScheduledEmailRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  scheduled_by: string;
+  to_email: string;
+  subject: string;
+  body: string | null;
+  contact_id: number | null;
+  company_id: number | null;
+  deal_id: number | null;
+  track: number;
+  send_at: Date;
+  status: string;
+  error: string;
+  created_at: Date;
+  sent_at: Date | null;
+}
+
+export async function createScheduledEmail(orgId: number, s: { scheduledBy: string; toEmail: string; subject: string; body: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; track: boolean; sendAt: Date }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_scheduled_emails (organization_id, scheduled_by, to_email, subject, body, contact_id, company_id, deal_id, track, send_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, s.scheduledBy.slice(0, 190), s.toEmail.slice(0, 190), s.subject.slice(0, 300), s.body.slice(0, 20000), s.contactId ?? null, s.companyId ?? null, s.dealId ?? null, s.track ? 1 : 0, s.sendAt]
+  );
+  return res.insertId;
+}
+
+/** Pending + recently-finished scheduled emails for the management view. */
+export async function listScheduledEmails(orgId: number, limit = 50): Promise<ScheduledEmailRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<ScheduledEmailRow[]>(
+    `SELECT * FROM crm_scheduled_emails WHERE organization_id = ?
+       ORDER BY (status = 'pending') DESC, send_at ASC LIMIT ?`,
+    [orgId, Math.min(Math.max(limit, 1), 200)]
+  );
+  return rows;
+}
+
+export async function cancelScheduledEmail(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_scheduled_emails SET status = 'canceled' WHERE id = ? AND organization_id = ? AND status = 'pending'", [id, orgId]);
+}
+
+/** Due pending scheduled emails across all orgs — for the cron runner. */
+export async function listDueScheduledEmails(limit = 40): Promise<ScheduledEmailRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<ScheduledEmailRow[]>(
+    "SELECT * FROM crm_scheduled_emails WHERE status = 'pending' AND send_at <= NOW() ORDER BY send_at ASC LIMIT ?",
+    [Math.min(Math.max(limit, 1), 100)]
+  );
+  return rows;
+}
+
+export async function markScheduledEmail(id: number, status: "sent" | "failed", error = ""): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_scheduled_emails SET status = ?, error = ?, sent_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [status, error.slice(0, 300), id]
+  );
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`
