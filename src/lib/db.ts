@@ -2289,6 +2289,14 @@ export function ensureAuthSchema(): Promise<void> {
           last_synced_at TIMESTAMP NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Global cron heartbeat — one row, stamped every tick, so a dead cron is
+      // visible (nothing else would surface it).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_heartbeat (
+          id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+          last_cron_at TIMESTAMP NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -3039,6 +3047,21 @@ export async function orgsWithImap(): Promise<ImapOrgRow[]> {
     "SELECT organization_id, imap_host, imap_port, username, password_enc FROM crm_email_settings WHERE imap_host <> '' AND enabled = 1 LIMIT 50"
   );
   return rows;
+}
+
+// ------------------------------------------------------------ cron heartbeat
+
+export async function setCronHeartbeat(): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "INSERT INTO crm_heartbeat (id, last_cron_at) VALUES (1, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE last_cron_at = CURRENT_TIMESTAMP"
+  );
+}
+
+export async function getCronHeartbeat(): Promise<Date | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT last_cron_at FROM crm_heartbeat WHERE id = 1 LIMIT 1");
+  return rows[0]?.last_cron_at ?? null;
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

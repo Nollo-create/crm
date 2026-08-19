@@ -11,6 +11,7 @@ import {
   acknowledgeAllSecurityAlerts,
   getOrgSecurityWebhook,
   setOrgSecurityWebhook,
+  getCronHeartbeat,
   type AuditRow,
   type SecurityAlertRow,
 } from "@/lib/db";
@@ -77,6 +78,9 @@ export interface SecurityOverview {
   /** Owner-only: the configured outbound alert webhook ("" = off). */
   webhookUrl: string;
   canManageOrg: boolean;
+  /** Background-job (cron) heartbeat — a dead cron silently stops automations,
+   *  scheduled email, sequences and inbox sync, so we surface its freshness. */
+  cron: { lastAt: string | null; minutesAgo: number | null; fresh: boolean };
 }
 
 function toAlert(r: SecurityAlertRow): SecurityAlert {
@@ -91,13 +95,17 @@ export async function securityOverviewAction(): Promise<SecurityOverview | null>
   if (!can(role, "member:manage")) return null;
   const canManageOrg = can(role, "org:manage");
 
-  const [metrics, auditRows, alertRows, webhookUrl] = await Promise.all([
+  const [metrics, auditRows, alertRows, webhookUrl, cronAt] = await Promise.all([
     securityOverview(organizationId).catch(() => null),
     listAuditLogs(organizationId, 100).catch(() => [] as AuditRow[]),
     listSecurityAlerts(organizationId, { onlyActive: true, limit: 20 }).catch(() => [] as SecurityAlertRow[]),
     canManageOrg ? getOrgSecurityWebhook(organizationId).catch(() => "") : Promise.resolve(""),
+    getCronHeartbeat().catch(() => null),
   ]);
   if (!metrics) return null;
+
+  const cronMinutesAgo = cronAt ? Math.max(0, Math.floor((Date.now() - new Date(cronAt).getTime()) / 60_000)) : null;
+  const cron = { lastAt: cronAt ? new Date(cronAt).toISOString() : null, minutesAgo: cronMinutesAgo, fresh: cronMinutesAgo !== null && cronMinutesAgo <= 20 };
 
   const { score, grade, findings } = computeSecurityScore(metrics);
   const recentEvents: SecurityEvent[] = auditRows
@@ -112,7 +120,7 @@ export async function securityOverviewAction(): Promise<SecurityOverview | null>
       createdAt: new Date(r.created_at).toISOString(),
     }));
 
-  return { score, grade, findings, metrics, recentEvents, activeAlerts: alertRows.map(toAlert), webhookUrl, canManageOrg };
+  return { score, grade, findings, metrics, recentEvents, activeAlerts: alertRows.map(toAlert), webhookUrl, canManageOrg, cron };
 }
 
 /** Acknowledge (clear) one active security alert. member:manage. */

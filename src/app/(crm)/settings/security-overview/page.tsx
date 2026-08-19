@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck, CheckCircle2, Clock, ArrowRight, AlertTriangle } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, ArrowRight, AlertTriangle, Activity } from "lucide-react";
 import { securityOverviewAction, type SecurityEvent } from "@/lib/actions/security";
 import { Kpi } from "@/components/crm/charts";
 import { Card } from "@/components/ui/card";
@@ -107,6 +107,21 @@ export default async function SecurityOverviewPage() {
         <Kpi label="Users" value={String(data.metrics.users)} sub={`${data.metrics.admins} admin${data.metrics.admins === 1 ? "" : "s"}`} />
         <Kpi label="API keys" value={String(data.metrics.apiKeysEnabled)} sub={data.metrics.apiKeysIdle > 0 ? `${data.metrics.apiKeysIdle} idle` : "enabled"} />
       </div>
+
+      {/* Background jobs (cron) health */}
+      <Card className={cn("flex items-center gap-3 p-3", !data.cron.fresh && "border-warning/40 bg-warning/[0.03]")}>
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full", data.cron.fresh ? "bg-emerald/12 text-emerald" : "bg-warning/12 text-warning")}>
+          <Activity size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Background jobs {data.cron.fresh ? <span className="text-2xs font-normal text-emerald">· healthy</span> : <span className="text-2xs font-normal text-warning">· needs attention</span>}</p>
+          <p className="text-2xs text-muted-foreground">
+            {data.cron.minutesAgo === null
+              ? "The scheduler has never run — set up the cron job or automations, scheduled email, sequences and inbox sync won't run."
+              : `Last ran ${data.cron.minutesAgo === 0 ? "just now" : `${data.cron.minutesAgo} min ago`}.${data.cron.fresh ? "" : " It should run every ~10 minutes — check the cron job."}`}
+          </p>
+        </div>
+      </Card>
 
       {/* Findings */}
       <div>

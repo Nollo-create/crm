@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "crypto";
-import { distinctAutomationOrgs } from "@/lib/db";
+import { distinctAutomationOrgs, setCronHeartbeat } from "@/lib/db";
 import { runAutomationsForOrg } from "@/lib/automation-runner";
 import { processDueScheduledEmails } from "@/lib/email/scheduled-runner";
 import { processDueSequenceSteps } from "@/lib/email/sequence-runner";
@@ -43,6 +43,8 @@ async function run(req: NextRequest) {
   const seq = await processDueSequenceSteps().catch(() => ({ sent: 0, stopped: 0, completed: 0 }));
   // Pull new inbound mail (replies) into the CRM + stop sequences on reply.
   const inbox = await processInboxSync().catch(() => ({ logged: 0, stopped: 0 }));
+  // Stamp the heartbeat so a dead cron becomes visible in the CRM.
+  await setCronHeartbeat().catch(() => {});
   return NextResponse.json({ ok: true, orgs: orgs.length, created, emailsSent: email.sent, emailsFailed: email.failed, seqSent: seq.sent, seqStopped: seq.stopped, seqCompleted: seq.completed, inboxLogged: inbox.logged, inboxStopped: inbox.stopped });
 }
 
