@@ -434,6 +434,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/(crm)/settings/forms/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/settings/forms">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/settings/forms/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/(crm)/settings/integrations/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/settings/integrations">> = Specific
@@ -506,6 +515,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/f/[token]/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/f/[token]">> = Specific
+  const handler = {} as typeof import("../../src/app/f/[token]/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/login/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/login">> = Specific
@@ -537,6 +555,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/e/[token]">> = Specific
   const handler = {} as typeof import("../../src/app/api/e/[token]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/api/forms/[token]/submit/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/forms/[token]/submit">> = Specific
+  const handler = {} as typeof import("../../src/app/api/forms/[token]/submit/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

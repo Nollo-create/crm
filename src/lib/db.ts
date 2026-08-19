@@ -2331,6 +2331,30 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_meeting_org (organization_id, starts_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Public lead-capture forms — each has an unguessable public token that maps
+      // to exactly one org; submissions arrive over the unauthenticated /api/forms
+      // route and create a lead. The token is public by design (like the tracking
+      // pixel), so it is stored in plaintext.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_capture_forms (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          token VARCHAR(64) NOT NULL,
+          name VARCHAR(120) NOT NULL DEFAULT '',
+          title VARCHAR(200) NOT NULL DEFAULT '',
+          description VARCHAR(500) NOT NULL DEFAULT '',
+          success_message VARCHAR(500) NOT NULL DEFAULT '',
+          redirect_url VARCHAR(500) NOT NULL DEFAULT '',
+          require_company TINYINT(1) NOT NULL DEFAULT 0,
+          notify TINYINT(1) NOT NULL DEFAULT 1,
+          active TINYINT(1) NOT NULL DEFAULT 1,
+          submissions INT UNSIGNED NOT NULL DEFAULT 0,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_capture_token (token),
+          INDEX idx_capture_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -3236,6 +3260,93 @@ export async function listMeetingsToday(orgId: number): Promise<MeetingRow[]> {
     [orgId]
   );
   return rows;
+}
+
+// ---- Lead-capture forms ----------------------------------------------------
+
+export interface CaptureFormRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  token: string;
+  name: string;
+  title: string;
+  description: string;
+  success_message: string;
+  redirect_url: string;
+  require_company: number;
+  notify: number;
+  active: number;
+  submissions: number;
+  created_by: string;
+  created_at: string;
+}
+
+export interface CaptureFormInput {
+  name: string;
+  title: string;
+  description: string;
+  successMessage: string;
+  redirectUrl: string;
+  requireCompany: boolean;
+  notify: boolean;
+  active: boolean;
+}
+
+export async function createCaptureForm(orgId: number, token: string, f: CaptureFormInput & { createdBy: string }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_capture_forms (organization_id, token, name, title, description, success_message, redirect_url, require_company, notify, active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, token.slice(0, 64), f.name.slice(0, 120), f.title.slice(0, 200), f.description.slice(0, 500), f.successMessage.slice(0, 500), f.redirectUrl.slice(0, 500), f.requireCompany ? 1 : 0, f.notify ? 1 : 0, f.active ? 1 : 0, f.createdBy.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+export async function updateCaptureForm(orgId: number, id: number, f: CaptureFormInput): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `UPDATE crm_capture_forms SET name = ?, title = ?, description = ?, success_message = ?, redirect_url = ?, require_company = ?, notify = ?, active = ?
+       WHERE id = ? AND organization_id = ?`,
+    [f.name.slice(0, 120), f.title.slice(0, 200), f.description.slice(0, 500), f.successMessage.slice(0, 500), f.redirectUrl.slice(0, 500), f.requireCompany ? 1 : 0, f.notify ? 1 : 0, f.active ? 1 : 0, id, orgId]
+  );
+}
+
+export async function deleteCaptureForm(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_capture_forms WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export async function listCaptureForms(orgId: number): Promise<CaptureFormRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<CaptureFormRow[]>(
+    "SELECT * FROM crm_capture_forms WHERE organization_id = ? ORDER BY id DESC",
+    [orgId]
+  );
+  return rows;
+}
+
+export async function getCaptureForm(orgId: number, id: number): Promise<CaptureFormRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<CaptureFormRow[]>(
+    "SELECT * FROM crm_capture_forms WHERE id = ? AND organization_id = ? LIMIT 1",
+    [id, orgId]
+  );
+  return rows[0] ?? null;
+}
+
+/** Public lookup by token — the org is derived from the token, so there is no
+ *  cross-tenant surface: one token maps to exactly one org's form. */
+export async function getCaptureFormByToken(token: string): Promise<CaptureFormRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<CaptureFormRow[]>(
+    "SELECT * FROM crm_capture_forms WHERE token = ? LIMIT 1",
+    [token.slice(0, 64)]
+  );
+  return rows[0] ?? null;
+}
+
+export async function incrementCaptureFormSubmissions(id: number): Promise<void> {
+  await getPool().query("UPDATE crm_capture_forms SET submissions = submissions + 1 WHERE id = ?", [id]);
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

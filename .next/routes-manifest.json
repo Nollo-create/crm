@@ -14,7 +14,7 @@
   ],
   "headers": [
     {
-      "source": "/:path*",
+      "source": "/((?!f/).*)",
       "headers": [
         {
           "key": "Strict-Transport-Security",
@@ -25,8 +25,34 @@
           "value": "nosniff"
         },
         {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+        },
+        {
+          "key": "X-DNS-Prefetch-Control",
+          "value": "off"
+        },
+        {
           "key": "X-Frame-Options",
           "value": "DENY"
+        }
+      ],
+      "regex": "^(?:/((?!f/).*))(?:/)?$"
+    },
+    {
+      "source": "/f/:path*",
+      "headers": [
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
         },
         {
           "key": "Referrer-Policy",
@@ -41,7 +67,7 @@
           "value": "off"
         }
       ],
-      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+      "regex": "^/f(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
     }
   ],
   "rewrites": {
@@ -57,6 +83,14 @@
         "nxtPtoken": "nxtPtoken"
       },
       "namedRegex": "^/api/e/(?<nxtPtoken>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/forms/[token]/submit",
+      "regex": "^/api/forms/([^/]+?)/submit(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/api/forms/(?<nxtPtoken>[^/]+?)/submit(?:/)?$"
     },
     {
       "page": "/companies/[id]",
@@ -81,6 +115,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/deals/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/f/[token]",
+      "regex": "^/f/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/f/(?<nxtPtoken>[^/]+?)(?:/)?$"
     },
     {
       "page": "/leads/[id]",
@@ -345,6 +387,12 @@
       "regex": "^/settings/emergency(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/settings/emergency(?:/)?$"
+    },
+    {
+      "page": "/settings/forms",
+      "regex": "^/settings/forms(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/forms(?:/)?$"
     },
     {
       "page": "/settings/integrations",

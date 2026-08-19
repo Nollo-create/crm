@@ -26,17 +26,26 @@ const nextConfig = {
   // step so it can't silently break rendering). HSTS only takes effect over
   // HTTPS, which production (crm.sajtpress.rs) already is.
   async headers() {
+    const baseline = [
+      { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+      { key: "X-DNS-Prefetch-Control", value: "off" },
+    ];
     return [
+      // Everything except the public lead-capture pages: deny framing outright.
       {
-        source: "/:path*",
-        headers: [
-          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
-          { key: "X-DNS-Prefetch-Control", value: "off" },
-        ],
+        source: "/((?!f/).*)",
+        headers: [...baseline, { key: "X-Frame-Options", value: "DENY" }],
+      },
+      // Public lead-capture forms (/f/*) are meant to be embedded on client sites,
+      // so they omit X-Frame-Options; CSP frame-ancestors (set per-request in the
+      // middleware) is the enforcement point and is relaxed only for these paths.
+      // They carry no session cookie and expose no sensitive data.
+      {
+        source: "/f/:path*",
+        headers: baseline,
       },
     ];
   },

@@ -10,7 +10,7 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 // Runs on the Edge runtime, so no Node-only imports (crypto.randomUUID + btoa are
 // Web-standard globals; the session constant is dependency-free).
 
-const PUBLIC = ["/login", "/setup", "/sso"];
+const PUBLIC = ["/login", "/setup", "/sso", "/f"];
 
 function isPublicPath(pathname: string): boolean {
   return (
@@ -24,7 +24,7 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
-function buildCsp(nonce: string): string {
+function buildCsp(nonce: string, frameable = false): string {
   const prod = process.env.NODE_ENV === "production";
   // Prod: strict — scripts must carry the nonce; strict-dynamic lets those load
   // the chunked bundles. Dev: relaxed so Next's HMR (eval + inline) keeps working.
@@ -40,7 +40,9 @@ function buildCsp(nonce: string): string {
     `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,
-    `frame-ancestors 'none'`,
+    // Public lead-capture pages (/f/*) are embeddable on client sites; everything
+    // else stays un-framable. These pages carry no session and no sensitive data.
+    `frame-ancestors ${frameable ? "*" : "'none'"}`,
     `frame-src 'none'`,
     `upgrade-insecure-requests`,
   ].join("; ");
@@ -50,7 +52,8 @@ export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
 
   const nonce = btoa(crypto.randomUUID());
-  const csp = buildCsp(nonce);
+  const frameable = pathname === "/f" || pathname.startsWith("/f/");
+  const csp = buildCsp(nonce, frameable);
 
   // Auth gate for protected routes.
   if (!isPublicPath(pathname) && !req.cookies.has(SESSION_COOKIE)) {

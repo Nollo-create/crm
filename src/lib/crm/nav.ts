@@ -41,6 +41,7 @@ import {
   MonitorSmartphone,
   Siren,
   Settings,
+  FormInput,
 } from "lucide-react";
 
 export type NavIcon = ComponentType<{ size?: number; className?: string }>;
@@ -134,6 +135,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Integrations", href: "/settings/integrations", icon: Plug },
       { label: "Email", href: "/settings/email", icon: Mail },
       { label: "Email Templates", href: "/settings/email-templates", icon: FileText },
+      { label: "Lead Capture", href: "/settings/forms", icon: FormInput },
       { label: "Billing", href: "/settings/billing", icon: CreditCard },
       { label: "Security", href: "/settings/security-overview", icon: ShieldCheck },
       { label: "Audit Log", href: "/settings/security", icon: KeyRound },
