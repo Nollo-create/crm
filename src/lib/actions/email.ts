@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
-import { getEmailSettings, upsertEmailSettings } from "@/lib/db";
+import { getEmailSettings, upsertEmailSettings, addActivity } from "@/lib/db";
 import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
 import { sendMail, type SmtpConfig } from "@/lib/email/send";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
@@ -99,9 +99,10 @@ export async function saveEmailSettingsAction(input: EmailSettingsDTO): Promise<
 }
 
 /** Load + decrypt the org's mailbox into a ready-to-send config. Internal. */
-async function loadSmtpConfig(orgId: number): Promise<{ config?: SmtpConfig; error?: string }> {
+async function loadSmtpConfig(orgId: number, opts: { requireEnabled?: boolean } = {}): Promise<{ config?: SmtpConfig; error?: string }> {
   const row = await getEmailSettings(orgId).catch(() => null);
-  if (!row?.host) return { error: "Configure the mailbox first." };
+  if (!row?.host) return { error: "No mailbox is configured. Ask an owner to set one up in Settings → Email." };
+  if (opts.requireEnabled && !row.enabled) return { error: "The mailbox isn't active yet. Ask an owner to enable it in Settings → Email." };
   const password = row.password_enc ? decryptSecret(row.password_enc) : "";
   if (row.password_enc && password === null) {
     return { error: "Could not read the saved password — was MFA_ENCRYPTION_KEY changed? Re-enter it below." };
@@ -139,5 +140,73 @@ export async function sendTestEmailAction(to: string): Promise<{ ok?: true; erro
   });
   await recordAudit(session, "email_test", "organization", session.organizationId, r.ok ? `sent to ${v.value.to}` : `failed: ${r.ok === false ? r.error : ""}`);
   if (!r.ok) return { error: `Send failed: ${r.error}` };
+  return { ok: true };
+}
+
+// -------------------------------------------------------------- Layer 2: sending
+
+/** Member-safe check the composer uses to know whether a mailbox is available
+ *  (no secrets returned). Any authenticated user. */
+export async function emailComposeStatusAction(): Promise<{ available: boolean; from: string }> {
+  const { organizationId } = await requireSession();
+  const row = await getEmailSettings(organizationId).catch(() => null);
+  const available = !!row?.host && !!row?.enabled;
+  return { available, from: available ? row!.from_email : "" };
+}
+
+/** Send an email to a recipient and log it on the timeline. member+ (viewers
+ *  blocked by guardWrite). Replies route to the sending rep, not the shared
+ *  mailbox. */
+export async function sendEmailAction(input: {
+  to: string;
+  subject: string;
+  body: string;
+  contactId?: number | null;
+  companyId?: number | null;
+  dealId?: number | null;
+}): Promise<{ ok?: true; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
+  const rl = checkRateLimit(`email-send:${session.userId}`, { limit: 40, windowMs: 60 * 60_000, blockMs: 30 * 60_000 });
+  if (!rl.ok) return { error: retryMessage(rl.retryAfter) };
+
+  const v = validated(() => ({
+    to: vEmail("Recipient", input.to),
+    subject: vString("Subject", input.subject, { required: true, max: 300 }),
+    body: vString("Message", input.body, { required: true, max: 20000 }),
+  }));
+  if (!v.ok) return { error: v.error };
+  if (!v.value.to) return { error: "Enter a recipient." };
+
+  const loaded = await loadSmtpConfig(session.organizationId, { requireEnabled: true });
+  if (loaded.error || !loaded.config) return { error: loaded.error ?? "Mailbox not configured." };
+
+  const r = await sendMail(loaded.config, {
+    to: v.value.to,
+    subject: v.value.subject,
+    text: v.value.body,
+    replyTo: session.email, // replies reach the actual rep, not the shared mailbox
+  });
+  if (!r.ok) {
+    await recordAudit(session, "email_send_failed", "contact", input.contactId ?? null, `${v.value.to}: ${r.error}`);
+    return { error: `Send failed: ${r.error}` };
+  }
+  // Log it on the timeline (best-effort). Activities need a company; skip the log
+  // if we weren't given one rather than failing the send.
+  if (input.companyId) {
+    await addActivity(session.organizationId, {
+      companyId: input.companyId,
+      contactId: input.contactId ?? null,
+      dealId: input.dealId ?? null,
+      type: "email",
+      summary: `Email → ${v.value.to}: ${v.value.subject}`,
+    }).catch(() => {});
+  }
+  await recordAudit(session, "email_sent", "contact", input.contactId ?? null, `${v.value.to} · ${v.value.subject}`);
+  if (input.companyId) revalidatePath(`/companies/${input.companyId}`);
+  if (input.contactId) revalidatePath(`/contacts/${input.contactId}`);
+  if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
+  revalidatePath("/emails");
   return { ok: true };
 }

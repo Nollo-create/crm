@@ -34,6 +34,7 @@ import { useCanWrite } from "@/components/crm/role-context";
 import { eur, timeAgo } from "@/lib/format";
 import { stageLabel } from "@/lib/crm/pipeline";
 import { TagEditor } from "@/components/crm/tag-editor";
+import { EmailComposer } from "@/components/crm/email-composer";
 import { cn } from "@/lib/utils";
 
 const INFLUENCE: Record<string, { label: string; stars: number; tone: Tone }> = {
@@ -57,6 +58,7 @@ export function ContactDetail({ id }: { id: number }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form | null>(null);
   const [note, setNote] = useState({ type: "note", summary: "" });
+  const [composing, setComposing] = useState(false);
 
   async function load() {
     const res = await getContactAction(id).catch(() => null);
@@ -156,9 +158,15 @@ export function ContactDetail({ id }: { id: number }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <a href={c.email ? `mailto:${c.email}` : undefined} className={cn(!c.email && "pointer-events-none opacity-40")}>
-              <Button size="icon" variant="ghost" title="Email"><Mail size={15} /></Button>
-            </a>
+            {canWrite ? (
+              <Button size="sm" variant="outline" title="Send email" disabled={!c.email} onClick={() => setComposing((v) => !v)}>
+                <Mail size={14} /> Email
+              </Button>
+            ) : (
+              <a href={c.email ? `mailto:${c.email}` : undefined} className={cn(!c.email && "pointer-events-none opacity-40")}>
+                <Button size="icon" variant="ghost" title="Email"><Mail size={15} /></Button>
+              </a>
+            )}
             <a href={c.phone || c.mobile ? `tel:${c.phone || c.mobile}` : undefined} className={cn(!c.phone && !c.mobile && "pointer-events-none opacity-40")}>
               <Button size="icon" variant="ghost" title="Call"><Phone size={15} /></Button>
             </a>
@@ -175,6 +183,10 @@ export function ContactDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      {composing && canWrite && (
+        <EmailComposer to={c.email} contactId={id} companyId={c.companyId} onClose={() => setComposing(false)} onSent={load} />
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Tags</span>
