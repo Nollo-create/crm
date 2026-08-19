@@ -10,7 +10,7 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 // Runs on the Edge runtime, so no Node-only imports (crypto.randomUUID + btoa are
 // Web-standard globals; the session constant is dependency-free).
 
-const PUBLIC = ["/login", "/setup", "/sso", "/f", "/q"];
+const PUBLIC = ["/login", "/setup", "/sso", "/f", "/q", "/i"];
 
 function isPublicPath(pathname: string): boolean {
   return (

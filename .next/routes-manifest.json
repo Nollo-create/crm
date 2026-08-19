@@ -133,6 +133,14 @@
       "namedRegex": "^/f/(?<nxtPtoken>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/i/[token]",
+      "regex": "^/i/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/i/(?<nxtPtoken>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/invoices/[id]",
       "regex": "^/invoices/([^/]+?)(?:/)?$",
       "routeKeys": {

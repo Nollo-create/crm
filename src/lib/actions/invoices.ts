@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import {
   createInvoice,
@@ -14,15 +15,19 @@ import {
   markInvoicePaid,
   markInvoiceUnpaid,
   invoiceSummary,
+  shareInvoice,
   getCompany,
+  getOrganization,
   type InvoiceStatsRow,
   type InvoiceItemRow,
 } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
-import { publicBaseUrl } from "@/lib/email/mailbox";
+import { publicBaseUrl, loadSmtpConfig, deliverTracked } from "@/lib/email/mailbox";
 import { invoiceNumber, isInvoiceStatus, isInvoiceOverdue } from "@/lib/crm/invoices";
 import { validated, vString, vInt } from "@/lib/crm/validate";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ymd = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -185,6 +190,64 @@ export async function deleteInvoiceAction(id: number): Promise<{ error?: string 
   await deleteInvoice(g.session.organizationId, id);
   revalidatePath("/invoices");
   return {};
+}
+
+/** Give the invoice a public client link (marks draft -> sent). Returns the URL. */
+export async function shareInvoiceAction(id: number): Promise<{ url?: string; token?: string; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
+  const cur = await getInvoice(organizationId, id).catch(() => null);
+  if (!cur) return { error: "Invoice not found." };
+  if (cur.items.length === 0) return { error: "Add at least one line item before sharing." };
+  const token = await shareInvoice(organizationId, id, `inv_${randomBytes(18).toString("base64url")}`);
+  if (!token) return { error: "Invoice not found." };
+  await recordAudit(g.session, "invoice_share", "invoice", id, invoiceNumber(id));
+  const baseUrl = await publicBaseUrl().catch(() => "");
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  return { url: `${baseUrl}/i/${token}`, token };
+}
+
+/** Email the invoice link to a recipient from the org's own SMTP mailbox. */
+export async function emailInvoiceAction(invoiceId: number, to: string, contactId?: number | null): Promise<{ ok?: true; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
+  const recipient = (to || "").trim();
+  if (!EMAIL_RE.test(recipient)) return { error: "Enter a valid recipient email." };
+
+  const cur = await getInvoice(organizationId, invoiceId).catch(() => null);
+  if (!cur) return { error: "Invoice not found." };
+  if (cur.items.length === 0) return { error: "Add at least one line item before emailing." };
+
+  const { config, error } = await loadSmtpConfig(organizationId, { requireEnabled: true });
+  if (error || !config) return { error: error || "Connect your mailbox under Settings → Email first." };
+
+  let token = cur.invoice.public_token;
+  if (!token) token = (await shareInvoice(organizationId, invoiceId, `inv_${randomBytes(18).toString("base64url")}`)) || "";
+  if (!token) return { error: "Couldn't prepare the invoice link." };
+
+  const [baseUrl, org] = await Promise.all([publicBaseUrl().catch(() => ""), getOrganization(organizationId).catch(() => null)]);
+  const from = (org?.billing_name || org?.name || "Sajtpress").trim();
+  const num = invoiceNumber(invoiceId);
+  const link = `${baseUrl}/i/${token}`;
+  const due = cur.invoice.due_date ? ` (due ${new Date(cur.invoice.due_date).toISOString().slice(0, 10)})` : "";
+  const subject = `Invoice ${num} from ${from}`;
+  const body = `Hello,\n\nPlease find invoice ${num}${due}. You can view it and download a PDF here:\n\n${link}\n\nThank you,\n${from}`;
+
+  const res = await deliverTracked(organizationId, g.session.email, config, baseUrl, {
+    to: recipient,
+    subject,
+    body,
+    companyId: cur.invoice.company_id,
+    contactId: contactId ?? null,
+    track: true,
+  });
+  if (!res.ok) return { error: res.error || "Couldn't send the email." };
+  await recordAudit(g.session, "invoice_emailed", "invoice", invoiceId, `${num} → ${recipient}`);
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { ok: true };
 }
 
 async function assertDraft(orgId: number, invoiceId: number): Promise<{ error?: string }> {
