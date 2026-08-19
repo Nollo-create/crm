@@ -13,6 +13,8 @@ import { useToast } from "@/components/ui/toast";
  *  contact/deal timeline. Server enforces member+ and validation; this is UX. */
 export function EmailComposer({
   to: initialTo,
+  subject: initialSubject = "",
+  body: initialBody = "",
   contactId,
   companyId,
   dealId,
@@ -20,6 +22,8 @@ export function EmailComposer({
   onSent,
 }: {
   to: string;
+  subject?: string;
+  body?: string;
   contactId?: number | null;
   companyId?: number | null;
   dealId?: number | null;
@@ -29,8 +33,8 @@ export function EmailComposer({
   const { toast } = useToast();
   const [status, setStatus] = useState<{ available: boolean; from: string } | null>(null);
   const [to, setTo] = useState(initialTo);
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {

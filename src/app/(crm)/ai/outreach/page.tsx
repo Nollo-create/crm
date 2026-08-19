@@ -8,9 +8,12 @@ import { searchCompaniesAction, getCompanyAction, type SearchHit } from "@/lib/a
 import { Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AiOutput } from "@/components/crm/ai-output";
+import { EmailComposer } from "@/components/crm/email-composer";
+import { useCanWrite } from "@/components/crm/role-context";
+import { parseOutreachDraft } from "@/lib/crm/outreach-draft";
 import { cn } from "@/lib/utils";
 
-type Recipient = { id: number; name: string; role: string };
+type Recipient = { id: number; name: string; role: string; email: string };
 
 const TONES: { id: OutreachTone; label: string }[] = [
   { id: "warm", label: "Warm" },
@@ -19,6 +22,7 @@ const TONES: { id: OutreachTone; label: string }[] = [
 ];
 
 export default function OutreachPage() {
+  const canWrite = useCanWrite();
   const [companyId, setCompanyId] = useState(0);
   const [companyName, setCompanyName] = useState("");
   const [companyQuery, setCompanyQuery] = useState("");
@@ -31,6 +35,7 @@ export default function OutreachPage() {
   const [channel, setChannel] = useState<OutreachChannel>("email");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AiOut | null>(null);
+  const [composing, setComposing] = useState(false);
 
   useEffect(() => {
     const s = companyQuery.trim();
@@ -50,7 +55,7 @@ export default function OutreachPage() {
     setContactId(0);
     const d = await getCompanyAction(id).catch(() => null);
     if (d) {
-      const list = d.contacts.map((c) => ({ id: c.id, name: c.name, role: c.role }));
+      const list = d.contacts.map((c) => ({ id: c.id, name: c.name, role: c.role, email: c.email }));
       setContacts(list);
       if (list[0]) setContactId(list[0].id);
     }
@@ -63,12 +68,14 @@ export default function OutreachPage() {
     setContacts([]);
     setContactId(0);
     setResult(null);
+    setComposing(false);
   }
 
   async function draft() {
     if (!companyId) return;
     setLoading(true);
     setResult(null);
+    setComposing(false);
     const r = await outreachDraftAction({ companyId, contactId: contactId || undefined, goal, tone, length, channel }).catch(() => ({ text: "", enabled: false }));
     setResult(r);
     setLoading(false);
@@ -144,6 +151,24 @@ export default function OutreachPage() {
       </div>
 
       <AiOutput loading={loading} result={result} />
+
+      {/* Turn the draft into a real, logged send — email channel only, writers only. */}
+      {result?.enabled && !!result.text && channel === "email" && canWrite && !composing && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => setComposing(true)}><Mail size={14} /> Send this email</Button>
+        </div>
+      )}
+      {composing && result && (
+        <EmailComposer
+          to={contacts.find((c) => c.id === contactId)?.email ?? ""}
+          subject={parseOutreachDraft(result.text).subject}
+          body={parseOutreachDraft(result.text).body}
+          contactId={contactId || undefined}
+          companyId={companyId}
+          onClose={() => setComposing(false)}
+          onSent={() => setComposing(false)}
+        />
+      )}
     </div>
   );
 }
