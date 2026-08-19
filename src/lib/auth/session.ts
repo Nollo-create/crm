@@ -4,14 +4,15 @@ import { redirect } from "next/navigation";
 import { generateSessionToken, hashToken, SESSION_COOKIE, SESSION_TTL_DAYS } from "./tokens";
 import { toRole, can, type Role } from "./rbac";
 import { createSession, deleteSessionByTokenHash, getSessionByTokenHash, getUserById, touchSession } from "@/lib/db";
+import { clientIpFromHeaders } from "@/lib/net/client-ip";
 import { integration } from "@/lib/config";
 
 /** Best-effort IP + user agent for the current request (empty outside one). */
 async function sessionRequestContext(): Promise<{ ip: string; userAgent: string }> {
   try {
     const h = await headers();
-    const fwd = h.get("x-forwarded-for");
-    const ip = ((fwd ? fwd.split(",")[0].trim() : "") || h.get("x-real-ip") || "").slice(0, 45);
+    const ip0 = clientIpFromHeaders(h);
+    const ip = (ip0 === "unknown" ? "" : ip0).slice(0, 45);
     return { ip, userAgent: (h.get("user-agent") || "").slice(0, 255) };
   } catch {
     return { ip: "", userAgent: "" };

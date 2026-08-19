@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { extractBearer, isApiKeyFormat, hashKey, normalizeScopes, hasScope, type ApiScope } from "@/lib/crm/api-keys";
 import { findEnabledApiKeyByHash, touchApiKey, getOrgFlags } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/net/client-ip";
 import { apiError, unauthorized } from "./respond";
 
 // Authenticate a public API request from its bearer key. The org is derived from
@@ -36,8 +37,7 @@ export function requireScope(auth: ApiAuth, scope: ApiScope): NextResponse | nul
 }
 
 function apiClientIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  return (fwd ? fwd.split(",")[0].trim() : "") || req.headers.get("x-real-ip") || "unknown";
+  return clientIpFromHeaders(req.headers);
 }
 
 function tooManyRequests(retryAfter: number): NextResponse {

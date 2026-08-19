@@ -11,12 +11,11 @@ import { MFA_COOKIE } from "@/lib/auth/constants";
 import { verifyUserMfaCode } from "@/lib/auth/mfa-verify";
 import { recordAuthEvent } from "@/lib/auth/audit";
 import { checkRateLimit, resetRateLimit, retryMessage } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/net/client-ip";
 
 /** Best-effort client IP from the proxy chain (cPanel/Passenger sets these). */
 async function clientIp(): Promise<string> {
-  const h = await headers();
-  const fwd = h.get("x-forwarded-for");
-  return (fwd ? fwd.split(",")[0].trim() : "") || h.get("x-real-ip") || "unknown";
+  return clientIpFromHeaders(await headers());
 }
 
 // A dummy hash to verify against when no user matches, so login timing doesn't

@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { writeAudit } from "@/lib/db";
+import { clientIpFromHeaders } from "@/lib/net/client-ip";
 import type { SessionUser } from "./session";
 
 // Thin wrappers so actions can record an audit event in one line. Audit writes
@@ -11,8 +12,8 @@ import type { SessionUser } from "./session";
 async function requestContext(): Promise<{ ip: string; userAgent: string }> {
   try {
     const h = await headers();
-    const fwd = h.get("x-forwarded-for");
-    const ip = ((fwd ? fwd.split(",")[0].trim() : "") || h.get("x-real-ip") || "").slice(0, 45);
+    const ip0 = clientIpFromHeaders(h);
+    const ip = (ip0 === "unknown" ? "" : ip0).slice(0, 45);
     const userAgent = (h.get("user-agent") || "").slice(0, 255);
     return { ip, userAgent };
   } catch {

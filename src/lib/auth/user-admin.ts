@@ -21,11 +21,19 @@ export function inviteRoleError(actorRole: Role, requestedRole: string): string 
   return null;
 }
 
+// A privileged role — only an owner may create one or act on a user who holds
+// one. This stops an admin from disabling/demoting a peer admin (SEC-21): a
+// single rogue/compromised admin can't lock the other admins out.
+const PRIVILEGED = new Set(["admin", "owner"]);
+
 /** Validate changing an existing user's role. */
 export function roleChangeError(actor: Actor, target: Target, newRole: string, activeOwners: number): string | null {
   if (!isRole(newRole)) return "Unknown role.";
   if (actor.userId === target.userId) return "You can't change your own role.";
-  if ((newRole === "owner" || target.role === "owner") && actor.role !== "owner") return "Only an owner can manage owners.";
+  // Only owners manage or mint admin/owner roles; admins manage members/viewers.
+  if ((PRIVILEGED.has(newRole) || PRIVILEGED.has(target.role)) && actor.role !== "owner") {
+    return "Only an owner can manage admins and owners.";
+  }
   if (target.role === "owner" && newRole !== "owner" && activeOwners <= 1) return "You can't demote the last owner.";
   return null;
 }
@@ -34,7 +42,8 @@ export function roleChangeError(actor: Actor, target: Target, newRole: string, a
 export function statusChangeError(actor: Actor, target: Target, newStatus: string, activeOwners: number): string | null {
   if (newStatus !== "active" && newStatus !== "disabled") return "Unknown status.";
   if (actor.userId === target.userId) return "You can't disable your own account.";
-  if (target.role === "owner" && actor.role !== "owner") return "Only an owner can manage owners.";
+  // An admin can't disable a peer admin or an owner — owner-only (SEC-21).
+  if (PRIVILEGED.has(target.role) && actor.role !== "owner") return "Only an owner can manage admins and owners.";
   if (newStatus === "disabled" && target.role === "owner" && activeOwners <= 1) return "You can't disable the last owner.";
   return null;
 }
