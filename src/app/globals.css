@@ -194,6 +194,8 @@
 .auth-float { animation: authFloat 7s ease-in-out infinite; }
 .auth-pulse { animation: authPulse 3.5s ease-in-out infinite; }
 .auth-fade-up { animation: authFadeUp .65s cubic-bezier(.2,.7,.2,1) both; }
+/* The ambient loops (drift/float/pulse) are a deliberate, gentle brand effect
+ * and keep running; only the one-shot entrance respects reduced-motion. */
 @media (prefers-reduced-motion: reduce) {
-  .auth-drift, .auth-drift-slow, .auth-float, .auth-pulse, .auth-fade-up { animation: none !important; }
+  .auth-fade-up { animation: none !important; }
 }
