@@ -57,6 +57,18 @@ async function ensureColumn(pool: mysql.Pool, table: string, column: string, ddl
   }
 }
 
+/** Add an index only if it's missing — MySQL has no CREATE INDEX IF NOT EXISTS.
+ *  `columnsSql` is a fixed, code-controlled column list, never user input. */
+async function ensureIndex(pool: mysql.Pool, table: string, indexName: string, columnsSql: string): Promise<void> {
+  const [rows] = await pool.query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+    [table, indexName]
+  );
+  if (Number(rows[0]?.n ?? 0) === 0) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columnsSql})`);
+  }
+}
+
 export function ensureSchema(): Promise<void> {
   if (!globalForDb.__crmSchema) {
     globalForDb.__crmSchema = (async () => {
@@ -299,6 +311,15 @@ export function ensureSchema(): Promise<void> {
       await ensureColumn(pool, "crm_quotes", "sent_at", "sent_at TIMESTAMP NULL");
       await ensureColumn(pool, "crm_quotes", "decided_at", "decided_at TIMESTAMP NULL");
       await ensureColumn(pool, "crm_quotes", "client_name", "client_name VARCHAR(190) NOT NULL DEFAULT ''");
+      // Performance indexes (additive, created once if missing). crm_deals is
+      // filtered by org across the whole app but only had company/stage indexes;
+      // activities are read by contact/deal/org timelines but only had a company
+      // index; leads' "new this month" scans by org + created_at.
+      await ensureIndex(pool, "crm_deals", "idx_deal_org_stage", "organization_id, stage, closed_at");
+      await ensureIndex(pool, "crm_activities", "idx_activity_org", "organization_id, id");
+      await ensureIndex(pool, "crm_activities", "idx_activity_deal", "deal_id");
+      await ensureIndex(pool, "crm_activities", "idx_activity_contact", "contact_id");
+      await ensureIndex(pool, "crm_leads", "idx_lead_created", "organization_id, created_at");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;

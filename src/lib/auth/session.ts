@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { generateSessionToken, hashToken, SESSION_COOKIE, SESSION_TTL_DAYS } from "./tokens";
@@ -33,8 +34,9 @@ export interface SessionUser {
 }
 
 /** Read and validate the current session (cookie -> DB). null if missing, expired
- *  or the user is gone/disabled. */
-export async function getSession(): Promise<SessionUser | null> {
+ *  or the user is gone/disabled. Wrapped in React cache() so the layout, page and
+ *  any actions in one request share a single lookup (and one touchSession). */
+export const getSession = cache(async (): Promise<SessionUser | null> => {
   const jar = await cookies();
   const raw = jar.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
@@ -53,7 +55,7 @@ export async function getSession(): Promise<SessionUser | null> {
     name: user.name,
     role: toRole(user.role),
   };
-}
+});
 
 /** For protected server components: return the session or redirect to /login. */
 export async function requireSession(): Promise<SessionUser> {
