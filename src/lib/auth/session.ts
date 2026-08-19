@@ -80,35 +80,37 @@ export interface IssuedSession {
     secure: boolean;
     sameSite: "lax";
     path: string;
-    expires: Date;
+    expires?: Date;
     domain?: string;
   };
 }
 
 /** Create the session row + return the cookie to set. Lets a Route Handler set
- *  it on its own NextResponse (where next/headers cookies() wouldn't apply). */
-export async function issueSession(userId: number, organizationId: number): Promise<IssuedSession> {
+ *  it on its own NextResponse (where next/headers cookies() wouldn't apply).
+ *  The DB row always lives for SESSION_TTL_DAYS; `remember` only decides whether
+ *  the browser keeps the cookie past the session (false -> a session cookie). */
+export async function issueSession(userId: number, organizationId: number, remember = true): Promise<IssuedSession> {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
   const ctx = await sessionRequestContext();
   await createSession({ userId, organizationId, tokenHash: hashToken(token), expiresAt, ip: ctx.ip, userAgent: ctx.userAgent });
+  const base = {
+    httpOnly: true as const,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    domain: integration.cookieDomain || undefined,
+  };
   return {
     name: SESSION_COOKIE,
     value: token,
-    options: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      expires: expiresAt,
-      domain: integration.cookieDomain || undefined,
-    },
+    options: remember ? { ...base, expires: expiresAt } : base,
   };
 }
 
 /** Mint a session and set the cookie. Call only from a Server Action / Route Handler. */
-export async function startSession(userId: number, organizationId: number): Promise<void> {
-  const { name, value, options } = await issueSession(userId, organizationId);
+export async function startSession(userId: number, organizationId: number, remember = true): Promise<void> {
+  const { name, value, options } = await issueSession(userId, organizationId, remember);
   const jar = await cookies();
   jar.set(name, value, options);
 }

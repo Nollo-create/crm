@@ -60,7 +60,7 @@ export async function setupAction(input: { orgName: string; name: string; email:
 }
 
 
-export async function loginAction(input: { email: string; password: string }): Promise<{ ok?: true; mfaRequired?: true; error?: string }> {
+export async function loginAction(input: { email: string; password: string; remember?: boolean }): Promise<{ ok?: true; mfaRequired?: true; error?: string }> {
   const email = input.email.trim().toLowerCase();
 
   // Brute-force protection: throttle by IP (credential stuffing) and by email
@@ -102,7 +102,7 @@ export async function loginAction(input: { email: string; password: string }): P
     return { mfaRequired: true };
   }
 
-  await startSession(user.id, user.organization_id);
+  await startSession(user.id, user.organization_id, input.remember);
   await setUserLastLogin(user.id).catch(() => {});
   await recordAuthEvent({ organizationId: user.organization_id, userId: user.id, actorEmail: user.email, action: "login" });
   return { ok: true };
@@ -110,7 +110,7 @@ export async function loginAction(input: { email: string; password: string }): P
 
 /** Step 2 of login for 2FA accounts: verify the authenticator (or recovery) code
  *  against the pending challenge, then start the real session. */
-export async function verifyLoginMfaAction(input: { code: string }): Promise<{ ok?: true; error?: string }> {
+export async function verifyLoginMfaAction(input: { code: string; remember?: boolean }): Promise<{ ok?: true; error?: string }> {
   const jar = await cookies();
   const raw = jar.get(MFA_COOKIE)?.value;
   if (!raw) return { error: "Your sign-in step expired — please sign in again." };
@@ -142,7 +142,7 @@ export async function verifyLoginMfaAction(input: { code: string }): Promise<{ o
 
   await deleteMfaChallenge(tokenHash).catch(() => {});
   jar.delete(MFA_COOKIE);
-  await startSession(user.id, user.organization_id);
+  await startSession(user.id, user.organization_id, input.remember);
   await setUserLastLogin(user.id).catch(() => {});
   await recordAuthEvent({ organizationId: user.organization_id, userId: user.id, actorEmail: user.email, action: "login", summary: "with 2FA" });
   return { ok: true };
