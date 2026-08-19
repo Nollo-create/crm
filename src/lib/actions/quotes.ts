@@ -15,13 +15,14 @@ import {
   searchProducts,
   getCompany,
   shareQuote,
+  getOrganization,
   type QuoteStatsRow,
   type QuoteItemRow,
   type ProductRow,
 } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
-import { publicBaseUrl } from "@/lib/email/mailbox";
+import { publicBaseUrl, loadSmtpConfig, deliverTracked } from "@/lib/email/mailbox";
 import { isQuoteStatus, quoteNumber } from "@/lib/crm/quotes";
 import { validated, vString, vInt } from "@/lib/crm/validate";
 
@@ -137,6 +138,49 @@ export async function getQuoteAction(id: number): Promise<QuoteDetail | null> {
     items: res.items.map(toItem),
     baseUrl,
   };
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Email the client link to a recipient using the org's own SMTP mailbox.
+ *  Mints a share token if the quote doesn't have one yet. */
+export async function emailQuoteAction(quoteId: number, to: string, contactId?: number | null): Promise<{ ok?: true; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
+  const recipient = (to || "").trim();
+  if (!EMAIL_RE.test(recipient)) return { error: "Enter a valid recipient email." };
+
+  const cur = await getQuote(organizationId, quoteId).catch(() => null);
+  if (!cur) return { error: "Quote not found." };
+  if (cur.items.length === 0) return { error: "Add at least one line item before emailing." };
+
+  const { config, error } = await loadSmtpConfig(organizationId, { requireEnabled: true });
+  if (error || !config) return { error: error || "Connect your mailbox under Settings → Email first." };
+
+  let token = cur.quote.public_token;
+  if (!token) token = (await shareQuote(organizationId, quoteId, `qt_${randomBytes(18).toString("base64url")}`)) || "";
+  if (!token) return { error: "Couldn't prepare the quote link." };
+
+  const [baseUrl, org] = await Promise.all([publicBaseUrl().catch(() => ""), getOrganization(organizationId).catch(() => null)]);
+  const from = (org?.billing_name || org?.name || "Sajtpress").trim();
+  const num = quoteNumber(quoteId);
+  const link = `${baseUrl}/q/${token}`;
+  const subject = `Quote ${num} from ${from}`;
+  const body = `Hello,\n\nYour quote ${num} is ready. You can review it, download a PDF, and accept or decline it online here:\n\n${link}\n\nThank you,\n${from}`;
+
+  const res = await deliverTracked(organizationId, g.session.email, config, baseUrl, {
+    to: recipient,
+    subject,
+    body,
+    companyId: cur.quote.company_id,
+    contactId: contactId ?? null,
+    track: true,
+  });
+  if (!res.ok) return { error: res.error || "Couldn't send the email." };
+  await recordAudit(g.session, "quote_emailed", "quote", quoteId, `${num} → ${recipient}`);
+  revalidatePath(`/quotes/${quoteId}`);
+  return { ok: true };
 }
 
 /** Give the quote a public client link (and mark it sent). Returns the URL. */

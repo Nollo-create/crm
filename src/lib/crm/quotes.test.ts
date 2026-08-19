@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { buildQuoteOrderBy, isQuoteSortKey, isQuoteStatus, quoteNumber } from "./quotes";
+import { buildQuoteOrderBy, isQuoteSortKey, isQuoteStatus, quoteNumber, isQuoteExpired } from "./quotes";
+
+describe("isQuoteExpired", () => {
+  it("is false with no valid-until", () => {
+    expect(isQuoteExpired(null, "2026-08-19")).toBe(false);
+  });
+  it("is true only strictly before today (valid through the day itself)", () => {
+    expect(isQuoteExpired("2026-08-18", "2026-08-19")).toBe(true);
+    expect(isQuoteExpired("2026-08-19", "2026-08-19")).toBe(false);
+    expect(isQuoteExpired("2026-08-20", "2026-08-19")).toBe(false);
+  });
+});
 
 describe("quote helpers", () => {
   it("validates statuses and formats the quote number", () => {

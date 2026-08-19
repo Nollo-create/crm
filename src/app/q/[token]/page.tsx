@@ -1,5 +1,5 @@
-import { getQuoteByToken } from "@/lib/db";
-import { quoteNumber } from "@/lib/crm/quotes";
+import { getQuoteByToken, getOrganization } from "@/lib/db";
+import { quoteNumber, isQuoteExpired } from "@/lib/crm/quotes";
 import { QuoteView } from "./quote-view";
 
 export const dynamic = "force-dynamic";
@@ -15,16 +15,27 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
     );
   }
   const { quote, items } = res;
+  const org = await getOrganization(quote.organization_id).catch(() => null);
+  const validUntil = quote.valid_until ? new Date(quote.valid_until).toISOString().slice(0, 10) : null;
+  const todayYmd = new Date().toISOString().slice(0, 10);
+
   const data = {
     token: quote.public_token,
     number: quoteNumber(quote.id),
     companyName: quote.company_name,
     status: quote.status,
-    validUntil: quote.valid_until ? new Date(quote.valid_until).toISOString().slice(0, 10) : null,
+    validUntil,
+    expired: isQuoteExpired(validUntil, todayYmd),
     notes: quote.notes,
     total: quote.total_cents / 100,
     decidedAt: quote.decided_at ? new Date(quote.decided_at).toISOString() : null,
     clientName: quote.client_name || "",
+    seller: {
+      name: (org?.billing_name || org?.name || "Sajtpress").trim(),
+      address: (org?.billing_address || "").trim(),
+      taxId: (org?.tax_id || "").trim(),
+      email: (org?.billing_email || "").trim(),
+    },
     items: items.map((it) => ({ name: it.name, unitPrice: it.unit_price_cents / 100, quantity: it.quantity, lineTotal: it.line_total_cents / 100 })),
   };
   return (

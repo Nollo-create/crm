@@ -8,7 +8,7 @@ import { buildDealOrderBy } from "@/lib/crm/deal-query";
 import { buildTaskOrderBy } from "@/lib/crm/tasks";
 import { buildActivityOrderBy } from "@/lib/crm/activities";
 import { buildProductOrderBy } from "@/lib/crm/products";
-import { buildQuoteOrderBy } from "@/lib/crm/quotes";
+import { buildQuoteOrderBy, isQuoteExpired } from "@/lib/crm/quotes";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -1911,7 +1911,7 @@ export async function recordQuoteDecision(
   token: string,
   decision: "accepted" | "declined",
   clientName: string
-): Promise<{ organizationId: number; quoteId: number; companyId: number; status: string; alreadyDecided: boolean } | null> {
+): Promise<{ organizationId: number; quoteId: number; companyId: number; status: string; alreadyDecided: boolean; expired: boolean } | null> {
   const t = (token || "").trim();
   if (t.length < 8) return null;
   await ensureSchema();
@@ -1920,13 +1920,25 @@ export async function recordQuoteDecision(
   const q = rows[0];
   if (!q) return null;
   const alreadyDecided = q.status === "accepted" || q.status === "declined";
-  if (!alreadyDecided) {
+  // Expired quotes can't be acted on (unless already decided) — a client
+  // shouldn't be able to accept a stale price.
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const vu = q.valid_until ? new Date(q.valid_until).toISOString().slice(0, 10) : null;
+  const expired = !alreadyDecided && isQuoteExpired(vu, todayYmd);
+  if (!alreadyDecided && !expired) {
     await pool.query(
       "UPDATE crm_quotes SET status = ?, decided_at = CURRENT_TIMESTAMP, client_name = ? WHERE id = ? AND organization_id = ?",
       [decision, clientName.slice(0, 190), q.id, q.organization_id]
     );
   }
-  return { organizationId: q.organization_id, quoteId: q.id, companyId: q.company_id, status: alreadyDecided ? q.status : decision, alreadyDecided };
+  return {
+    organizationId: q.organization_id,
+    quoteId: q.id,
+    companyId: q.company_id,
+    status: alreadyDecided || expired ? q.status : decision,
+    alreadyDecided,
+    expired,
+  };
 }
 
 /** Recompute a quote's stored total from its line items. */

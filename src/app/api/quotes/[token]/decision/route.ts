@@ -33,6 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   const result = await recordQuoteDecision(token, decision, clientName).catch(() => null);
   if (!result) return json({ error: "This quote is not available." }, 404);
+  if (result.expired) return json({ error: "This quote has expired. Please ask for an updated one.", expired: true }, 410);
 
   // Notify the team + log to the company timeline, only on the first decision.
   if (!result.alreadyDecided) {

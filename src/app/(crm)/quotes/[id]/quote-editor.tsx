@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, Copy, Printer, Share2, Check, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, Copy, Printer, Share2, Check, ExternalLink, CheckCircle2, XCircle, Mail, X } from "lucide-react";
 import {
   getQuoteAction,
   duplicateQuoteAction,
@@ -15,10 +15,12 @@ import {
   deleteQuoteItemAction,
   searchProductsAction,
   shareQuoteAction,
+  emailQuoteAction,
   type QuoteDetail,
   type QuoteItem,
   type ProductHit,
 } from "@/lib/actions/quotes";
+import { getCompanyAction } from "@/lib/actions/crm";
 import { QUOTE_STATUSES, QUOTE_STATUS_LABEL } from "@/lib/crm/quotes";
 import { Card } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
@@ -50,6 +52,11 @@ export function QuoteEditor({ id }: { id: number }) {
   const [shareBusy, setShareBusy] = useState(false);
   const [clientLink, setClientLink] = useState("");
   const [copied, setCopied] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailContactId, setEmailContactId] = useState<number | null>(null);
+  const [emailContacts, setEmailContacts] = useState<{ id: number; name: string; email: string }[]>([]);
+  const [emailBusy, setEmailBusy] = useState(false);
 
   async function load() {
     const res = await getQuoteAction(id).catch(() => null);
@@ -170,6 +177,23 @@ export function QuoteEditor({ id }: { id: number }) {
       toast("Couldn't copy — select the link manually.", { tone: "error" });
     }
   }
+  async function openEmail() {
+    setEmailOpen(true);
+    const detail = await getCompanyAction(d!.quote.companyId).catch(() => null);
+    const withEmail = (detail?.contacts ?? []).filter((c) => c.email).map((c) => ({ id: c.id, name: c.name, email: c.email }));
+    setEmailContacts(withEmail);
+    if (withEmail[0] && !emailTo) { setEmailTo(withEmail[0].email); setEmailContactId(withEmail[0].id); }
+  }
+  async function sendEmail() {
+    if (!emailTo.trim()) return;
+    setEmailBusy(true);
+    const r = await emailQuoteAction(id, emailTo.trim(), emailContactId);
+    setEmailBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast("Quote emailed to the client", { tone: "success" });
+    setEmailOpen(false);
+    void load();
+  }
 
   const qNum = d.quote.number;
   const decided = d.quote.status === "accepted" || d.quote.status === "declined";
@@ -244,9 +268,12 @@ export function QuoteEditor({ id }: { id: number }) {
                 <p className="text-2xs text-muted-foreground">A public page where the client views the quote, saves a PDF, and accepts or declines online.</p>
               </div>
               {canWrite && (
-                <Button size="sm" variant={clientLink ? "outline" : "default"} onClick={share} disabled={shareBusy}>
-                  {shareBusy ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />} {clientLink ? "Regenerate" : "Share with client"}
-                </Button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button size="sm" variant="outline" onClick={openEmail} disabled={emailOpen}><Mail size={13} /> Email</Button>
+                  <Button size="sm" variant={clientLink ? "outline" : "default"} onClick={share} disabled={shareBusy}>
+                    {shareBusy ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />} {clientLink ? "Regenerate" : "Share"}
+                  </Button>
+                </div>
               )}
             </div>
             {clientLink && (
@@ -254,6 +281,33 @@ export function QuoteEditor({ id }: { id: number }) {
                 <a href={clientLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-xs text-electric hover:underline">{clientLink}</a>
                 <a href={clientLink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" title="Open"><ExternalLink size={13} /></a>
                 <button onClick={copyLink} className="shrink-0 text-muted-foreground hover:text-foreground" title="Copy link">{copied ? <Check size={13} className="text-emerald" /> : <Copy size={13} />}</button>
+              </div>
+            )}
+            {emailOpen && (
+              <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-2xs font-medium">Email this quote to the client</p>
+                  <button onClick={() => setEmailOpen(false)} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
+                </div>
+                {emailContacts.length > 0 && (
+                  <Select
+                    value={emailContactId ? String(emailContactId) : "custom"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "custom") { setEmailContactId(null); }
+                      else { const c = emailContacts.find((x) => String(x.id) === v); if (c) { setEmailContactId(c.id); setEmailTo(c.email); } }
+                    }}
+                    className="h-8 text-xs"
+                  >
+                    {emailContacts.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.email}</option>)}
+                    <option value="custom">Custom address…</option>
+                  </Select>
+                )}
+                <Input type="email" value={emailTo} onChange={(e) => { setEmailTo(e.target.value); setEmailContactId(null); }} placeholder="client@example.com" className="h-8 text-xs" />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-2xs text-muted-foreground">Sends from your Settings → Email mailbox, with a tracked link.</p>
+                  <Button size="sm" onClick={sendEmail} disabled={emailBusy || !emailTo.trim()}>{emailBusy ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Send</Button>
+                </div>
               </div>
             )}
           </div>
