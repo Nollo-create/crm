@@ -1,5 +1,7 @@
-import { ActivityFeed } from "@/components/crm/activity-feed";
+import { MeetingsView } from "./meetings-view";
+
+export const dynamic = "force-dynamic";
 
 export default function MeetingsPage() {
-  return <ActivityFeed title="Meetings" fixedType="meeting" />;
+  return <MeetingsView />;
 }

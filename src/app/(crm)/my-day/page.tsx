@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Sun, Handshake, Building2, FileText, Target, CheckCircle2, Circle, ArrowRight, Loader2, CalendarClock } from "lucide-react";
+import { Sun, Handshake, Building2, FileText, Target, CheckCircle2, Circle, ArrowRight, Loader2, CalendarClock, CalendarDays, Clock, MapPin } from "lucide-react";
 import { nextBestActionsAction, type NbaItem } from "@/lib/actions/ai";
 import { tasksPageAction, toggleTaskDoneAction, type Task } from "@/lib/actions/tasks";
+import { meetingsTodayAction, type MeetingView } from "@/lib/actions/meetings";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,9 +28,11 @@ export default function MyDayPage() {
   const canWrite = useCanWrite();
   const [actions, setActions] = useState<NbaItem[] | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [meetings, setMeetings] = useState<MeetingView[]>([]);
 
   useEffect(() => {
     nextBestActionsAction().then(setActions).catch(() => setActions([]));
+    meetingsTodayAction().then(setMeetings).catch(() => setMeetings([]));
     tasksPageAction({ done: false, sortKey: "due", sortDir: 1, page: 1, pageSize: 8 })
       .then((r) => setTasks(r.rows))
       .catch(() => setTasks([]));
@@ -76,6 +79,29 @@ export default function MyDayPage() {
           </div>
         )}
       </div>
+
+      {/* Today's meetings */}
+      {meetings.length > 0 && (
+        <div>
+          <p className="mb-2 flex items-center gap-2 text-sm font-semibold"><CalendarDays size={15} className="text-electric" /> Today&apos;s meetings <Badge tone="neutral">{meetings.length}</Badge></p>
+          <div className="space-y-2">
+            {meetings.map((m) => (
+              <Card key={m.id} className="flex items-center gap-3 p-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-electric/12 text-electric"><CalendarDays size={16} /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{m.title}</p>
+                  <p className="flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><Clock size={11} /> {new Date(m.startsAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · {m.durationMin}m</span>
+                    {m.companyId && m.companyName && <Link href={`/companies/${m.companyId}`} className="text-electric hover:underline">{m.companyName}</Link>}
+                    {m.location && <span className="inline-flex items-center gap-1"><MapPin size={11} /> {m.location}</span>}
+                  </p>
+                </div>
+              </Card>
+            ))}
+            <Link href="/meetings" className="inline-flex items-center gap-1 text-2xs font-medium text-electric hover:underline">All meetings <ArrowRight size={12} /></Link>
+          </div>
+        </div>
+      )}
 
       {/* Open tasks */}
       <div>

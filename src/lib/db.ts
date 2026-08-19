@@ -2313,6 +2313,24 @@ export function ensureAuthSchema(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       await ensureColumn(pool, "crm_users", "notifications_seen_at", "notifications_seen_at TIMESTAMP NULL");
+      // Meetings — scheduled events optionally linked to a company/contact/deal.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_meetings (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          title VARCHAR(200) NOT NULL DEFAULT '',
+          starts_at TIMESTAMP NOT NULL,
+          duration_min INT UNSIGNED NOT NULL DEFAULT 30,
+          company_id INT UNSIGNED NULL,
+          contact_id INT UNSIGNED NULL,
+          deal_id INT UNSIGNED NULL,
+          location VARCHAR(200) NOT NULL DEFAULT '',
+          notes TEXT NULL,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_meeting_org (organization_id, starts_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -3132,6 +3150,92 @@ export async function getNotificationsSeenAt(userId: number): Promise<Date | nul
 export async function setNotificationsSeen(userId: number): Promise<void> {
   await ensureAuthSchema();
   await getPool().query("UPDATE crm_users SET notifications_seen_at = CURRENT_TIMESTAMP WHERE id = ?", [userId]);
+}
+
+// ------------------------------------------------------------ meetings
+
+export interface MeetingRow extends mysql.RowDataPacket {
+  id: number;
+  title: string;
+  starts_at: Date;
+  duration_min: number;
+  company_id: number | null;
+  contact_id: number | null;
+  deal_id: number | null;
+  location: string;
+  notes: string | null;
+  created_by: string;
+  company_name: string | null;
+  contact_name: string | null;
+}
+
+export interface MeetingInput {
+  title: string;
+  startsAt: Date;
+  durationMin: number;
+  companyId?: number | null;
+  contactId?: number | null;
+  dealId?: number | null;
+  location: string;
+  notes: string;
+}
+
+export async function createMeeting(orgId: number, m: MeetingInput & { createdBy: string }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_meetings (organization_id, title, starts_at, duration_min, company_id, contact_id, deal_id, location, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, m.title.slice(0, 200), m.startsAt, m.durationMin, m.companyId ?? null, m.contactId ?? null, m.dealId ?? null, m.location.slice(0, 200), m.notes.slice(0, 5000), m.createdBy.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+export async function updateMeeting(orgId: number, id: number, m: MeetingInput): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `UPDATE crm_meetings SET title=?, starts_at=?, duration_min=?, company_id=?, contact_id=?, deal_id=?, location=?, notes=? WHERE id=? AND organization_id=?`,
+    [m.title.slice(0, 200), m.startsAt, m.durationMin, m.companyId ?? null, m.contactId ?? null, m.dealId ?? null, m.location.slice(0, 200), m.notes.slice(0, 5000), id, orgId]
+  );
+}
+
+export async function deleteMeeting(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_meetings WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+const MEETING_SELECT = `SELECT m.id, m.title, m.starts_at, m.duration_min, m.company_id, m.contact_id, m.deal_id, m.location, m.notes, m.created_by,
+         co.name AS company_name, ct.name AS contact_name
+    FROM crm_meetings m
+    LEFT JOIN crm_companies co ON co.id = m.company_id AND co.organization_id = m.organization_id
+    LEFT JOIN crm_contacts ct ON ct.id = m.contact_id AND ct.organization_id = m.organization_id`;
+
+/** Recent-past (14d) + all upcoming meetings, for the agenda. */
+export async function listMeetings(orgId: number): Promise<MeetingRow[]> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const [rows] = await getPool().query<MeetingRow[]>(
+    `${MEETING_SELECT} WHERE m.organization_id = ? AND m.starts_at >= (NOW() - INTERVAL 14 DAY) ORDER BY m.starts_at ASC LIMIT 200`,
+    [orgId]
+  );
+  return rows;
+}
+
+export async function getMeeting(orgId: number, id: number): Promise<MeetingRow | null> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const [rows] = await getPool().query<MeetingRow[]>(`${MEETING_SELECT} WHERE m.id = ? AND m.organization_id = ? LIMIT 1`, [id, orgId]);
+  return rows[0] ?? null;
+}
+
+/** Today's meetings (for My Day). */
+export async function listMeetingsToday(orgId: number): Promise<MeetingRow[]> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const [rows] = await getPool().query<MeetingRow[]>(
+    `${MEETING_SELECT} WHERE m.organization_id = ? AND DATE(m.starts_at) = CURDATE() ORDER BY m.starts_at ASC LIMIT 20`,
+    [orgId]
+  );
+  return rows;
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

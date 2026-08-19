@@ -390,6 +390,22 @@ exports.id=3056,exports.ids=[3056],exports.modules={28303:a=>{function b(a){var 
           INDEX idx_notif_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `),await s(a,"crm_users","notifications_seen_at","notifications_seen_at TIMESTAMP NULL"),await a.query(`
+        CREATE TABLE IF NOT EXISTS crm_meetings (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          title VARCHAR(200) NOT NULL DEFAULT '',
+          starts_at TIMESTAMP NOT NULL,
+          duration_min INT UNSIGNED NOT NULL DEFAULT 30,
+          company_id INT UNSIGNED NULL,
+          contact_id INT UNSIGNED NULL,
+          deal_id INT UNSIGNED NULL,
+          location VARCHAR(200) NOT NULL DEFAULT '',
+          notes TEXT NULL,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_meeting_org (organization_id, starts_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `),await a.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
           organization_id INT UNSIGNED NOT NULL,
