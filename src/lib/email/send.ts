@@ -26,6 +26,41 @@ export interface MailMessage {
 
 export type SendResult = { ok: true; messageId: string } | { ok: false; error: string };
 
+/** Send many messages over ONE pooled connection (bulk/mail-merge). Reuses the
+ *  SMTP session so 30 sends don't mean 30 handshakes, and returns a result per
+ *  message in order. Never throws. */
+export async function sendBulk(cfg: SmtpConfig, messages: MailMessage[]): Promise<SendResult[]> {
+  const transport = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: cfg.username ? { user: cfg.username, pass: cfg.password } : undefined,
+    pool: true,
+    maxConnections: 2,
+    maxMessages: 200,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+  const cleanName = cfg.fromName.replace(/["\r\n]/g, "").trim();
+  const from = cleanName ? `"${cleanName}" <${cfg.fromEmail}>` : cfg.fromEmail;
+  const results: SendResult[] = [];
+  for (const msg of messages) {
+    try {
+      const info = await transport.sendMail({ from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo || undefined });
+      results.push({ ok: true, messageId: String(info.messageId ?? "") });
+    } catch (e) {
+      results.push({ ok: false, error: (e instanceof Error ? e.message : "Send failed").slice(0, 300) });
+    }
+  }
+  try {
+    transport.close();
+  } catch {
+    /* ignore */
+  }
+  return results;
+}
+
 export async function sendMail(cfg: SmtpConfig, msg: MailMessage): Promise<SendResult> {
   try {
     const transport = nodemailer.createTransport({

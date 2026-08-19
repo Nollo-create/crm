@@ -251,6 +251,12 @@
       "namedRegex": "^/emails(?:/)?$"
     },
     {
+      "page": "/emails/bulk",
+      "regex": "^/emails/bulk(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/emails/bulk(?:/)?$"
+    },
+    {
       "page": "/icon.svg",
       "regex": "^/icon\\.svg(?:/)?$",
       "routeKeys": {},

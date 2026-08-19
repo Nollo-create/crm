@@ -298,6 +298,28 @@ export async function searchCompaniesAction(q: string): Promise<SearchHit[]> {
   return rows.slice(0, 8).map((r) => ({ id: r.id, name: r.name, city: r.city, status: r.status }));
 }
 
+export interface ContactHit {
+  id: number;
+  name: string;
+  email: string;
+  companyId: number;
+  companyName: string;
+}
+
+/** Contact search for the bulk-email recipient picker — only contacts with an
+ *  email address (you can't send to the rest). Org-scoped. */
+export async function searchContactsAction(q: string): Promise<ContactHit[]> {
+  const { organizationId } = await requireSession();
+  const s = q.trim();
+  if (!s) return [];
+  const res = await listContactsPage(organizationId, { q: s, sortKey: "name", sortDir: 1, page: 1, pageSize: 12 }).catch(() => null);
+  if (!res) return [];
+  return res.rows
+    .filter((r: ContactStatsRow) => !!r.email)
+    .slice(0, 8)
+    .map((r: ContactStatsRow) => ({ id: r.id, name: r.name, email: r.email, companyId: r.company_id, companyName: r.company_name }));
+}
+
 export interface GlobalHit {
   id: number;
   name: string;

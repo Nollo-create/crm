@@ -5,6 +5,9 @@
 
 export const TEMPLATE_VARS = ["name", "first_name", "company"] as const;
 
+/** Max recipients per bulk/mail-merge send (enforced server-side too). */
+export const BULK_MAX = 50;
+
 export function applyTemplate(text: string, vars: Record<string, string>): string {
   return (text ?? "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key: string) => {
     const v = vars[key.toLowerCase()];

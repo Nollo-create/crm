@@ -9,8 +9,9 @@ import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
 import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend, emailSendStats, emailSendsByRep, listRecentEmailSends } from "@/lib/db";
 import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
-import { sendMail, type SmtpConfig } from "@/lib/email/send";
+import { sendMail, sendBulk, type SmtpConfig, type MailMessage } from "@/lib/email/send";
 import { buildEmailHtml } from "@/lib/crm/email-html";
+import { applyTemplate, templateVars, BULK_MAX } from "@/lib/crm/email-template";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
 
@@ -247,6 +248,93 @@ export async function sendEmailAction(input: {
   if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
   revalidatePath("/emails");
   return { ok: true };
+}
+
+// -------------------------------------------------------------- bulk / mail-merge
+
+export interface BulkRecipient {
+  email: string;
+  name?: string;
+  company?: string;
+  contactId?: number | null;
+  companyId?: number | null;
+}
+
+/** Send a personalized copy of one message to many recipients over a single
+ *  pooled connection. member+; capped + rate-limited (this is a mass-send seam).
+ *  Each send is tracked + logged like a single send. */
+export async function bulkSendEmailAction(input: { recipients: BulkRecipient[]; subject: string; body: string; track?: boolean }): Promise<{ sent: number; failed: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { sent: 0, failed: 0, error: g.error };
+  const session = g.session;
+
+  // Dedupe by email + cap. Keeps a runaway list from becoming a spam cannon.
+  const seen = new Set<string>();
+  const recipients = (input.recipients ?? [])
+    .filter((r) => {
+      const e = (r.email ?? "").trim().toLowerCase();
+      if (!e || seen.has(e)) return false;
+      seen.add(e);
+      return true;
+    })
+    .slice(0, BULK_MAX);
+  if (recipients.length === 0) return { sent: 0, failed: 0, error: "Add at least one recipient with an email address." };
+
+  const rl = checkRateLimit(`email-bulk:${session.userId}`, { limit: 6, windowMs: 60 * 60_000, blockMs: 30 * 60_000 });
+  if (!rl.ok) return { sent: 0, failed: 0, error: retryMessage(rl.retryAfter) };
+
+  const v = validated(() => ({
+    subject: vString("Subject", input.subject, { required: true, max: 300 }),
+    body: vString("Message", input.body, { required: true, max: 20000 }),
+  }));
+  if (!v.ok) return { sent: 0, failed: 0, error: v.error };
+
+  const loaded = await loadSmtpConfig(session.organizationId, { requireEnabled: true });
+  if (loaded.error || !loaded.config) return { sent: 0, failed: 0, error: loaded.error ?? "Mailbox not configured." };
+  const base = input.track === false ? "" : await publicBaseUrl();
+
+  // Build a personalized message per recipient (skip invalid emails as failures).
+  const jobs: { rcp: BulkRecipient; subject: string; token?: string; message: MailMessage }[] = [];
+  let failed = 0;
+  for (const rcp of recipients) {
+    const ev = validated(() => ({ to: vEmail("Recipient", rcp.email) }));
+    if (!ev.ok || !ev.value.to) {
+      failed++;
+      continue;
+    }
+    const vars = templateVars({ name: rcp.name, company: rcp.company });
+    const subject = applyTemplate(v.value.subject, vars);
+    const bodyText = applyTemplate(v.value.body, vars);
+    let token: string | undefined;
+    let pixelUrl: string | undefined;
+    if (base) {
+      token = randomBytes(24).toString("hex");
+      pixelUrl = `${base}/api/e/${token}.png`;
+    }
+    jobs.push({ rcp, subject, token, message: { to: ev.value.to, subject, text: bodyText, html: buildEmailHtml(bodyText, pixelUrl), replyTo: session.email } });
+  }
+  if (jobs.length === 0) return { sent: 0, failed, error: "No valid recipient emails." };
+
+  const results = await sendBulk(loaded.config, jobs.map((j) => j.message));
+  let sent = 0;
+  for (let i = 0; i < jobs.length; i++) {
+    const r = results[i];
+    const j = jobs[i];
+    if (!r || !r.ok) {
+      failed++;
+      continue;
+    }
+    sent++;
+    if (j.token) {
+      await createEmailSend(session.organizationId, { token: j.token, contactId: j.rcp.contactId ?? null, companyId: j.rcp.companyId ?? null, dealId: null, toEmail: j.message.to, subject: j.subject, sentBy: session.email }).catch(() => {});
+    }
+    if (j.rcp.companyId) {
+      await addActivity(session.organizationId, { companyId: j.rcp.companyId, contactId: j.rcp.contactId ?? null, dealId: null, type: "email", summary: `Email → ${j.message.to}: ${j.subject}` }).catch(() => {});
+    }
+  }
+  await recordAudit(session, "email_bulk", "organization", session.organizationId, `${sent} sent${failed ? `, ${failed} failed` : ""}`);
+  if (sent) revalidatePath("/emails");
+  return { sent, failed };
 }
 
 // -------------------------------------------------------------- email templates
