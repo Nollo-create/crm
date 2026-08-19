@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { eur, timeAgo } from "@/lib/format";
 import { customerMetrics, customerHealth } from "@/lib/crm/customer";
 import { TagEditor } from "@/components/crm/tag-editor";
+import { EmailComposer } from "@/components/crm/email-composer";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = { lead: "Lead", active: "Active", customer: "Customer", at_risk: "At risk", lost: "Lost" };
@@ -85,6 +86,7 @@ export function CompanyDetail({ id }: { id: number }) {
   const [note, setNote] = useState({ type: "note", summary: "" });
   const [editDetails, setEditDetails] = useState(false);
   const [details, setDetails] = useState({ legalName: "", phone: "", email: "", country: "", address: "", vatId: "", description: "" });
+  const [composing, setComposing] = useState(false);
 
   async function load() {
     const res = await getCompanyAction(id).catch(() => null);
@@ -186,9 +188,15 @@ export function CompanyDetail({ id }: { id: number }) {
                 <Plus size={14} /> Deal
               </Button>
             )}
-            <a href={primaryEmail ? `mailto:${primaryEmail}` : undefined} className={cn(!primaryEmail && "pointer-events-none opacity-40")}>
-              <Button size="icon" variant="ghost" title="Email primary contact"><Mail size={15} /></Button>
-            </a>
+            {canWrite ? (
+              <Button size="sm" variant="outline" title="Send email" disabled={!primaryEmail && !c.email} onClick={() => setComposing((v) => !v)}>
+                <Mail size={14} /> Email
+              </Button>
+            ) : (
+              <a href={primaryEmail ? `mailto:${primaryEmail}` : undefined} className={cn(!primaryEmail && "pointer-events-none opacity-40")}>
+                <Button size="icon" variant="ghost" title="Email primary contact"><Mail size={15} /></Button>
+              </a>
+            )}
             <a href={primaryPhone ? `tel:${primaryPhone}` : undefined} className={cn(!primaryPhone && "pointer-events-none opacity-40")}>
               <Button size="icon" variant="ghost" title="Call primary contact"><Phone size={15} /></Button>
             </a>
@@ -234,6 +242,16 @@ export function CompanyDetail({ id }: { id: number }) {
           </div>
         </div>
       </Card>
+
+      {composing && canWrite && (
+        <EmailComposer
+          to={d.contacts.find((x) => x.email)?.email ?? c.email ?? ""}
+          contactId={d.contacts.find((x) => x.email)?.id ?? undefined}
+          companyId={c.id}
+          onClose={() => setComposing(false)}
+          onSent={load}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Tags</span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass, CheckCircle2, XCircle, RotateCcw, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Trash2, Pencil, X, Building2, User, Activity as ActivityIcon, Handshake, Compass, CheckCircle2, XCircle, RotateCcw, Sparkles, Loader2, Mail } from "lucide-react";
 import {
   getDealAction,
   updateDealAction,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/crm";
 import { OPEN_STAGES, stageLabel, weightedValue, LOSS_REASONS, LOSS_REASON_LABEL } from "@/lib/crm/pipeline";
 import { TagEditor } from "@/components/crm/tag-editor";
+import { EmailComposer } from "@/components/crm/email-composer";
 import { AiOutput } from "@/components/crm/ai-output";
 import { dealInsightAction, type AiOut } from "@/lib/actions/ai";
 import { Card } from "@/components/ui/card";
@@ -51,6 +52,7 @@ export function DealDetail({ id }: { id: number }) {
   const [lossReason, setLossReason] = useState<string>(LOSS_REASONS[0]);
   const [aiResult, setAiResult] = useState<AiOut | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [composing, setComposing] = useState(false);
 
   async function analyze() {
     setAiLoading(true);
@@ -214,6 +216,7 @@ export function DealDetail({ id }: { id: number }) {
                   <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setLostOpen((v) => !v)} disabled={busy}><XCircle size={14} /> Lost</Button>
                 </>
               )}
+              <Button size="sm" variant="outline" onClick={() => setComposing((v) => !v)}><Mail size={14} /> Email</Button>
               <Button size="sm" variant="outline" onClick={editing ? () => setEditing(false) : startEdit}>
                 {editing ? <X size={14} /> : <Pencil size={14} />} {editing ? "Cancel" : "Edit"}
               </Button>
@@ -222,6 +225,17 @@ export function DealDetail({ id }: { id: number }) {
           )}
         </div>
       </Card>
+
+      {composing && canWrite && (
+        <EmailComposer
+          to={d.contacts.find((c) => c.id === dl.contactId)?.email ?? d.contacts[0]?.email ?? ""}
+          contactId={dl.contactId ?? undefined}
+          dealId={id}
+          companyId={dl.companyId}
+          onClose={() => setComposing(false)}
+          onSent={load}
+        />
+      )}
 
       {canWrite && lostOpen && !closed && (
         <Card className="flex flex-wrap items-end gap-2 border-danger/30 p-4">
