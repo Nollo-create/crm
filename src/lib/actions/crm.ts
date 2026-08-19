@@ -44,6 +44,7 @@ import {
   bulkDeleteDeals,
   bulkSetDealStage,
   getOrgFlags,
+  createNotification,
   type DealStatsRow,
   type DealWithRefsRow,
   addActivity,
@@ -65,6 +66,7 @@ import { recordAudit } from "@/lib/auth/audit";
 import { validated, vString, vEmail, vInt, vEnum } from "@/lib/crm/validate";
 import { ownerFilter, canAccessOwned } from "@/lib/crm/record-scope";
 import { isStageId, isLossReason, stage, summarizePipeline, type PipelineSummary, type StageId } from "@/lib/crm/pipeline";
+import { eur } from "@/lib/format";
 
 /** Record-level scoping (opt-in per org, master-prompt #7). Off by default → the
  *  helpers below are no-ops. When on, a member is confined to deals they own or
@@ -676,9 +678,16 @@ export async function markDealWonAction(id: number): Promise<{ companyId?: numbe
   if ("error" in g) return { error: g.error };
   const session = g.session;
   if (!(await canTouchDeal(session, id))) return { error: "Deal not found." };
+  const deal = await getDeal(session.organizationId, id).catch(() => null);
   const r = await closeDealWon(session.organizationId, id);
   if (!r) return { error: "Deal not found." };
   await recordAudit(session, "deal_won", "deal", id, `company #${r.companyId} -> customer`);
+  await createNotification(session.organizationId, {
+    userEmail: null, // team win — everyone sees it
+    type: "deal_won",
+    title: deal ? `🎉 Deal won — ${deal.title} (${eur(deal.value)})` : "🎉 A deal was won",
+    href: `/deals/${id}`,
+  }).catch(() => {});
   revalidateDeal(id, r.companyId);
   return { companyId: r.companyId };
 }

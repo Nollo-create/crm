@@ -1,7 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth/session";
-import { nbaOverdueDeals, nbaAgingQuotes, nbaHotLeads, nbaStaleAccounts } from "@/lib/db";
+import { nbaOverdueDeals, nbaAgingQuotes, nbaHotLeads, nbaStaleAccounts, listNotifications, countUnreadNotifications, getNotificationsSeenAt, setNotificationsSeen } from "@/lib/db";
 import { quoteNumber } from "@/lib/crm/quotes";
 
 // Honest notifications: real, actionable signals derived from the CRM's own data
@@ -34,4 +34,49 @@ export async function notificationsAction(): Promise<{ items: Notification[]; co
   for (const a of accounts) items.push({ id: `acct-${a.id}`, kind: "account", title: `${a.name} has gone quiet`, sub: a.lastDays != null ? `no activity in ${a.lastDays}d` : "no activity logged", href: `/companies/${a.id}` });
 
   return { items, count: items.length };
+}
+
+// ---- event notifications (persisted): email opens, replies, deal wins
+
+export interface EventNotification {
+  id: number;
+  type: string;
+  title: string;
+  href: string;
+  createdAt: string;
+  unread: boolean;
+}
+
+/** Lightweight unread count for the bell badge (polled). */
+export async function unreadNotificationsAction(): Promise<number> {
+  const { organizationId, email, userId } = await requireSession();
+  const seenAt = await getNotificationsSeenAt(userId).catch(() => null);
+  return countUnreadNotifications(organizationId, email, seenAt).catch(() => 0);
+}
+
+/** Full event feed for the bell panel (fetched on open). */
+export async function notificationFeedAction(): Promise<{ items: EventNotification[]; attention: number }> {
+  const { organizationId, email, userId } = await requireSession();
+  const [rows, seenAt] = await Promise.all([
+    listNotifications(organizationId, email, 20).catch(() => []),
+    getNotificationsSeenAt(userId).catch(() => null),
+  ]);
+  const seen = seenAt ? new Date(seenAt).getTime() : 0;
+  const items: EventNotification[] = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    href: r.href,
+    createdAt: new Date(r.created_at).toISOString(),
+    unread: new Date(r.created_at).getTime() > seen,
+  }));
+  // The derived "needs attention" count, shown as a footer link to My Day.
+  const attention = (await notificationsAction().catch(() => ({ count: 0 }))).count;
+  return { items, attention };
+}
+
+/** Mark all notifications as seen (clears the badge). */
+export async function markNotificationsSeenAction(): Promise<void> {
+  const { userId } = await requireSession();
+  await setNotificationsSeen(userId).catch(() => {});
 }

@@ -2297,6 +2297,22 @@ export function ensureAuthSchema(): Promise<void> {
           last_cron_at TIMESTAMP NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Event notifications (email opened, reply received, deal won…). user_email
+      // NULL = whole team; otherwise targeted to one person. Per-user read state
+      // is a "seen" timestamp on the user row (below).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_notifications (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          user_email VARCHAR(190) NULL,
+          type VARCHAR(40) NOT NULL DEFAULT '',
+          title VARCHAR(300) NOT NULL DEFAULT '',
+          href VARCHAR(300) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_notif_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await ensureColumn(pool, "crm_users", "notifications_seen_at", "notifications_seen_at TIMESTAMP NULL");
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -2687,6 +2703,8 @@ export interface OpenedSend {
   companyId: number | null;
   dealId: number | null;
   subject: string;
+  sentBy: string;
+  toEmail: string;
 }
 
 /** Record an open for a tracking token. Returns the send (with firstOpen) so the
@@ -2694,7 +2712,7 @@ export interface OpenedSend {
 export async function markEmailOpened(token: string): Promise<OpenedSend | null> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<mysql.RowDataPacket[]>(
-    "SELECT organization_id, contact_id, company_id, deal_id, subject, opened_at FROM crm_email_sends WHERE token = ? LIMIT 1",
+    "SELECT organization_id, contact_id, company_id, deal_id, subject, sent_by, to_email, opened_at FROM crm_email_sends WHERE token = ? LIMIT 1",
     [token]
   );
   const r = rows[0];
@@ -2710,6 +2728,8 @@ export async function markEmailOpened(token: string): Promise<OpenedSend | null>
     companyId: r.company_id,
     dealId: r.deal_id,
     subject: String(r.subject ?? ""),
+    sentBy: String(r.sent_by ?? ""),
+    toEmail: String(r.to_email ?? ""),
   };
 }
 
@@ -3062,6 +3082,56 @@ export async function getCronHeartbeat(): Promise<Date | null> {
   await ensureAuthSchema();
   const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT last_cron_at FROM crm_heartbeat WHERE id = 1 LIMIT 1");
   return rows[0]?.last_cron_at ?? null;
+}
+
+// ------------------------------------------------------------ notifications
+
+export interface NotificationRow extends mysql.RowDataPacket {
+  id: number;
+  type: string;
+  title: string;
+  href: string;
+  created_at: Date;
+}
+
+export async function createNotification(orgId: number, n: { userEmail?: string | null; type: string; title: string; href?: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "INSERT INTO crm_notifications (organization_id, user_email, type, title, href) VALUES (?, ?, ?, ?, ?)",
+    [orgId, n.userEmail ?? null, n.type.slice(0, 40), n.title.slice(0, 300), (n.href ?? "").slice(0, 300)]
+  );
+}
+
+export async function listNotifications(orgId: number, userEmail: string, limit = 20): Promise<NotificationRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<NotificationRow[]>(
+    `SELECT id, type, title, href, created_at FROM crm_notifications
+      WHERE organization_id = ? AND (user_email IS NULL OR user_email = ?)
+      ORDER BY id DESC LIMIT ?`,
+    [orgId, userEmail, Math.min(Math.max(limit, 1), 100)]
+  );
+  return rows;
+}
+
+export async function countUnreadNotifications(orgId: number, userEmail: string, seenAt: Date | null): Promise<number> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM crm_notifications
+      WHERE organization_id = ? AND (user_email IS NULL OR user_email = ?) AND created_at > COALESCE(?, '1970-01-01 00:00:00')`,
+    [orgId, userEmail, seenAt]
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function getNotificationsSeenAt(userId: number): Promise<Date | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT notifications_seen_at FROM crm_users WHERE id = ? LIMIT 1", [userId]);
+  return rows[0]?.notifications_seen_at ?? null;
+}
+
+export async function setNotificationsSeen(userId: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_users SET notifications_seen_at = CURRENT_TIMESTAMP WHERE id = ?", [userId]);
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { markEmailOpened, addActivity } from "@/lib/db";
+import { markEmailOpened, addActivity, createNotification } from "@/lib/db";
 
 // Email open-tracking pixel. The recipient's mail client loads this 1x1 image,
 // which stamps the open on the send record and (on the first open) logs it to the
@@ -31,13 +31,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     const token = (raw || "").replace(/\.(png|gif)$/i, "").slice(0, 48);
     if (token) {
       const opened = await markEmailOpened(token).catch(() => null);
-      if (opened?.firstOpen && opened.companyId) {
-        await addActivity(opened.organizationId, {
-          companyId: opened.companyId,
-          contactId: opened.contactId,
-          dealId: opened.dealId,
-          type: "email",
-          summary: `Opened: ${opened.subject}`,
+      if (opened?.firstOpen) {
+        if (opened.companyId) {
+          await addActivity(opened.organizationId, {
+            companyId: opened.companyId,
+            contactId: opened.contactId,
+            dealId: opened.dealId,
+            type: "email",
+            summary: `Opened: ${opened.subject}`,
+          }).catch(() => {});
+        }
+        // Notify the sender that their email was opened.
+        const href = opened.contactId ? `/contacts/${opened.contactId}` : opened.companyId ? `/companies/${opened.companyId}` : "/emails";
+        await createNotification(opened.organizationId, {
+          userEmail: opened.sentBy || null,
+          type: "email_open",
+          title: `${opened.toEmail} opened “${opened.subject}”`,
+          href,
         }).catch(() => {});
       }
     }

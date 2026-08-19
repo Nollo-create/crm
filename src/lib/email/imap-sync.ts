@@ -1,7 +1,7 @@
 import "server-only";
 import { ImapFlow } from "imapflow";
 import { decryptSecret } from "@/lib/auth/crypto";
-import { getEmailSyncState, setEmailSyncState, getContactByEmail, stopContactEnrollments, addActivity, orgsWithImap, type ImapOrgRow } from "@/lib/db";
+import { getEmailSyncState, setEmailSyncState, getContactByEmail, stopContactEnrollments, addActivity, createNotification, orgsWithImap, type ImapOrgRow } from "@/lib/db";
 
 // Inbox sync (master email frontier). Each cron tick connects to every org's
 // configured IMAP mailbox, reads mail newer than the last cursor, and — for
@@ -57,6 +57,12 @@ async function syncOrg(org: ImapOrgRow): Promise<{ logged: number; stopped: numb
             contactId: contact.id,
             type: "email",
             summary: `Reply from ${contact.name || from}: ${subject}`.slice(0, 490),
+          }).catch(() => {});
+          await createNotification(org.organization_id, {
+            userEmail: null, // team-wide — a reply is worth everyone knowing
+            type: "reply",
+            title: `Reply from ${contact.name || from}: ${subject}`.slice(0, 290),
+            href: `/contacts/${contact.id}`,
           }).catch(() => {});
           logged++;
           stopped += await stopContactEnrollments(org.organization_id, contact.id).catch(() => 0);
