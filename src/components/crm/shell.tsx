@@ -89,7 +89,7 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
                 title={`${user.name || user.email} — account & settings`}
               >
                 {initial}
-                <span className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-card", connected ? "bg-emerald" : "bg-muted-foreground/40")} />
+                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald ring-2 ring-card" />
               </Link>
               <button
                 onClick={toggle}
@@ -110,8 +110,8 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
                 <span className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-royal/15 text-2xs font-semibold text-royal">
                   {initial}
                   <span
-                    className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-card", connected ? "bg-emerald" : "bg-muted-foreground/40")}
-                    title={connected ? "Connected to Sajtpress" : "Independent workspace (not linked to Sajtpress)"}
+                    className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald ring-2 ring-card"
+                    title="Online"
                   />
                 </span>
                 <span className="min-w-0 leading-tight">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Monitor, Smartphone, LogOut, Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import { Monitor, Smartphone, Tablet, LogOut, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { listSessionsAction, revokeSessionAction, revokeOtherSessionsAction, type SessionView } from "@/lib/actions/sessions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { MfaCard } from "@/components/crm/mfa-card";
 import { PasswordCard } from "@/components/crm/password-card";
 
-const isMobile = (device: string) => /iphone|ipad|android/i.test(device);
+const DEVICE_ICON = { Mobile: Smartphone, Tablet, Desktop: Monitor } as const;
 
 export function SessionsManager() {
   const { toast } = useToast();
@@ -85,7 +85,8 @@ export function SessionsManager() {
       ) : (
         <div className="space-y-2">
           {rows.map((s) => {
-            const Icon = isMobile(s.device) ? Smartphone : Monitor;
+            const Icon = DEVICE_ICON[s.deviceType];
+            const known = s.device !== "Unknown device";
             return (
               <Card key={s.id} className={cn("flex items-center gap-3 p-3", s.current && "border-electric/40")}>
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary text-muted-foreground"><Icon size={16} /></span>
@@ -95,7 +96,7 @@ export function SessionsManager() {
                     {s.current && <span className="rounded-full bg-emerald/12 px-1.5 py-0.5 text-[10px] font-medium text-emerald">This device</span>}
                   </p>
                   <p className="truncate text-2xs text-muted-foreground">
-                    {[s.ip, s.lastUsedAt ? `active ${timeAgo(s.lastUsedAt)}` : null, `signed in ${timeAgo(s.createdAt)}`].filter(Boolean).join(" · ")}
+                    {[known ? s.deviceType : null, s.ip !== "—" ? s.ip : null, s.lastUsedAt ? `active ${timeAgo(s.lastUsedAt)}` : null, `signed in ${timeAgo(s.createdAt)}`].filter(Boolean).join(" · ")}
                   </p>
                 </div>
                 {!s.current && (

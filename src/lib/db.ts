@@ -4360,9 +4360,14 @@ export async function getSessionByTokenHash(tokenHash: string): Promise<SessionR
 }
 
 /** Refresh "last active" (throttled by the caller so it isn't a write per request). */
-export async function touchSession(tokenHash: string): Promise<void> {
+export async function touchSession(tokenHash: string, ctx?: { ip: string; userAgent: string }): Promise<void> {
   try {
-    await getPool().query("UPDATE crm_sessions SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = ?", [tokenHash]);
+    // Also backfill ip / user_agent when they're empty (e.g. a session created
+    // before device capture) — never overwriting a value that's already set.
+    await getPool().query(
+      "UPDATE crm_sessions SET last_used_at = CURRENT_TIMESTAMP, ip = IF(ip IS NULL OR ip = '', ?, ip), user_agent = IF(user_agent IS NULL OR user_agent = '', ?, user_agent) WHERE token_hash = ?",
+      [(ctx?.ip ?? "").slice(0, 45), (ctx?.userAgent ?? "").slice(0, 255), tokenHash]
+    );
   } catch {
     /* a failed timestamp must never fail the request */
   }

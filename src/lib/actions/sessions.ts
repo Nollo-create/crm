@@ -9,6 +9,7 @@ import { describeUserAgent } from "@/lib/crm/user-agent";
 export interface SessionView {
   id: number;
   device: string;
+  deviceType: "Mobile" | "Tablet" | "Desktop";
   ip: string;
   current: boolean;
   createdAt: string;
@@ -19,14 +20,18 @@ export interface SessionView {
 export async function listSessionsAction(): Promise<SessionView[]> {
   const session = await requireSession();
   const [rows, currentId] = await Promise.all([listSessionsForUser(session.userId), getCurrentSessionId()]);
-  return rows.map((r) => ({
-    id: r.id,
-    device: describeUserAgent(r.user_agent).label,
-    ip: r.ip || "—",
-    current: r.id === currentId,
-    createdAt: new Date(r.created_at).toISOString(),
-    lastUsedAt: r.last_used_at ? new Date(r.last_used_at).toISOString() : null,
-  }));
+  return rows.map((r) => {
+    const info = describeUserAgent(r.user_agent);
+    return {
+      id: r.id,
+      device: info.label,
+      deviceType: info.deviceType,
+      ip: r.ip || "—",
+      current: r.id === currentId,
+      createdAt: new Date(r.created_at).toISOString(),
+      lastUsedAt: r.last_used_at ? new Date(r.last_used_at).toISOString() : null,
+    };
+  });
 }
 
 /** Revoke one of the user's own sessions. Refuses the current one (use logout). */

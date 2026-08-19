@@ -45,9 +45,10 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   if (!row) return null;
   const user = await getUserById(row.user_id).catch(() => null);
   if (!user || user.status !== "active") return null;
-  // Refresh "last active" at most every ~5 minutes (not a write per request).
+  // Refresh "last active" at most every ~5 minutes (not a write per request);
+  // that touch also backfills device/ip on sessions that lack it.
   const lastUsed = row.last_used_at ? new Date(row.last_used_at).getTime() : 0;
-  if (Date.now() - lastUsed > 5 * 60_000) void touchSession(tokenHash);
+  if (Date.now() - lastUsed > 5 * 60_000) void sessionRequestContext().then((ctx) => touchSession(tokenHash, ctx));
   return {
     userId: user.id,
     organizationId: user.organization_id,

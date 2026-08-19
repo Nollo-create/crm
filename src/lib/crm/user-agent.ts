@@ -5,6 +5,7 @@
 export interface DeviceInfo {
   browser: string;
   os: string;
+  deviceType: "Mobile" | "Tablet" | "Desktop";
   label: string;
 }
 
@@ -29,12 +30,19 @@ function osOf(ua: string): string {
   return "Unknown OS";
 }
 
+function deviceTypeOf(ua: string): "Mobile" | "Tablet" | "Desktop" {
+  if (/\biPad\b/.test(ua) || /\bTablet\b/.test(ua) || (/\bAndroid\b/.test(ua) && !/\bMobi/.test(ua))) return "Tablet";
+  if (/\bMobi/.test(ua) || /\biPhone\b|\biPod\b/.test(ua)) return "Mobile";
+  return "Desktop";
+}
+
 export function describeUserAgent(ua: string | null | undefined): DeviceInfo {
   const s = (ua ?? "").trim();
-  if (!s) return { browser: "Unknown browser", os: "Unknown device", label: "Unknown device" };
+  if (!s) return { browser: "Unknown browser", os: "Unknown device", deviceType: "Desktop", label: "Unknown device" };
   const browser = browserOf(s);
   const os = osOf(s);
+  const deviceType = deviceTypeOf(s);
   const known = browser !== "Unknown browser" || os !== "Unknown OS";
   const label = known ? `${browser} on ${os}` : "Unknown device";
-  return { browser, os, label };
+  return { browser, os, deviceType, label };
 }
