@@ -51,6 +51,14 @@
   },
   "dynamicRoutes": [
     {
+      "page": "/api/e/[token]",
+      "regex": "^/api/e/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/api/e/(?<nxtPtoken>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/companies/[id]",
       "regex": "^/companies/([^/]+?)(?:/)?$",
       "routeKeys": {

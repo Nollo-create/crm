@@ -41,6 +41,7 @@ export function EmailComposer({
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
+  const [track, setTrack] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export function EmailComposer({
 
   async function send() {
     setBusy(true);
-    const r = await sendEmailAction({ to, subject, body, contactId, companyId, dealId });
+    const r = await sendEmailAction({ to, subject, body, contactId, companyId, dealId, track });
     setBusy(false);
     if (r.error) return toast(r.error, { tone: "error" });
     toast(`Email sent to ${to}`, { tone: "success" });
@@ -110,12 +111,16 @@ export function EmailComposer({
               className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-electric"
             />
           </label>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] text-muted-foreground">Replies come back to you. The send is logged to the timeline.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex cursor-pointer items-center gap-1.5 text-2xs text-muted-foreground">
+              <input type="checkbox" checked={track} onChange={(e) => setTrack(e.target.checked)} className="h-3.5 w-3.5 accent-electric" />
+              Track opens
+            </label>
             <Button size="sm" onClick={send} disabled={busy || !to.trim() || !subject.trim() || !body.trim() || (status !== null && !status.available)}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send
             </Button>
           </div>
+          <p className="text-[10px] text-muted-foreground">Replies come back to you. The send is logged to the timeline{track ? " — and you'll see when it's opened" : ""}.</p>
         </>
       )}
     </Card>

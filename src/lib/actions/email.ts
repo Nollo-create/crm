@@ -1,15 +1,29 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { randomBytes } from "node:crypto";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
-import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate } from "@/lib/db";
+import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend } from "@/lib/db";
 import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
 import { sendMail, type SmtpConfig } from "@/lib/email/send";
+import { buildEmailHtml } from "@/lib/crm/email-html";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
 import { checkRateLimit, retryMessage } from "@/lib/rate-limit";
+
+/** Public origin of this CRM (for the tracking-pixel URL in outgoing email). */
+async function publicBaseUrl(): Promise<string> {
+  try {
+    const host = (await headers()).get("host");
+    if (!host) return "";
+    return `${process.env.NODE_ENV === "production" ? "https" : "http"}://${host}`;
+  } catch {
+    return "";
+  }
+}
 
 export interface EmailSettingsView {
   canManage: boolean;
@@ -164,6 +178,7 @@ export async function sendEmailAction(input: {
   contactId?: number | null;
   companyId?: number | null;
   dealId?: number | null;
+  track?: boolean;
 }): Promise<{ ok?: true; error?: string }> {
   const g = await guardWrite();
   if ("error" in g) return { error: g.error };
@@ -182,15 +197,38 @@ export async function sendEmailAction(input: {
   const loaded = await loadSmtpConfig(session.organizationId, { requireEnabled: true });
   if (loaded.error || !loaded.config) return { error: loaded.error ?? "Mailbox not configured." };
 
+  // Open tracking (default on): a unique pixel URL is embedded in the HTML body.
+  let token: string | undefined;
+  let pixelUrl: string | undefined;
+  if (input.track !== false) {
+    const base = await publicBaseUrl();
+    if (base) {
+      token = randomBytes(24).toString("hex");
+      pixelUrl = `${base}/api/e/${token}.png`;
+    }
+  }
+
   const r = await sendMail(loaded.config, {
     to: v.value.to,
     subject: v.value.subject,
     text: v.value.body,
+    html: buildEmailHtml(v.value.body, pixelUrl),
     replyTo: session.email, // replies reach the actual rep, not the shared mailbox
   });
   if (!r.ok) {
     await recordAudit(session, "email_send_failed", "contact", input.contactId ?? null, `${v.value.to}: ${r.error}`);
     return { error: `Send failed: ${r.error}` };
+  }
+  if (token) {
+    await createEmailSend(session.organizationId, {
+      token,
+      contactId: input.contactId ?? null,
+      companyId: input.companyId ?? null,
+      dealId: input.dealId ?? null,
+      toEmail: v.value.to,
+      subject: v.value.subject,
+      sentBy: session.email,
+    }).catch(() => {});
   }
   // Log it on the timeline (best-effort). Activities need a company; skip the log
   // if we weren't given one rather than failing the send.

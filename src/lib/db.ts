@@ -2291,6 +2291,26 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_tmpl_org (organization_id, name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Sent emails with open tracking. `token` is the unguessable id in the
+      // tracking pixel URL; opened_at/open_count are stamped when it loads.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_email_sends (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          token CHAR(48) NOT NULL,
+          contact_id INT UNSIGNED NULL,
+          company_id INT UNSIGNED NULL,
+          deal_id INT UNSIGNED NULL,
+          to_email VARCHAR(190) NOT NULL DEFAULT '',
+          subject VARCHAR(300) NOT NULL DEFAULT '',
+          sent_by VARCHAR(190) NOT NULL DEFAULT '',
+          sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          opened_at TIMESTAMP NULL,
+          open_count INT UNSIGNED NOT NULL DEFAULT 0,
+          UNIQUE KEY uq_send_token (token),
+          INDEX idx_send_org (organization_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2539,6 +2559,50 @@ export async function updateEmailTemplate(orgId: number, id: number, t: { name: 
 export async function deleteEmailTemplate(orgId: number, id: number): Promise<void> {
   await ensureAuthSchema();
   await getPool().query("DELETE FROM crm_email_templates WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+// ---------------------------------------------------------- email open tracking
+
+export async function createEmailSend(orgId: number, s: { token: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; toEmail: string; subject: string; sentBy: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `INSERT INTO crm_email_sends (organization_id, token, contact_id, company_id, deal_id, to_email, subject, sent_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, s.token.slice(0, 48), s.contactId ?? null, s.companyId ?? null, s.dealId ?? null, s.toEmail.slice(0, 190), s.subject.slice(0, 300), s.sentBy.slice(0, 190)]
+  );
+}
+
+export interface OpenedSend {
+  firstOpen: boolean;
+  organizationId: number;
+  contactId: number | null;
+  companyId: number | null;
+  dealId: number | null;
+  subject: string;
+}
+
+/** Record an open for a tracking token. Returns the send (with firstOpen) so the
+ *  caller can log a one-time "opened" activity, or null if the token is unknown. */
+export async function markEmailOpened(token: string): Promise<OpenedSend | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT organization_id, contact_id, company_id, deal_id, subject, opened_at FROM crm_email_sends WHERE token = ? LIMIT 1",
+    [token]
+  );
+  const r = rows[0];
+  if (!r) return null;
+  await getPool().query(
+    "UPDATE crm_email_sends SET opened_at = COALESCE(opened_at, CURRENT_TIMESTAMP), open_count = open_count + 1 WHERE token = ?",
+    [token]
+  );
+  return {
+    firstOpen: r.opened_at === null,
+    organizationId: r.organization_id,
+    contactId: r.contact_id,
+    companyId: r.company_id,
+    dealId: r.deal_id,
+    subject: String(r.subject ?? ""),
+  };
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`
