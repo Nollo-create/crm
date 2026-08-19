@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Plus, Pencil, Trash2, Loader2, X, Building2, MapPin, Clock } from "lucide-react";
+import { CalendarDays, Plus, Pencil, Trash2, Loader2, X, Building2, MapPin, Clock, CalendarPlus, Download } from "lucide-react";
 import { meetingsAction, createMeetingAction, updateMeetingAction, deleteMeetingAction, type MeetingView, type MeetingDTO } from "@/lib/actions/meetings";
+import { googleCalendarUrl, icsContent } from "@/lib/crm/calendar-links";
 import { searchCompaniesAction, getCompanyAction, type SearchHit } from "@/lib/actions/crm";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,6 +78,17 @@ export function MeetingsView() {
     const r = await deleteMeetingAction(id);
     if (r.error) return toast(r.error, { tone: "error" });
     load();
+  }
+  function downloadIcs(m: MeetingView) {
+    const ics = icsContent(m, `meeting-${m.id}@sajtpress`);
+    const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(m.title || "meeting").replace(/[^\w.-]+/g, "-").slice(0, 60)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   const today0 = startOfToday();
@@ -164,12 +176,12 @@ export function MeetingsView() {
                       </p>
                       {m.notes && <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-2xs text-muted-foreground/80">{m.notes}</p>}
                     </div>
-                    {canWrite && (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button onClick={() => openEdit(m)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground"><Pencil size={13} /></button>
-                        <button onClick={() => remove(m.id, m.title)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger"><Trash2 size={13} /></button>
-                      </div>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <a href={googleCalendarUrl(m)} target="_blank" rel="noopener noreferrer" className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-electric" title="Add to Google Calendar"><CalendarPlus size={13} /></a>
+                      <button onClick={() => downloadIcs(m)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Download .ics"><Download size={13} /></button>
+                      {canWrite && <button onClick={() => openEdit(m)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground" title="Edit"><Pencil size={13} /></button>}
+                      {canWrite && <button onClick={() => remove(m.id, m.title)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-danger" title="Delete"><Trash2 size={13} /></button>}
+                    </div>
                   </Card>
                 );
               })}

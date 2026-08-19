@@ -2346,6 +2346,8 @@ export function ensureAuthSchema(): Promise<void> {
       // Record-level access: when on, members see only their own (or unassigned) records.
       await ensureColumn(pool, "crm_organizations", "restrict_member_visibility", "restrict_member_visibility TINYINT NOT NULL DEFAULT 0");
       await ensureColumn(pool, "crm_organizations", "require_admin_mfa", "require_admin_mfa TINYINT NOT NULL DEFAULT 0");
+      // Meeting reminders: set once a "starting soon" notification has fired.
+      await ensureColumn(pool, "crm_meetings", "reminded", "reminded TINYINT(1) NOT NULL DEFAULT 0");
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_users (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -3503,6 +3505,31 @@ export async function listMeetingsToday(orgId: number): Promise<MeetingRow[]> {
     [orgId]
   );
   return rows;
+}
+
+export interface MeetingReminderRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  title: string;
+  starts_at: Date;
+  created_by: string;
+}
+/** Cross-org: meetings starting within the next `withinMin` minutes that haven't
+ *  been reminded yet. Used by the cron seam to fire "starting soon" notices. */
+export async function listMeetingsToRemind(withinMin: number): Promise<MeetingReminderRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<MeetingReminderRow[]>(
+    `SELECT id, organization_id, title, starts_at, created_by
+       FROM crm_meetings
+      WHERE reminded = 0 AND starts_at > NOW() AND starts_at <= (NOW() + INTERVAL ? MINUTE)
+      ORDER BY starts_at ASC LIMIT 200`,
+    [Math.max(1, Math.min(240, Math.round(withinMin)))]
+  );
+  return rows;
+}
+
+export async function markMeetingReminded(id: number): Promise<void> {
+  await getPool().query("UPDATE crm_meetings SET reminded = 1 WHERE id = ?", [id]);
 }
 
 // ---- Lead-capture forms ----------------------------------------------------
