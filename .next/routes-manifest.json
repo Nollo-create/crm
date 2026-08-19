@@ -261,6 +261,12 @@
       "namedRegex": "^/meetings(?:/)?$"
     },
     {
+      "page": "/my-day",
+      "regex": "^/my\\-day(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/my\\-day(?:/)?$"
+    },
+    {
       "page": "/pipeline",
       "regex": "^/pipeline(?:/)?$",
       "routeKeys": {},

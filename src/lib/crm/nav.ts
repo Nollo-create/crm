@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import {
   LayoutDashboard,
+  Sun,
   Building2,
   Users,
   Target,
@@ -59,7 +60,10 @@ export interface CrmNavGroup {
 // it's built out phase by phase.
 export const crmNav: CrmNavGroup[] = [
   {
-    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+    items: [
+      { label: "My Day", href: "/my-day", icon: Sun },
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
+    ],
   },
   {
     title: "CRM",
