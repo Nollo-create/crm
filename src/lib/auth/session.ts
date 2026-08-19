@@ -14,7 +14,13 @@ async function sessionRequestContext(): Promise<{ ip: string; userAgent: string 
     const h = await headers();
     const ip0 = clientIpFromHeaders(h);
     const ip = (ip0 === "unknown" ? "" : ip0).slice(0, 45);
-    return { ip, userAgent: (h.get("user-agent") || "").slice(0, 255) };
+    // Append the platform-version client hint (when the browser sends it) so the
+    // parser can tell Windows 10 from 11. Kept in the UA field to avoid a schema
+    // change; base UA is trimmed first so the token can't get truncated off.
+    const chpv = (h.get("sec-ch-ua-platform-version") || "").replace(/"/g, "").trim();
+    const base = (h.get("user-agent") || "").slice(0, 220);
+    const userAgent = chpv ? `${base} CHPV/${chpv.slice(0, 16)}` : base;
+    return { ip, userAgent };
   } catch {
     return { ip: "", userAgent: "" };
   }

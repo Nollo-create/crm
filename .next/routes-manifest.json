@@ -37,6 +37,10 @@
           "value": "off"
         },
         {
+          "key": "Accept-CH",
+          "value": "Sec-CH-UA-Platform-Version"
+        },
+        {
           "key": "X-Frame-Options",
           "value": "DENY"
         }
@@ -65,6 +69,10 @@
         {
           "key": "X-DNS-Prefetch-Control",
           "value": "off"
+        },
+        {
+          "key": "Accept-CH",
+          "value": "Sec-CH-UA-Platform-Version"
         }
       ],
       "regex": "^/f(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"

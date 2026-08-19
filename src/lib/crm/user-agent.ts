@@ -20,7 +20,18 @@ function browserOf(ua: string): string {
 }
 
 function osOf(ua: string): string {
-  if (/\bWindows NT\b/.test(ua)) return "Windows";
+  if (/\bWindows NT\b/.test(ua)) {
+    // Sec-CH-UA-Platform-Version (captured as "CHPV/<major>.x.x") disambiguates
+    // Win 10 vs 11 — the UA string says "Windows NT 10.0" for both. Mapping:
+    // major >= 13 -> Windows 11; major 1-12 -> Windows 10.
+    const m = ua.match(/CHPV\/(\d+)/);
+    if (m) {
+      const major = Number(m[1]);
+      if (major >= 13) return "Windows 11";
+      if (major >= 1) return "Windows 10";
+    }
+    return "Windows";
+  }
   if (/\biPhone\b/.test(ua)) return "iPhone";
   if (/\biPad\b/.test(ua)) return "iPad";
   if (/\bAndroid\b/.test(ua)) return "Android";

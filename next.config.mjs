@@ -32,6 +32,9 @@ const nextConfig = {
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
       { key: "X-DNS-Prefetch-Control", value: "off" },
+      // Ask browsers to send the platform version hint so we can tell Windows 10
+      // from 11 (the UA string reports "Windows NT 10.0" for both).
+      { key: "Accept-CH", value: "Sec-CH-UA-Platform-Version" },
     ];
     return [
       // Everything except the public lead-capture pages: deny framing outright.
