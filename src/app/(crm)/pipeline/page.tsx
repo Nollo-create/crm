@@ -23,6 +23,7 @@ export default function PipelinePage() {
   const [q, setQ] = useState("");
   const [owner, setOwner] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["won", "lost"]));
+  const [stageFilter, setStageFilter] = useState<StageId | null>(null);
 
   // board drag state
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -63,6 +64,9 @@ export default function PipelinePage() {
   }, [filtered]);
   const summary = useMemo(() => summarizePipeline(filtered), [filtered]);
   const funnelMax = useMemo(() => Math.max(1, ...OPEN_STAGES.map((s) => (byStage.get(s.id) ?? []).length)), [byStage]);
+  // The funnel always shows every stage (so you can switch focus); a stage filter
+  // only narrows which lanes/columns render below.
+  const stagesToShow = stageFilter ? STAGES.filter((s) => s.id === stageFilter) : STAGES;
 
   async function move(id: number, toStage: string) {
     setDeals((prev) => prev.map((d) => (d.id === id ? { ...d, stage: toStage as StageId } : d)));
@@ -79,7 +83,7 @@ export default function PipelinePage() {
 
   if (loading) return <div className="grid min-h-[50vh] place-items-center"><Loader2 className="animate-spin text-muted-foreground" /></div>;
 
-  const hasFilters = !!(q.trim() || owner);
+  const hasFilters = !!(q.trim() || owner || stageFilter);
 
   return (
     <div className="space-y-4">
@@ -109,8 +113,18 @@ export default function PipelinePage() {
           const list = byStage.get(s.id) ?? [];
           const val = list.reduce((t, d) => t + d.value, 0);
           const tone = STAGE_TONE[s.id];
+          const selected = stageFilter === s.id;
           return (
-            <div key={s.id} className="rounded-lg border border-border bg-card p-2.5">
+            <button
+              key={s.id}
+              onClick={() => setStageFilter(selected ? null : s.id)}
+              aria-pressed={selected}
+              title={selected ? `Showing ${s.label} — click to clear` : `Show only ${s.label}`}
+              className={cn(
+                "rounded-lg border bg-card p-2.5 text-left transition-colors hover:border-electric/40",
+                selected ? "border-electric ring-1 ring-electric/40" : "border-border"
+              )}
+            >
               <div className="flex items-center gap-1.5">
                 <span className={cn("h-2 w-2 shrink-0 rounded-full", TONE_DOT[tone])} />
                 <p className="truncate text-2xs font-medium text-muted-foreground">{s.label}</p>
@@ -120,7 +134,7 @@ export default function PipelinePage() {
               <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-secondary">
                 <div className={cn("h-full rounded-full", TONE_DOT[tone])} style={{ width: `${(list.length / funnelMax) * 100}%` }} />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -139,7 +153,7 @@ export default function PipelinePage() {
             </Select>
           )}
           {hasFilters && (
-            <button onClick={() => { setQ(""); setOwner(""); }} className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
+            <button onClick={() => { setQ(""); setOwner(""); setStageFilter(null); }} className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
               <X size={12} /> Clear
             </button>
           )}
@@ -153,9 +167,9 @@ export default function PipelinePage() {
       ) : view === "list" ? (
         /* ---- List view: vertical lanes, no horizontal scroll ---- */
         <div className="space-y-2">
-          {STAGES.map((s) => {
+          {stagesToShow.map((s) => {
             const list = byStage.get(s.id) ?? [];
-            const isCollapsed = collapsed.has(s.id);
+            const isCollapsed = stageFilter ? false : collapsed.has(s.id);
             const val = list.reduce((t, d) => t + d.value, 0);
             const wtd = list.reduce((t, d) => t + weightedValue(d), 0);
             const tone = STAGE_TONE[s.id];
@@ -208,7 +222,7 @@ export default function PipelinePage() {
       ) : (
         /* ---- Board view: horizontal kanban with drag & drop ---- */
         <div className="flex gap-3 overflow-x-auto pb-4">
-          {STAGES.map((s) => {
+          {stagesToShow.map((s) => {
             const list = byStage.get(s.id) ?? [];
             const sum = list.reduce((t, d) => t + d.value, 0);
             const tone = STAGE_TONE[s.id];
