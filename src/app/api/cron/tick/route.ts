@@ -23,17 +23,10 @@ function secretOk(provided: string): boolean {
 
 async function run(req: NextRequest) {
   if (!process.env.CRON_SECRET) return NextResponse.json({ ok: false, error: "cron not configured" }, { status: 503 });
-  // Prefer the header (not logged). The ?secret= query fallback is kept so an
-  // existing scheduler keeps working, but it's DEPRECATED — the secret ends up in
-  // proxy/access logs. Switch to `-H "x-cron-secret: <secret>"` and it can be
-  // dropped entirely (audit SEC-17).
-  const headerSecret = req.headers.get("x-cron-secret");
-  const querySecret = req.nextUrl.searchParams.get("secret");
-  const provided = headerSecret ?? querySecret ?? "";
+  // Header only (audit SEC-17). The secret must ride in the x-cron-secret header,
+  // never the URL query, so it can't leak into proxy/access logs.
+  const provided = req.headers.get("x-cron-secret") ?? "";
   if (!secretOk(provided)) return new NextResponse("unauthorized", { status: 401 });
-  if (!headerSecret && querySecret) {
-    console.warn("[cron] CRON_SECRET was sent via the ?secret= query string — it is logged by the proxy. Move it to the x-cron-secret header (SEC-17).");
-  }
 
   const orgs = await distinctAutomationOrgs().catch(() => []);
   let created = 0;
