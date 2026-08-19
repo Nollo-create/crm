@@ -293,6 +293,11 @@ export function ensureSchema(): Promise<void> {
       await ensureColumn(pool, "crm_deals", "loss_reason", "loss_reason VARCHAR(40) NOT NULL DEFAULT ''");
       // Deal-scoped activities (Phase 3A — a deal's own timeline).
       await ensureColumn(pool, "crm_activities", "deal_id", "deal_id INT UNSIGNED NULL");
+      // Quote client-accept flow (Stage 5 — public share link + decision stamps).
+      await ensureColumn(pool, "crm_quotes", "public_token", "public_token VARCHAR(64) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_quotes", "sent_at", "sent_at TIMESTAMP NULL");
+      await ensureColumn(pool, "crm_quotes", "decided_at", "decided_at TIMESTAMP NULL");
+      await ensureColumn(pool, "crm_quotes", "client_name", "client_name VARCHAR(190) NOT NULL DEFAULT ''");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -1640,6 +1645,10 @@ export interface QuoteRow extends mysql.RowDataPacket {
   total_cents: number;
   created_at: Date;
   updated_at: Date;
+  public_token: string;
+  sent_at: Date | null;
+  decided_at: Date | null;
+  client_name: string;
 }
 export interface QuoteStatsRow extends QuoteRow {
   company_name: string;
@@ -1742,6 +1751,65 @@ export async function deleteQuote(orgId: number, id: number): Promise<void> {
   const pool = getPool();
   await pool.query("DELETE FROM crm_quote_items WHERE quote_id = ? AND organization_id = ?", [id, orgId]);
   await pool.query("DELETE FROM crm_quotes WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+// ---- Quote client-share + accept flow --------------------------------------
+
+/** Give a quote a public share token if it lacks one, and stamp it sent
+ *  (draft -> sent). Returns the token, or null if the quote isn't this org's. */
+export async function shareQuote(orgId: number, id: number, newToken: string): Promise<string | null> {
+  await ensureSchema();
+  const pool = getPool();
+  const [rows] = await pool.query<QuoteRow[]>("SELECT public_token FROM crm_quotes WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  const row = rows[0];
+  if (!row) return null;
+  const token = row.public_token || newToken.slice(0, 64);
+  await pool.query(
+    "UPDATE crm_quotes SET public_token = ?, status = IF(status = 'draft', 'sent', status), sent_at = COALESCE(sent_at, CURRENT_TIMESTAMP) WHERE id = ? AND organization_id = ?",
+    [token, id, orgId]
+  );
+  return token;
+}
+
+/** Public lookup by share token. Empty/short tokens are rejected so the default
+ *  empty `public_token` of un-shared quotes can never be matched. */
+export async function getQuoteByToken(token: string): Promise<{ quote: QuoteStatsRow; items: QuoteItemRow[] } | null> {
+  const t = (token || "").trim();
+  if (t.length < 8) return null;
+  await ensureSchema();
+  const pool = getPool();
+  const [qRows] = await pool.query<QuoteStatsRow[]>(
+    "SELECT q.*, co.name AS company_name FROM crm_quotes q JOIN crm_companies co ON co.id = q.company_id AND co.organization_id = q.organization_id WHERE q.public_token = ? LIMIT 1",
+    [t.slice(0, 64)]
+  );
+  const quote = qRows[0];
+  if (!quote) return null;
+  const [items] = await pool.query<QuoteItemRow[]>("SELECT * FROM crm_quote_items WHERE quote_id = ? AND organization_id = ? ORDER BY id ASC", [quote.id, quote.organization_id]);
+  return { quote, items };
+}
+
+/** Public: record the client's accept/decline once. Idempotent — a quote that is
+ *  already accepted/declined is not changed, and `alreadyDecided` says so. */
+export async function recordQuoteDecision(
+  token: string,
+  decision: "accepted" | "declined",
+  clientName: string
+): Promise<{ organizationId: number; quoteId: number; companyId: number; status: string; alreadyDecided: boolean } | null> {
+  const t = (token || "").trim();
+  if (t.length < 8) return null;
+  await ensureSchema();
+  const pool = getPool();
+  const [rows] = await pool.query<QuoteRow[]>("SELECT * FROM crm_quotes WHERE public_token = ? LIMIT 1", [t.slice(0, 64)]);
+  const q = rows[0];
+  if (!q) return null;
+  const alreadyDecided = q.status === "accepted" || q.status === "declined";
+  if (!alreadyDecided) {
+    await pool.query(
+      "UPDATE crm_quotes SET status = ?, decided_at = CURRENT_TIMESTAMP, client_name = ? WHERE id = ? AND organization_id = ?",
+      [decision, clientName.slice(0, 190), q.id, q.organization_id]
+    );
+  }
+  return { organizationId: q.organization_id, quoteId: q.id, companyId: q.company_id, status: alreadyDecided ? q.status : decision, alreadyDecided };
 }
 
 /** Recompute a quote's stored total from its line items. */

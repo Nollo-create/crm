@@ -93,6 +93,14 @@
       "namedRegex": "^/api/forms/(?<nxtPtoken>[^/]+?)/submit(?:/)?$"
     },
     {
+      "page": "/api/quotes/[token]/decision",
+      "regex": "^/api/quotes/([^/]+?)/decision(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/api/quotes/(?<nxtPtoken>[^/]+?)/decision(?:/)?$"
+    },
+    {
       "page": "/companies/[id]",
       "regex": "^/companies/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -131,6 +139,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/leads/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/q/[token]",
+      "regex": "^/q/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/q/(?<nxtPtoken>[^/]+?)(?:/)?$"
     },
     {
       "page": "/quotes/[id]",

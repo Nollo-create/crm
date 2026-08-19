@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomBytes } from "crypto";
 import {
   createQuote,
   duplicateQuote,
@@ -13,11 +14,14 @@ import {
   deleteQuoteItem,
   searchProducts,
   getCompany,
+  shareQuote,
   type QuoteStatsRow,
   type QuoteItemRow,
   type ProductRow,
 } from "@/lib/db";
 import { requireSession, guardWrite } from "@/lib/auth/session";
+import { recordAudit } from "@/lib/auth/audit";
+import { publicBaseUrl } from "@/lib/email/mailbox";
 import { isQuoteStatus, quoteNumber } from "@/lib/crm/quotes";
 import { validated, vString, vInt } from "@/lib/crm/validate";
 
@@ -66,8 +70,9 @@ function toItem(r: QuoteItemRow): QuoteItem {
 }
 
 export interface QuoteDetail {
-  quote: Quote & { notes: string };
+  quote: Quote & { notes: string; publicToken: string; clientName: string; decidedAt: string | null };
   items: QuoteItem[];
+  baseUrl: string;
 }
 
 export interface QuotesPage {
@@ -119,9 +124,36 @@ export async function duplicateQuoteAction(id: number): Promise<{ id?: number; e
 
 export async function getQuoteAction(id: number): Promise<QuoteDetail | null> {
   const { organizationId } = await requireSession();
-  const res = await getQuote(organizationId, id);
+  const [res, baseUrl] = await Promise.all([getQuote(organizationId, id), publicBaseUrl().catch(() => "")]);
   if (!res) return null;
-  return { quote: { ...toQuote(res.quote), notes: res.quote.notes }, items: res.items.map(toItem) };
+  return {
+    quote: {
+      ...toQuote(res.quote),
+      notes: res.quote.notes,
+      publicToken: res.quote.public_token || "",
+      clientName: res.quote.client_name || "",
+      decidedAt: res.quote.decided_at ? new Date(res.quote.decided_at).toISOString() : null,
+    },
+    items: res.items.map(toItem),
+    baseUrl,
+  };
+}
+
+/** Give the quote a public client link (and mark it sent). Returns the URL. */
+export async function shareQuoteAction(id: number): Promise<{ url?: string; token?: string; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const { organizationId } = g.session;
+  const cur = await getQuote(organizationId, id).catch(() => null);
+  if (!cur) return { error: "Quote not found." };
+  if (cur.items.length === 0) return { error: "Add at least one line item before sharing." };
+  const token = await shareQuote(organizationId, id, `qt_${randomBytes(18).toString("base64url")}`);
+  if (!token) return { error: "Quote not found." };
+  await recordAudit(g.session, "quote_share", "quote", id, quoteNumber(id));
+  const baseUrl = await publicBaseUrl().catch(() => "");
+  revalidatePath(`/quotes/${id}`);
+  revalidatePath("/quotes");
+  return { url: `${baseUrl}/q/${token}`, token };
 }
 
 export async function updateQuoteStatusAction(id: number, status: string): Promise<{ error?: string }> {

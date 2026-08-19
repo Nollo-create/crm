@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, X, Copy, Printer } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, Copy, Printer, Share2, Check, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
 import {
   getQuoteAction,
   duplicateQuoteAction,
@@ -14,6 +14,7 @@ import {
   setQuoteItemQuantityAction,
   deleteQuoteItemAction,
   searchProductsAction,
+  shareQuoteAction,
   type QuoteDetail,
   type QuoteItem,
   type ProductHit,
@@ -46,6 +47,9 @@ export function QuoteEditor({ id }: { id: number }) {
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<ProductHit[]>([]);
   const [adding, setAdding] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [clientLink, setClientLink] = useState("");
+  const [copied, setCopied] = useState(false);
 
   async function load() {
     const res = await getQuoteAction(id).catch(() => null);
@@ -54,6 +58,7 @@ export function QuoteEditor({ id }: { id: number }) {
       setD(res);
       setNotes(res.quote.notes);
       setValidUntil(res.quote.validUntil ?? "");
+      setClientLink(res.quote.publicToken ? `${res.baseUrl}/q/${res.quote.publicToken}` : "");
     }
     setLoading(false);
   }
@@ -146,7 +151,28 @@ export function QuoteEditor({ id }: { id: number }) {
     await deleteQuoteItemAction(id, item.id);
   }
 
+  async function share() {
+    setShareBusy(true);
+    const r = await shareQuoteAction(id);
+    setShareBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    if (r.url) setClientLink(r.url);
+    // Sharing flips draft -> sent; refresh the header to reflect it.
+    void load();
+    toast("Client link ready", { tone: "success" });
+  }
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(clientLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast("Couldn't copy — select the link manually.", { tone: "error" });
+    }
+  }
+
   const qNum = d.quote.number;
+  const decided = d.quote.status === "accepted" || d.quote.status === "declined";
 
   return (
     <div className="space-y-4">
@@ -197,6 +223,41 @@ export function QuoteEditor({ id }: { id: number }) {
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={commitHeader} placeholder="Optional" disabled={!canWrite} className="mt-1 h-9" />
           </label>
         </div>
+      </Card>
+
+      {/* Share with client */}
+      <Card className="p-4 print:hidden sm:p-5">
+        {decided ? (
+          <div className={cn("flex items-center gap-2.5 text-sm", d.quote.status === "accepted" ? "text-emerald" : "text-danger")}>
+            {d.quote.status === "accepted" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+            <span className="font-medium">
+              {d.quote.status === "accepted" ? "Accepted" : "Declined"}
+              {d.quote.clientName ? ` by ${d.quote.clientName}` : ""}
+              {d.quote.decidedAt ? ` · ${new Date(d.quote.decidedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}
+            </span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">Client link</p>
+                <p className="text-2xs text-muted-foreground">A public page where the client views the quote, saves a PDF, and accepts or declines online.</p>
+              </div>
+              {canWrite && (
+                <Button size="sm" variant={clientLink ? "outline" : "default"} onClick={share} disabled={shareBusy}>
+                  {shareBusy ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />} {clientLink ? "Regenerate" : "Share with client"}
+                </Button>
+              )}
+            </div>
+            {clientLink && (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-2.5 py-1.5">
+                <a href={clientLink} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-xs text-electric hover:underline">{clientLink}</a>
+                <a href={clientLink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" title="Open"><ExternalLink size={13} /></a>
+                <button onClick={copyLink} className="shrink-0 text-muted-foreground hover:text-foreground" title="Copy link">{copied ? <Check size={13} className="text-emerald" /> : <Copy size={13} />}</button>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Line items */}
