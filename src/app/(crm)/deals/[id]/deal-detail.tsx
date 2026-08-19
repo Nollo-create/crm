@@ -229,6 +229,8 @@ export function DealDetail({ id }: { id: number }) {
       {composing && canWrite && (
         <EmailComposer
           to={d.contacts.find((c) => c.id === dl.contactId)?.email ?? d.contacts[0]?.email ?? ""}
+          recipientName={(d.contacts.find((c) => c.id === dl.contactId) ?? d.contacts[0])?.name ?? ""}
+          companyName={dl.companyName}
           contactId={dl.contactId ?? undefined}
           dealId={id}
           companyId={dl.companyId}

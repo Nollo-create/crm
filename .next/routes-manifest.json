@@ -303,6 +303,12 @@
       "namedRegex": "^/settings/email(?:/)?$"
     },
     {
+      "page": "/settings/email-templates",
+      "regex": "^/settings/email\\-templates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/email\\-templates(?:/)?$"
+    },
+    {
       "page": "/settings/emergency",
       "regex": "^/settings/emergency(?:/)?$",
       "routeKeys": {},

@@ -2277,6 +2277,20 @@ export function ensureAuthSchema(): Promise<void> {
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Reusable email templates (subject + body with {{name}}/{{company}} vars).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_email_templates (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          name VARCHAR(120) NOT NULL DEFAULT '',
+          subject VARCHAR(300) NOT NULL DEFAULT '',
+          body TEXT NULL,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_tmpl_org (organization_id, name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2482,6 +2496,49 @@ export async function upsertEmailSettings(orgId: number, s: EmailSettingsInput):
       s.enabled ? 1 : 0,
     ]
   );
+}
+
+// ---------------------------------------------------------- email templates
+
+export interface EmailTemplateRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  subject: string;
+  body: string | null;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export async function listEmailTemplates(orgId: number): Promise<EmailTemplateRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<EmailTemplateRow[]>(
+    "SELECT * FROM crm_email_templates WHERE organization_id = ? ORDER BY name ASC, id ASC",
+    [orgId]
+  );
+  return rows;
+}
+
+export async function createEmailTemplate(orgId: number, t: { name: string; subject: string; body: string; createdBy: string }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_email_templates (organization_id, name, subject, body, created_by) VALUES (?, ?, ?, ?, ?)",
+    [orgId, t.name.slice(0, 120), t.subject.slice(0, 300), t.body.slice(0, 20000), t.createdBy.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+export async function updateEmailTemplate(orgId: number, id: number, t: { name: string; subject: string; body: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_email_templates SET name = ?, subject = ?, body = ? WHERE id = ? AND organization_id = ?",
+    [t.name.slice(0, 120), t.subject.slice(0, 300), t.body.slice(0, 20000), id, orgId]
+  );
+}
+
+export async function deleteEmailTemplate(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_email_templates WHERE id = ? AND organization_id = ?", [id, orgId]);
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

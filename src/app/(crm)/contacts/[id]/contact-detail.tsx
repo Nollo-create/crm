@@ -185,7 +185,7 @@ export function ContactDetail({ id }: { id: number }) {
       </Card>
 
       {composing && canWrite && (
-        <EmailComposer to={c.email} contactId={id} companyId={c.companyId} onClose={() => setComposing(false)} onSent={load} />
+        <EmailComposer to={c.email} recipientName={c.name} companyName={c.companyName} contactId={id} companyId={c.companyId} onClose={() => setComposing(false)} onSent={load} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">

@@ -126,6 +126,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Roles & Permissions", href: "/settings/roles", icon: Shield },
       { label: "Integrations", href: "/settings/integrations", icon: Plug },
       { label: "Email", href: "/settings/email", icon: Mail },
+      { label: "Email Templates", href: "/settings/email-templates", icon: FileText },
       { label: "Billing", href: "/settings/billing", icon: CreditCard },
       { label: "Security", href: "/settings/security-overview", icon: ShieldCheck },
       { label: "Audit Log", href: "/settings/security", icon: KeyRound },

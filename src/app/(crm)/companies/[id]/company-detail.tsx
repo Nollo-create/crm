@@ -246,6 +246,8 @@ export function CompanyDetail({ id }: { id: number }) {
       {composing && canWrite && (
         <EmailComposer
           to={d.contacts.find((x) => x.email)?.email ?? c.email ?? ""}
+          recipientName={d.contacts.find((x) => x.email)?.name ?? ""}
+          companyName={c.name}
           contactId={d.contacts.find((x) => x.email)?.id ?? undefined}
           companyId={c.id}
           onClose={() => setComposing(false)}

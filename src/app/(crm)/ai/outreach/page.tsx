@@ -161,6 +161,8 @@ export default function OutreachPage() {
       {composing && result && (
         <EmailComposer
           to={contacts.find((c) => c.id === contactId)?.email ?? ""}
+          recipientName={contacts.find((c) => c.id === contactId)?.name ?? ""}
+          companyName={companyName}
           subject={parseOutreachDraft(result.text).subject}
           body={parseOutreachDraft(result.text).body}
           contactId={contactId || undefined}

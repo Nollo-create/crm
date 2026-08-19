@@ -5,7 +5,7 @@ import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
-import { getEmailSettings, upsertEmailSettings, addActivity } from "@/lib/db";
+import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate } from "@/lib/db";
 import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
 import { sendMail, type SmtpConfig } from "@/lib/email/send";
 import { validated, vString, vEmail, vInt } from "@/lib/crm/validate";
@@ -209,4 +209,52 @@ export async function sendEmailAction(input: {
   if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
   revalidatePath("/emails");
   return { ok: true };
+}
+
+// -------------------------------------------------------------- email templates
+
+export interface EmailTemplateView {
+  id: number;
+  name: string;
+  subject: string;
+  body: string;
+}
+
+/** Any authenticated user can read templates (reps use them in the composer). */
+export async function listEmailTemplatesAction(): Promise<EmailTemplateView[]> {
+  const { organizationId } = await requireSession();
+  const rows = await listEmailTemplates(organizationId).catch(() => []);
+  return rows.map((r) => ({ id: r.id, name: r.name, subject: r.subject, body: r.body ?? "" }));
+}
+
+export async function saveEmailTemplateAction(input: { id?: number; name: string; subject: string; body: string }): Promise<{ id?: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  const session = g.session;
+  const v = validated(() => ({
+    name: vString("Name", input.name, { required: true, max: 120 }),
+    subject: vString("Subject", input.subject, { required: true, max: 300 }),
+    body: vString("Body", input.body, { required: true, max: 20000 }),
+  }));
+  if (!v.ok) return { error: v.error };
+
+  if (input.id) {
+    await updateEmailTemplate(session.organizationId, input.id, v.value);
+    await recordAudit(session, "email_template_update", "email_template", input.id, v.value.name);
+    revalidatePath("/settings/email-templates");
+    return { id: input.id };
+  }
+  const id = await createEmailTemplate(session.organizationId, { ...v.value, createdBy: session.email });
+  await recordAudit(session, "email_template_create", "email_template", id, v.value.name);
+  revalidatePath("/settings/email-templates");
+  return { id };
+}
+
+export async function deleteEmailTemplateAction(id: number): Promise<{ error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  await deleteEmailTemplate(g.session.organizationId, id);
+  await recordAudit(g.session, "email_template_delete", "email_template", id);
+  revalidatePath("/settings/email-templates");
+  return {};
 }

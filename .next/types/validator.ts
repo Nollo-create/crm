@@ -371,6 +371,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/(crm)/settings/email-templates/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/settings/email-templates">> = Specific
+  const handler = {} as typeof import("../../src/app/(crm)/settings/email-templates/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/(crm)/settings/email/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/settings/email">> = Specific

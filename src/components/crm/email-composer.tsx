@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Mail, Loader2, Send, X, ShieldAlert } from "lucide-react";
-import { sendEmailAction, emailComposeStatusAction } from "@/lib/actions/email";
+import { sendEmailAction, emailComposeStatusAction, listEmailTemplatesAction, type EmailTemplateView } from "@/lib/actions/email";
+import { applyTemplate, templateVars } from "@/lib/crm/email-template";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 
 /** Inline email composer. Sends via the org mailbox and logs the send on the
@@ -15,6 +16,8 @@ export function EmailComposer({
   to: initialTo,
   subject: initialSubject = "",
   body: initialBody = "",
+  recipientName,
+  companyName,
   contactId,
   companyId,
   dealId,
@@ -24,6 +27,8 @@ export function EmailComposer({
   to: string;
   subject?: string;
   body?: string;
+  recipientName?: string;
+  companyName?: string;
   contactId?: number | null;
   companyId?: number | null;
   dealId?: number | null;
@@ -32,6 +37,7 @@ export function EmailComposer({
 }) {
   const { toast } = useToast();
   const [status, setStatus] = useState<{ available: boolean; from: string } | null>(null);
+  const [templates, setTemplates] = useState<EmailTemplateView[]>([]);
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
@@ -39,7 +45,16 @@ export function EmailComposer({
 
   useEffect(() => {
     emailComposeStatusAction().then(setStatus).catch(() => setStatus({ available: false, from: "" }));
+    listEmailTemplatesAction().then(setTemplates).catch(() => setTemplates([]));
   }, []);
+
+  function useTemplate(id: string) {
+    const t = templates.find((x) => String(x.id) === id);
+    if (!t) return;
+    const vars = templateVars({ name: recipientName, company: companyName });
+    setSubject(applyTemplate(t.subject, vars));
+    setBody(applyTemplate(t.body, vars));
+  }
 
   async function send() {
     setBusy(true);
@@ -68,6 +83,15 @@ export function EmailComposer({
         </div>
       ) : (
         <>
+          {templates.length > 0 && (
+            <label className="block text-2xs uppercase tracking-wide text-muted-foreground">
+              Start from a template
+              <Select defaultValue="" onChange={(e) => { useTemplate(e.target.value); e.target.value = ""; }} className="mt-1 h-9">
+                <option value="">— none —</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </Select>
+            </label>
+          )}
           <label className="block text-2xs uppercase tracking-wide text-muted-foreground">
             To
             <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@company.com" className="mt-1" autoComplete="off" />
