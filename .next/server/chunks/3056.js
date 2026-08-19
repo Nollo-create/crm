@@ -425,6 +425,20 @@ exports.id=3056,exports.ids=[3056],exports.modules={28303:a=>{function b(a){var 
           INDEX idx_capture_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `),await a.query(`
+        CREATE TABLE IF NOT EXISTS crm_goals (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL DEFAULT 0,
+          metric VARCHAR(20) NOT NULL DEFAULT 'revenue',
+          period_month VARCHAR(7) NOT NULL DEFAULT '',
+          target_amount BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_goal (organization_id, owner_user_id, metric, period_month),
+          INDEX idx_goal_period (organization_id, period_month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `),await a.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
           organization_id INT UNSIGNED NOT NULL,

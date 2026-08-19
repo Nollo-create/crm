@@ -43,6 +43,7 @@ import {
   Settings,
   FormInput,
   Combine,
+  Goal,
 } from "lucide-react";
 
 export type NavIcon = ComponentType<{ size?: number; className?: string }>;
@@ -124,6 +125,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Pipeline Analytics", href: "/analytics/pipeline", icon: PieChart },
       { label: "Revenue Forecast", href: "/analytics/forecast", icon: TrendingUp },
       { label: "Team Performance", href: "/analytics/team", icon: Users2 },
+      { label: "Goals & Quotas", href: "/goals", icon: Goal },
       { label: "Conversion", href: "/analytics/conversion", icon: BarChart3 },
       { label: "Email Report", href: "/analytics/email", icon: MailOpen },
     ],

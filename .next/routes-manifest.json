@@ -333,6 +333,12 @@
       "namedRegex": "^/emails/sequences(?:/)?$"
     },
     {
+      "page": "/goals",
+      "regex": "^/goals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/goals(?:/)?$"
+    },
+    {
       "page": "/icon.svg",
       "regex": "^/icon\\.svg(?:/)?$",
       "routeKeys": {},

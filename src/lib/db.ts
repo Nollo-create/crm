@@ -2540,6 +2540,23 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_capture_org (organization_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Sales goals / quotas — a target per owner (0 = whole team), metric and
+      // month. One row per (owner, metric, month); upserts adjust the target.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_goals (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL DEFAULT 0,
+          metric VARCHAR(20) NOT NULL DEFAULT 'revenue',
+          period_month VARCHAR(7) NOT NULL DEFAULT '',
+          target_amount BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_goal (organization_id, owner_user_id, metric, period_month),
+          INDEX idx_goal_period (organization_id, period_month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -3532,6 +3549,76 @@ export async function getCaptureFormByToken(token: string): Promise<CaptureFormR
 
 export async function incrementCaptureFormSubmissions(id: number): Promise<void> {
   await getPool().query("UPDATE crm_capture_forms SET submissions = submissions + 1 WHERE id = ?", [id]);
+}
+
+// ---- Sales goals / quotas --------------------------------------------------
+
+export interface GoalRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  owner_user_id: number;
+  metric: string;
+  period_month: string;
+  target_amount: number;
+}
+
+export async function upsertGoal(orgId: number, g: { ownerUserId: number; metric: string; periodMonth: string; target: number; createdBy: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `INSERT INTO crm_goals (organization_id, owner_user_id, metric, period_month, target_amount, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE target_amount = VALUES(target_amount)`,
+    [orgId, g.ownerUserId, g.metric.slice(0, 20), g.periodMonth.slice(0, 7), Math.max(0, Math.round(g.target)), g.createdBy.slice(0, 190)]
+  );
+}
+
+export async function deleteGoal(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("DELETE FROM crm_goals WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export async function listGoals(orgId: number, periodMonth: string): Promise<GoalRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<GoalRow[]>(
+    "SELECT * FROM crm_goals WHERE organization_id = ? AND period_month = ?",
+    [orgId, periodMonth.slice(0, 7)]
+  );
+  return rows;
+}
+
+export interface WonByOwnerRow extends mysql.RowDataPacket {
+  owner_user_id: number;
+  revenue: number;
+  deals: number;
+}
+/** Won revenue + deal count per owner in [startYmd, endYmd). Unassigned -> 0. */
+export async function wonByOwner(orgId: number, startYmd: string, endYmd: string): Promise<WonByOwnerRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<WonByOwnerRow[]>(
+    `SELECT COALESCE(owner_user_id, 0) AS owner_user_id, COALESCE(SUM(value), 0) AS revenue, COUNT(*) AS deals
+       FROM crm_deals
+      WHERE organization_id = ? AND stage = 'won' AND closed_at >= ? AND closed_at < ?
+      GROUP BY COALESCE(owner_user_id, 0)`,
+    [orgId, startYmd, endYmd]
+  );
+  return rows;
+}
+
+export interface LeadsByOwnerRow extends mysql.RowDataPacket {
+  owner_user_id: number;
+  leads: number;
+}
+/** New leads per owner created in [startYmd, endYmd). Unassigned -> 0. */
+export async function newLeadsByOwner(orgId: number, startYmd: string, endYmd: string): Promise<LeadsByOwnerRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<LeadsByOwnerRow[]>(
+    `SELECT COALESCE(owner_user_id, 0) AS owner_user_id, COUNT(*) AS leads
+       FROM crm_leads
+      WHERE organization_id = ? AND created_at >= ? AND created_at < ?
+      GROUP BY COALESCE(owner_user_id, 0)`,
+    [orgId, startYmd, endYmd]
+  );
+  return rows;
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`
