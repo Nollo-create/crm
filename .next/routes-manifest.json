@@ -291,6 +291,12 @@
       "namedRegex": "^/settings/billing(?:/)?$"
     },
     {
+      "page": "/settings/email",
+      "regex": "^/settings/email(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/email(?:/)?$"
+    },
+    {
       "page": "/settings/emergency",
       "regex": "^/settings/emergency(?:/)?$",
       "routeKeys": {},

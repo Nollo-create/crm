@@ -2260,6 +2260,23 @@ export function ensureAuthSchema(): Promise<void> {
       `);
       // Optional outbound alert channel (owner-set, https+public only). Empty = off.
       await ensureColumn(pool, "crm_organizations", "security_webhook_url", "security_webhook_url VARCHAR(500) NOT NULL DEFAULT ''");
+      // Per-org outbound mailbox (SMTP) for sending email from the CRM. The
+      // password is AES-256-GCM encrypted at rest (never stored or returned in
+      // clear). One row per org.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_email_settings (
+          organization_id INT UNSIGNED NOT NULL PRIMARY KEY,
+          host VARCHAR(190) NOT NULL DEFAULT '',
+          port INT UNSIGNED NOT NULL DEFAULT 587,
+          secure TINYINT NOT NULL DEFAULT 0,
+          username VARCHAR(190) NOT NULL DEFAULT '',
+          password_enc VARCHAR(1024) NOT NULL DEFAULT '',
+          from_name VARCHAR(120) NOT NULL DEFAULT '',
+          from_email VARCHAR(190) NOT NULL DEFAULT '',
+          enabled TINYINT NOT NULL DEFAULT 0,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2405,6 +2422,66 @@ export async function getOrgSecurityWebhook(orgId: number): Promise<string> {
 export async function setOrgSecurityWebhook(orgId: number, url: string): Promise<void> {
   await ensureAuthSchema();
   await getPool().query("UPDATE crm_organizations SET security_webhook_url = ? WHERE id = ?", [url.slice(0, 500), orgId]);
+}
+
+// ---------------------------------------------------------- email (SMTP) settings
+
+export interface EmailSettingsRow extends mysql.RowDataPacket {
+  organization_id: number;
+  host: string;
+  port: number;
+  secure: number;
+  username: string;
+  password_enc: string;
+  from_name: string;
+  from_email: string;
+  enabled: number;
+  updated_at: Date;
+}
+
+export interface EmailSettingsInput {
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  /** Already-encrypted password. Pass null to keep the stored one unchanged. */
+  passwordEnc: string | null;
+  fromName: string;
+  fromEmail: string;
+  enabled: boolean;
+}
+
+export async function getEmailSettings(orgId: number): Promise<EmailSettingsRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<EmailSettingsRow[]>(
+    "SELECT * FROM crm_email_settings WHERE organization_id = ? LIMIT 1",
+    [orgId]
+  );
+  return rows[0] ?? null;
+}
+
+/** Upsert the org's mailbox. When passwordEnc is null the existing encrypted
+ *  password is preserved (so editing other fields doesn't require re-entering it). */
+export async function upsertEmailSettings(orgId: number, s: EmailSettingsInput): Promise<void> {
+  await ensureAuthSchema();
+  const pwdClause = s.passwordEnc === null ? "" : ", password_enc = VALUES(password_enc)";
+  await getPool().query(
+    `INSERT INTO crm_email_settings (organization_id, host, port, secure, username, password_enc, from_name, from_email, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE host = VALUES(host), port = VALUES(port), secure = VALUES(secure),
+       username = VALUES(username)${pwdClause}, from_name = VALUES(from_name), from_email = VALUES(from_email), enabled = VALUES(enabled)`,
+    [
+      orgId,
+      s.host.slice(0, 190),
+      s.port,
+      s.secure ? 1 : 0,
+      s.username.slice(0, 190),
+      (s.passwordEnc ?? "").slice(0, 1024),
+      s.fromName.slice(0, 120),
+      s.fromEmail.slice(0, 190),
+      s.enabled ? 1 : 0,
+    ]
+  );
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`
