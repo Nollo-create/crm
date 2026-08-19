@@ -1,0 +1,38 @@
+name: CI
+
+# The same gate we run locally before every deploy, enforced on every push and
+# PR so a change can't silently break type-safety, the security regression
+# tests, or the build. No database or secrets are needed — tsc, the pure-logic
+# test suite, and `next build` all run without them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Tests (incl. security regression suite)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency audit (informational)
+        run: npm run audit
+        continue-on-error: true

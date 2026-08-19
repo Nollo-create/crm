@@ -42,7 +42,7 @@ export function MfaCard() {
   const [busy, setBusy] = useState(false);
 
   // enrollment
-  const [enroll, setEnroll] = useState<{ secret: string; formatted: string; otpauth: string } | null>(null);
+  const [enroll, setEnroll] = useState<{ secret: string; formatted: string; otpauth: string; qr?: string } | null>(null);
   const [code, setCode] = useState("");
   const [newCodes, setNewCodes] = useState<string[] | null>(null);
   const [copiedSecret, setCopiedSecret] = useState(false);
@@ -67,7 +67,7 @@ export function MfaCard() {
     const r = await beginMfaEnrollAction();
     setBusy(false);
     if (r.error) return toast(r.error, { tone: "error" });
-    setEnroll({ secret: r.secret!, formatted: r.formatted!, otpauth: r.otpauth! });
+    setEnroll({ secret: r.secret!, formatted: r.formatted!, otpauth: r.otpauth!, qr: r.qr });
   }
 
   async function confirm() {
@@ -139,14 +139,17 @@ export function MfaCard() {
     return (
       <Card className="space-y-3 p-4">
         {title}
-        <p className="text-2xs text-muted-foreground">Add this account to an authenticator app (Google Authenticator, 1Password, Authy…), then enter the 6-digit code it shows.</p>
+        <p className="text-2xs text-muted-foreground">Scan this with an authenticator app (Google Authenticator, 1Password, Authy…), then enter the 6-digit code it shows.</p>
+        {enroll.qr && (
+          // eslint-disable-next-line @next/next/no-img-element -- data: URL, not a remote image
+          <img src={enroll.qr} alt="Two-factor QR code" width={190} height={190} className="mx-auto rounded-lg border border-border bg-white p-2" />
+        )}
         <div className="space-y-1">
-          <p className="text-2xs uppercase tracking-wide text-muted-foreground">Setup key (type it into the app)</p>
+          <p className="text-2xs uppercase tracking-wide text-muted-foreground">Can&apos;t scan? Enter this key manually</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 overflow-x-auto rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm tracking-wider">{enroll.formatted}</code>
             <Button size="sm" variant="outline" onClick={copySecret}>{copiedSecret ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}</Button>
           </div>
-          <p className="break-all text-[10px] text-muted-foreground">Or open: {enroll.otpauth}</p>
         </div>
         <div className="flex items-end gap-2">
           <label className="flex-1 text-2xs uppercase tracking-wide text-muted-foreground">

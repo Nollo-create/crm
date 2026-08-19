@@ -12,6 +12,7 @@ import {
 } from "@/lib/db";
 import { isMfaCryptoConfigured, encryptSecret, decryptSecret } from "@/lib/auth/crypto";
 import { generateTotpSecret, verifyTotp, otpauthUrl, formatSecretForDisplay, generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/totp";
+import QRCode from "qrcode";
 import { verifyUserMfaCode } from "@/lib/auth/mfa-verify";
 import { recordAudit } from "@/lib/auth/audit";
 import { recordSecurityAlert } from "@/lib/security/alerts";
@@ -34,7 +35,7 @@ export async function mfaStatusAction(): Promise<MfaStatus> {
 
 /** Step 1: mint a pending secret and hand back what the user needs to add it to
  *  their authenticator (secret + otpauth URL). Not active until confirmed. */
-export async function beginMfaEnrollAction(): Promise<{ secret?: string; formatted?: string; otpauth?: string; error?: string }> {
+export async function beginMfaEnrollAction(): Promise<{ secret?: string; formatted?: string; otpauth?: string; qr?: string; error?: string }> {
   const session = await requireSession();
   if (!isMfaCryptoConfigured()) return { error: "Two-factor isn't available — the server needs MFA_ENCRYPTION_KEY configured." };
   const current = await getUserTotp(session.userId).catch(() => null);
@@ -44,7 +45,12 @@ export async function beginMfaEnrollAction(): Promise<{ secret?: string; formatt
   const enc = encryptSecret(secret);
   if (!enc) return { error: "Could not secure the secret." };
   await setUserTotpSecret(session.userId, enc);
-  return { secret, formatted: formatSecretForDisplay(secret), otpauth: otpauthUrl(secret, session.email) };
+  const otpauth = otpauthUrl(secret, session.email);
+  // A scannable QR as a PNG data URL (allowed by CSP img-src data:). Generated
+  // server-side so the client needs no library and no dangerouslySetInnerHTML.
+  // Best-effort — manual key entry (formatted) still works if this fails.
+  const qr = await QRCode.toDataURL(otpauth, { margin: 1, width: 190 }).catch(() => undefined);
+  return { secret, formatted: formatSecretForDisplay(secret), otpauth, qr };
 }
 
 /** Step 2: confirm a code from the authenticator, then turn MFA on and issue
