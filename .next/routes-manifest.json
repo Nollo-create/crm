@@ -133,6 +133,14 @@
       "namedRegex": "^/f/(?<nxtPtoken>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/invoices/[id]",
+      "regex": "^/invoices/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/invoices/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/leads/[id]",
       "regex": "^/leads/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -349,6 +357,12 @@
       "regex": "^/icon\\.svg(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/icon\\.svg(?:/)?$"
+    },
+    {
+      "page": "/invoices",
+      "regex": "^/invoices(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/invoices(?:/)?$"
     },
     {
       "page": "/leads",

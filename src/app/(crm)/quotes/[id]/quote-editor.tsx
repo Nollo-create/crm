@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, Copy, Printer, Share2, Check, ExternalLink, CheckCircle2, XCircle, Mail, X } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Minus, Loader2, Building2, Package, Copy, Printer, Share2, Check, ExternalLink, CheckCircle2, XCircle, Mail, X, Receipt } from "lucide-react";
+import { createInvoiceFromQuoteAction } from "@/lib/actions/invoices";
 import {
   getQuoteAction,
   duplicateQuoteAction,
@@ -57,6 +58,7 @@ export function QuoteEditor({ id }: { id: number }) {
   const [emailContactId, setEmailContactId] = useState<number | null>(null);
   const [emailContacts, setEmailContacts] = useState<{ id: number; name: string; email: string }[]>([]);
   const [emailBusy, setEmailBusy] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
 
   async function load() {
     const res = await getQuoteAction(id).catch(() => null);
@@ -195,6 +197,15 @@ export function QuoteEditor({ id }: { id: number }) {
     void load();
   }
 
+  async function createInvoice() {
+    setInvoiceBusy(true);
+    const r = await createInvoiceFromQuoteAction(id);
+    setInvoiceBusy(false);
+    if (r.error || !r.id) return toast(r.error ?? "Couldn't create the invoice.", { tone: "error" });
+    toast("Invoice created from quote", { tone: "success" });
+    router.push(`/invoices/${r.id}`);
+  }
+
   const qNum = d.quote.number;
   const decided = d.quote.status === "accepted" || d.quote.status === "declined";
 
@@ -252,13 +263,20 @@ export function QuoteEditor({ id }: { id: number }) {
       {/* Share with client */}
       <Card className="p-4 print:hidden sm:p-5">
         {decided ? (
-          <div className={cn("flex items-center gap-2.5 text-sm", d.quote.status === "accepted" ? "text-emerald" : "text-danger")}>
-            {d.quote.status === "accepted" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
-            <span className="font-medium">
-              {d.quote.status === "accepted" ? "Accepted" : "Declined"}
-              {d.quote.clientName ? ` by ${d.quote.clientName}` : ""}
-              {d.quote.decidedAt ? ` · ${new Date(d.quote.decidedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}
-            </span>
+          <div className="space-y-3">
+            <div className={cn("flex items-center gap-2.5 text-sm", d.quote.status === "accepted" ? "text-emerald" : "text-danger")}>
+              {d.quote.status === "accepted" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+              <span className="font-medium">
+                {d.quote.status === "accepted" ? "Accepted" : "Declined"}
+                {d.quote.clientName ? ` by ${d.quote.clientName}` : ""}
+                {d.quote.decidedAt ? ` · ${new Date(d.quote.decidedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}
+              </span>
+            </div>
+            {d.quote.status === "accepted" && canWrite && (
+              <Button size="sm" onClick={createInvoice} disabled={invoiceBusy}>
+                {invoiceBusy ? <Loader2 size={13} className="animate-spin" /> : <Receipt size={13} />} Create invoice from this quote
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

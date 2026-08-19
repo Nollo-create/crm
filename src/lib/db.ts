@@ -9,6 +9,7 @@ import { buildTaskOrderBy } from "@/lib/crm/tasks";
 import { buildActivityOrderBy } from "@/lib/crm/activities";
 import { buildProductOrderBy } from "@/lib/crm/products";
 import { buildQuoteOrderBy, isQuoteExpired } from "@/lib/crm/quotes";
+import { buildInvoiceOrderBy } from "@/lib/crm/invoices";
 
 // The CMS/CRM's OWN database — a separate MySQL database on the same server. It
 // never joins across into the webapp's tables; anything from there comes through
@@ -1941,6 +1942,233 @@ export async function recordQuoteDecision(
   };
 }
 
+// ----------------------------------------------------------------- invoices
+
+export interface InvoiceRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  company_id: number;
+  quote_id: number | null;
+  status: string;
+  issue_date: Date | null;
+  due_date: Date | null;
+  total_cents: number;
+  notes: string;
+  public_token: string;
+  paid_at: Date | null;
+  paid_amount_cents: number;
+  payment_method: string;
+  created_at: Date;
+  updated_at: Date;
+}
+export interface InvoiceStatsRow extends InvoiceRow {
+  company_name: string;
+}
+export interface InvoiceItemRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  invoice_id: number;
+  name: string;
+  unit_price_cents: number;
+  quantity: number;
+  line_total_cents: number;
+  created_at: Date;
+}
+
+export async function createInvoice(
+  orgId: number,
+  companyId: number,
+  opts: { quoteId?: number | null; issueDate?: string | null; dueDate?: string | null; notes?: string } = {},
+  createdBy = ""
+): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_invoices (organization_id, company_id, quote_id, issue_date, due_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, companyId, opts.quoteId ?? null, opts.issueDate || null, opts.dueDate || null, (opts.notes ?? "").slice(0, 500), createdBy.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+async function recomputeInvoiceTotal(orgId: number, invoiceId: number): Promise<void> {
+  await getPool().query(
+    "UPDATE crm_invoices SET total_cents = (SELECT COALESCE(SUM(line_total_cents), 0) FROM crm_invoice_items WHERE invoice_id = ? AND organization_id = ?) WHERE id = ? AND organization_id = ?",
+    [invoiceId, orgId, invoiceId, orgId]
+  );
+}
+
+export async function addInvoiceItem(
+  orgId: number,
+  invoiceId: number,
+  item: { name: string; unitPriceCents: number; quantity: number }
+): Promise<void> {
+  await ensureAuthSchema();
+  const unit = Math.max(0, Math.round(item.unitPriceCents));
+  const qty = Math.max(1, Math.round(item.quantity));
+  await getPool().query(
+    `INSERT INTO crm_invoice_items (organization_id, invoice_id, name, unit_price_cents, quantity, line_total_cents) VALUES (?, ?, ?, ?, ?, ?)`,
+    [orgId, invoiceId, item.name.slice(0, 190), unit, qty, unit * qty]
+  );
+  await recomputeInvoiceTotal(orgId, invoiceId);
+}
+
+export async function setInvoiceItemQuantity(orgId: number, invoiceId: number, itemId: number, quantity: number): Promise<void> {
+  const q = Math.max(1, Math.round(quantity));
+  await getPool().query(
+    "UPDATE crm_invoice_items SET quantity = ?, line_total_cents = unit_price_cents * ? WHERE id = ? AND invoice_id = ? AND organization_id = ?",
+    [q, q, itemId, invoiceId, orgId]
+  );
+  await recomputeInvoiceTotal(orgId, invoiceId);
+}
+
+export async function deleteInvoiceItem(orgId: number, invoiceId: number, itemId: number): Promise<void> {
+  await getPool().query("DELETE FROM crm_invoice_items WHERE id = ? AND invoice_id = ? AND organization_id = ?", [itemId, invoiceId, orgId]);
+  await recomputeInvoiceTotal(orgId, invoiceId);
+}
+
+/** Create an invoice from a quote: copies its line items + links quote_id. */
+export async function createInvoiceFromQuote(orgId: number, quoteId: number, opts: { dueDate?: string | null } = {}, createdBy = ""): Promise<number | null> {
+  await ensureSchema();
+  const src = await getQuote(orgId, quoteId);
+  if (!src) return null;
+  const issueYmd = new Date().toISOString().slice(0, 10);
+  const id = await createInvoice(orgId, src.quote.company_id, { quoteId, issueDate: issueYmd, dueDate: opts.dueDate ?? null, notes: src.quote.notes }, createdBy);
+  for (const it of src.items) {
+    await addInvoiceItem(orgId, id, { name: it.name, unitPriceCents: it.unit_price_cents, quantity: it.quantity });
+  }
+  return id;
+}
+
+export interface InvoicesPageResult {
+  rows: InvoiceStatsRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+export async function listInvoicesPage(
+  orgId: number,
+  opts: { q?: string; status?: string; sortKey: string; sortDir: 1 | -1; page: number; pageSize: number }
+): Promise<InvoicesPageResult> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const where: string[] = ["i.organization_id = ?"];
+  const params: (string | number)[] = [orgId];
+  if (opts.q) {
+    where.push("co.name LIKE ?");
+    params.push(`%${opts.q}%`);
+  }
+  if (opts.status) {
+    where.push("i.status = ?");
+    params.push(opts.status);
+  }
+  const joinSql = "FROM crm_invoices i JOIN crm_companies co ON co.id = i.company_id AND co.organization_id = i.organization_id";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const pool = getPool();
+  const [countRows] = await pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`, params);
+  const total = Number(countRows[0]?.n ?? 0);
+  const { offset, pageSize, page, pageCount } = pageBounds(opts.page, opts.pageSize, total);
+  const orderBy = buildInvoiceOrderBy(opts.sortKey, opts.sortDir);
+  const [rows] = await pool.query<InvoiceStatsRow[]>(`SELECT i.*, co.name AS company_name ${joinSql} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`, [...params, pageSize, offset]);
+  return { rows, total, page, pageCount };
+}
+
+export async function getInvoice(orgId: number, id: number): Promise<{ invoice: InvoiceStatsRow; items: InvoiceItemRow[] } | null> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const pool = getPool();
+  const [iRows] = await pool.query<InvoiceStatsRow[]>(
+    "SELECT i.*, co.name AS company_name FROM crm_invoices i JOIN crm_companies co ON co.id = i.company_id AND co.organization_id = i.organization_id WHERE i.id = ? AND i.organization_id = ? LIMIT 1",
+    [id, orgId]
+  );
+  const invoice = iRows[0];
+  if (!invoice) return null;
+  const [items] = await pool.query<InvoiceItemRow[]>("SELECT * FROM crm_invoice_items WHERE invoice_id = ? AND organization_id = ? ORDER BY id ASC", [id, orgId]);
+  return { invoice, items };
+}
+
+export async function updateInvoice(orgId: number, id: number, patch: { status?: string; notes?: string; issueDate?: string | null; dueDate?: string | null }): Promise<void> {
+  await ensureAuthSchema();
+  const sets: string[] = [];
+  const vals: (string | number | null)[] = [];
+  if (patch.status !== undefined) { sets.push("status=?"); vals.push(patch.status.slice(0, 20)); }
+  if (patch.notes !== undefined) { sets.push("notes=?"); vals.push(patch.notes.slice(0, 500)); }
+  if (patch.issueDate !== undefined) { sets.push("issue_date=?"); vals.push(patch.issueDate || null); }
+  if (patch.dueDate !== undefined) { sets.push("due_date=?"); vals.push(patch.dueDate || null); }
+  if (!sets.length) return;
+  vals.push(id, orgId);
+  await getPool().query(`UPDATE crm_invoices SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`, vals);
+}
+
+export async function markInvoicePaid(orgId: number, id: number, method = "manual"): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_invoices SET status = 'paid', paid_at = CURRENT_TIMESTAMP, paid_amount_cents = total_cents, payment_method = ? WHERE id = ? AND organization_id = ?",
+    [method.slice(0, 40), id, orgId]
+  );
+}
+
+export async function markInvoiceUnpaid(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_invoices SET status = 'sent', paid_at = NULL, paid_amount_cents = 0, payment_method = '' WHERE id = ? AND organization_id = ?",
+    [id, orgId]
+  );
+}
+
+export async function deleteInvoice(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  await pool.query("DELETE FROM crm_invoice_items WHERE invoice_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("DELETE FROM crm_invoices WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export async function shareInvoice(orgId: number, id: number, newToken: string): Promise<string | null> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  const [rows] = await pool.query<InvoiceRow[]>("SELECT public_token FROM crm_invoices WHERE id = ? AND organization_id = ? LIMIT 1", [id, orgId]);
+  const row = rows[0];
+  if (!row) return null;
+  const token = row.public_token || newToken.slice(0, 64);
+  await pool.query("UPDATE crm_invoices SET public_token = ?, status = IF(status = 'draft', 'sent', status) WHERE id = ? AND organization_id = ?", [token, id, orgId]);
+  return token;
+}
+
+export async function getInvoiceByToken(token: string): Promise<{ invoice: InvoiceStatsRow; items: InvoiceItemRow[] } | null> {
+  const t = (token || "").trim();
+  if (t.length < 8) return null;
+  await ensureAuthSchema();
+  await ensureSchema();
+  const pool = getPool();
+  const [iRows] = await pool.query<InvoiceStatsRow[]>(
+    "SELECT i.*, co.name AS company_name FROM crm_invoices i JOIN crm_companies co ON co.id = i.company_id AND co.organization_id = i.organization_id WHERE i.public_token = ? LIMIT 1",
+    [t.slice(0, 64)]
+  );
+  const invoice = iRows[0];
+  if (!invoice) return null;
+  const [items] = await pool.query<InvoiceItemRow[]>("SELECT * FROM crm_invoice_items WHERE invoice_id = ? AND organization_id = ? ORDER BY id ASC", [invoice.id, invoice.organization_id]);
+  return { invoice, items };
+}
+
+export interface InvoiceSummary {
+  outstandingCents: number;
+  overdueCents: number;
+  paidCents: number;
+  draftCount: number;
+}
+export async function invoiceSummary(orgId: number): Promise<InvoiceSummary> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN status = 'sent' THEN total_cents ELSE 0 END), 0) AS outstanding,
+       COALESCE(SUM(CASE WHEN status = 'sent' AND due_date IS NOT NULL AND due_date < CURDATE() THEN total_cents ELSE 0 END), 0) AS overdue,
+       COALESCE(SUM(CASE WHEN status = 'paid' THEN paid_amount_cents ELSE 0 END), 0) AS paid,
+       COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS drafts
+     FROM crm_invoices WHERE organization_id = ?`,
+    [orgId]
+  );
+  const r = rows[0] ?? {};
+  return { outstandingCents: Number(r.outstanding || 0), overdueCents: Number(r.overdue || 0), paidCents: Number(r.paid || 0), draftCount: Number(r.drafts || 0) };
+}
+
 /** Recompute a quote's stored total from its line items. */
 async function recomputeQuoteTotal(orgId: number, quoteId: number): Promise<void> {
   await getPool().query(
@@ -2598,6 +2826,44 @@ export function ensureAuthSchema(): Promise<void> {
           paid_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uq_comm_payout (organization_id, owner_user_id, period_month),
           INDEX idx_comm_payout_period (organization_id, period_month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      // Invoices — a billing document, optionally created from an accepted quote.
+      // Money in integer cents; a paid invoice snapshots paid_amount_cents.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_invoices (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          company_id INT UNSIGNED NOT NULL,
+          quote_id INT UNSIGNED NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'draft',
+          issue_date DATE NULL,
+          due_date DATE NULL,
+          total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          notes VARCHAR(500) NOT NULL DEFAULT '',
+          public_token VARCHAR(64) NOT NULL DEFAULT '',
+          paid_at TIMESTAMP NULL,
+          paid_amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          payment_method VARCHAR(40) NOT NULL DEFAULT '',
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_invoice_org (organization_id, status),
+          INDEX idx_invoice_company (company_id),
+          INDEX idx_invoice_token (public_token)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_invoice_items (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          invoice_id INT UNSIGNED NOT NULL,
+          name VARCHAR(190) NOT NULL DEFAULT '',
+          unit_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          quantity INT UNSIGNED NOT NULL DEFAULT 1,
+          line_total_cents INT UNSIGNED NOT NULL DEFAULT 0,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_invitem_invoice (invoice_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
