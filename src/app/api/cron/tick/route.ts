@@ -45,6 +45,20 @@ async function run(req: NextRequest) {
   const inbox = await processInboxSync().catch(() => ({ logged: 0, stopped: 0 }));
   // Stamp the heartbeat so a dead cron becomes visible in the CRM.
   await setCronHeartbeat().catch(() => {});
+  // Optional dead-man's-switch: ping an external monitor (e.g. Healthchecks.io)
+  // each successful tick; if the pings stop, that service alerts you. Trusted
+  // operator-set URL from the env, so no SSRF concern.
+  const ping = process.env.CRON_PING_URL;
+  if (ping) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      await fetch(ping, { signal: ctrl.signal, cache: "no-store" }).catch(() => {});
+      clearTimeout(timer);
+    } catch {
+      /* best-effort */
+    }
+  }
   return NextResponse.json({ ok: true, orgs: orgs.length, created, emailsSent: email.sent, emailsFailed: email.failed, seqSent: seq.sent, seqStopped: seq.stopped, seqCompleted: seq.completed, inboxLogged: inbox.logged, inboxStopped: inbox.stopped });
 }
 
