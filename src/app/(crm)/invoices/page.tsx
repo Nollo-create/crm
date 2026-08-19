@@ -13,6 +13,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useCanWrite } from "@/components/crm/role-context";
+import { ExportButton } from "@/components/crm/export-button";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<string, Tone> = { draft: "neutral", sent: "electric", paid: "emerald", void: "neutral" };
@@ -82,6 +83,17 @@ export default function InvoicesPage() {
   function toggleSort(key: InvoiceSortKey) {
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "company" ? 1 : -1 }));
     setPage(1);
+  }
+
+  async function collectInvoices(): Promise<unknown[][]> {
+    const out: unknown[][] = [["Invoice", "Company", "Status", "Total (EUR)", "Issue date", "Due date", "Overdue"]];
+    for (let p = 1; p <= 20; p++) {
+      const res = await invoicesPageAction({ q: debouncedQ, status, sortKey: sort.key, sortDir: sort.dir, page: p, pageSize: 100 }).catch(() => null);
+      if (!res || res.rows.length === 0) break;
+      for (const inv of res.rows) out.push([inv.number, inv.companyName, inv.status, inv.total.toFixed(2), inv.issueDate ?? "", inv.dueDate ?? "", inv.overdue ? "yes" : ""]);
+      if (p >= res.pageCount) break;
+    }
+    return out;
   }
 
   async function create() {
@@ -167,6 +179,7 @@ export default function InvoicesPage() {
             </button>
           ))}
         </div>
+        <div className="ml-auto"><ExportButton filename="invoices.csv" collect={collectInvoices} disabled={total === 0} /></div>
       </div>
 
       {/* Table (desktop) */}

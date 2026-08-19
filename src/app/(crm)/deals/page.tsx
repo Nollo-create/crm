@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useCanWrite } from "@/components/crm/role-context";
 import { SavedViews } from "@/components/crm/saved-views";
+import { ExportButton } from "@/components/crm/export-button";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,17 @@ export default function DealsPage() {
   }, [debouncedQ, stage, sort, page, pageSize, reloadKey]);
 
   const refetch = () => setReloadKey((k) => k + 1);
+
+  async function collectDeals(): Promise<unknown[][]> {
+    const out: unknown[][] = [["Deal", "Company", "Stage", "Value (EUR)", "Owner", "Expected close"]];
+    for (let p = 1; p <= 20; p++) {
+      const res = await dealsPageAction({ q: debouncedQ, stage, sortKey: sort.key, sortDir: sort.dir, page: p, pageSize: 100 }).catch(() => null);
+      if (!res || res.rows.length === 0) break;
+      for (const d of res.rows) out.push([d.title, d.companyName, d.stage, d.value, d.owner, d.expectedClose ?? ""]);
+      if (p >= res.pageCount) break;
+    }
+    return out;
+  }
   useEffect(() => setSelected(new Set()), [debouncedQ, stage, sort, page, pageSize, reloadKey]);
   const allSelected = rows.length > 0 && rows.every((d) => selected.has(d.id));
   function toggleRow(id: number) {
@@ -274,6 +286,7 @@ export default function DealsPage() {
             setPage(1);
           }}
         />
+        <ExportButton filename="deals.csv" collect={collectDeals} disabled={total === 0} />
       </div>
 
       {/* Bulk bar */}

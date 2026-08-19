@@ -29,6 +29,7 @@ import { useToast } from "@/components/ui/toast";
 import { useCanWrite } from "@/components/crm/role-context";
 import { LeadImport } from "@/components/crm/lead-import";
 import { SavedViews } from "@/components/crm/saved-views";
+import { ExportButton } from "@/components/crm/export-button";
 import { eur } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,17 @@ export default function LeadsPage() {
 
   const refetch = () => setReloadKey((k) => k + 1);
   useEffect(() => setSelected(new Set()), [debouncedQ, status, source, page, pageSize, reloadKey]);
+
+  async function collectLeads(): Promise<unknown[][]> {
+    const out: unknown[][] = [["Lead", "Company", "Title", "Email", "Phone", "Source", "Score", "Status"]];
+    for (let p = 1; p <= 20; p++) {
+      const res = await leadsPageAction({ q: debouncedQ, status, source, sortKey: sort.key, sortDir: sort.dir, page: p, pageSize: 100 }).catch(() => null);
+      if (!res || res.rows.length === 0) break;
+      for (const l of res.rows) out.push([l.name, l.company, l.title, l.email, l.phone, l.source, l.score, l.status]);
+      if (p >= res.pageCount) break;
+    }
+    return out;
+  }
 
   const openRows = rows.filter((l) => l.status !== "converted");
   const allSelected = openRows.length > 0 && openRows.every((l) => selected.has(l.id));
@@ -281,6 +293,7 @@ export default function LeadsPage() {
             setPage(1);
           }}
         />
+        <ExportButton filename="leads.csv" collect={collectLeads} disabled={total === 0} />
       </div>
 
       {/* Bulk bar */}

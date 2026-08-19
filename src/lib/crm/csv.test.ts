@@ -1,5 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { parseCsv, autoMapHeaders } from "./csv";
+import { parseCsv, autoMapHeaders, csvCell, toCsv } from "./csv";
+
+describe("csvCell", () => {
+  it("quotes and escapes embedded quotes", () => {
+    expect(csvCell("hi")).toBe('"hi"');
+    expect(csvCell('a"b')).toBe('"a""b"');
+    expect(csvCell(null)).toBe('""');
+    expect(csvCell(1200)).toBe('"1200"');
+  });
+  it("neutralizes spreadsheet formula injection", () => {
+    expect(csvCell("=SUM(A1)")).toBe(`"'=SUM(A1)"`);
+    expect(csvCell("+1")).toBe(`"'+1"`);
+    expect(csvCell("@x")).toBe(`"'@x"`);
+  });
+});
+
+describe("toCsv", () => {
+  it("serializes a grid with CRLF rows", () => {
+    expect(toCsv([["Name", "City"], ["Acme", "Beograd"]])).toBe('"Name","City"\r\n"Acme","Beograd"');
+  });
+  it("round-trips through parseCsv", () => {
+    const grid = [["Name", "Note"], ["Acme", 'has "quotes", and commas']];
+    expect(parseCsv(toCsv(grid))).toEqual([["Name", "Note"], ["Acme", 'has "quotes", and commas']]);
+  });
+});
 
 describe("parseCsv", () => {
   it("parses a simple grid", () => {

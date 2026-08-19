@@ -30,6 +30,19 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r, idx) => !(idx === rows.length - 1 && r.length === 1 && r[0] === ""));
 }
 
+/** One CSV cell: injection-guarded (a leading = + - @ TAB or CR makes Excel /
+ *  Sheets evaluate the cell as a formula) then quoted with "" escaping. */
+export function csvCell(v: unknown): string {
+  let s = v === null || v === undefined ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+/** Serialize a grid (first row usually the header) to CSV text (CRLF rows). */
+export function toCsv(rows: unknown[][]): string {
+  return rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
 /** The lead fields an import can fill (maps onto LeadInputDTO). */
 export const LEAD_IMPORT_FIELDS = [
   { key: "name", label: "Contact name" },

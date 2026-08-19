@@ -13,6 +13,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useCanWrite } from "@/components/crm/role-context";
+import { ExportButton } from "@/components/crm/export-button";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<string, Tone> = { draft: "neutral", sent: "electric", accepted: "emerald", declined: "danger" };
@@ -94,6 +95,17 @@ export default function QuotesPage() {
     setPage(1);
   }
 
+  async function collectQuotes(): Promise<unknown[][]> {
+    const out: unknown[][] = [["Quote", "Company", "Status", "Total (EUR)", "Valid until"]];
+    for (let p = 1; p <= 20; p++) {
+      const res = await quotesPageAction({ q: debouncedQ, status, sortKey: sort.key, sortDir: sort.dir, page: p, pageSize: 100 }).catch(() => null);
+      if (!res || res.rows.length === 0) break;
+      for (const qt of res.rows) out.push([qt.number, qt.companyName, qt.status, qt.total.toFixed(2), qt.validUntil ?? ""]);
+      if (p >= res.pageCount) break;
+    }
+    return out;
+  }
+
   async function create() {
     if (!companyId) return;
     setBusy(true);
@@ -173,6 +185,7 @@ export default function QuotesPage() {
             </button>
           ))}
         </div>
+        <div className="ml-auto"><ExportButton filename="quotes.csv" collect={collectQuotes} disabled={total === 0} /></div>
       </div>
 
       {/* Table (desktop) */}
