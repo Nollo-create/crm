@@ -66,16 +66,65 @@ const FIELD_ALIASES: Record<LeadImportField, string[]> = {
   industry: ["industry", "sector", "vertical"],
 };
 
-/** Best-guess CSV-column-index for each lead field, from the header row. Returns
- *  a partial map (field -> column index); unmatched fields are omitted. */
-export function autoMapHeaders(headers: string[]): Partial<Record<LeadImportField, number>> {
+/** Generic header auto-mapper: for each field, the best-matching column index
+ *  (exact alias first, then substring). Unmatched fields are omitted. */
+export function mapHeaders(headers: string[], aliases: Record<string, string[]>): Record<string, number> {
   const norm = headers.map((h) => h.trim().toLowerCase());
-  const map: Partial<Record<LeadImportField, number>> = {};
-  for (const field of Object.keys(FIELD_ALIASES) as LeadImportField[]) {
-    const aliases = FIELD_ALIASES[field];
-    let idx = norm.findIndex((h) => aliases.includes(h));
-    if (idx < 0) idx = norm.findIndex((h) => h.length > 2 && aliases.some((a) => h.includes(a)));
+  const map: Record<string, number> = {};
+  for (const field of Object.keys(aliases)) {
+    const al = aliases[field];
+    let idx = norm.findIndex((h) => al.includes(h));
+    if (idx < 0) idx = norm.findIndex((h) => h.length > 2 && al.some((a) => h.includes(a)));
     if (idx >= 0) map[field] = idx;
   }
   return map;
 }
+
+/** Best-guess CSV-column-index for each lead field, from the header row. */
+export function autoMapHeaders(headers: string[]): Partial<Record<LeadImportField, number>> {
+  return mapHeaders(headers, FIELD_ALIASES) as Partial<Record<LeadImportField, number>>;
+}
+
+// ---- Import field sets for the generic CSV importer ------------------------
+
+export interface ImportField {
+  key: string;
+  label: string;
+  required?: boolean;
+}
+
+export const COMPANY_IMPORT_FIELDS: ImportField[] = [
+  { key: "name", label: "Company name", required: true },
+  { key: "industry", label: "Industry" },
+  { key: "city", label: "City" },
+  { key: "website", label: "Website" },
+  { key: "phone", label: "Phone" },
+  { key: "email", label: "Email" },
+  { key: "country", label: "Country" },
+  { key: "vatId", label: "VAT / Tax ID" },
+];
+export const COMPANY_IMPORT_ALIASES: Record<string, string[]> = {
+  name: ["name", "company", "company name", "organization", "organisation", "account", "business"],
+  industry: ["industry", "sector", "vertical"],
+  city: ["city", "town"],
+  website: ["website", "url", "web", "site", "domain"],
+  phone: ["phone", "telephone", "tel", "mobile"],
+  email: ["email", "e-mail", "mail", "email address"],
+  country: ["country"],
+  vatId: ["vat", "vat id", "vat number", "tax id", "tax", "pib"],
+};
+
+export const CONTACT_IMPORT_FIELDS: ImportField[] = [
+  { key: "name", label: "Contact name", required: true },
+  { key: "company", label: "Company", required: true },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "title", label: "Title" },
+];
+export const CONTACT_IMPORT_ALIASES: Record<string, string[]> = {
+  name: ["name", "contact name", "full name", "contact", "person"],
+  company: ["company", "company name", "organization", "organisation", "account", "business"],
+  email: ["email", "e-mail", "mail", "email address"],
+  phone: ["phone", "telephone", "tel", "mobile", "cell"],
+  title: ["title", "job title", "position", "role"],
+};

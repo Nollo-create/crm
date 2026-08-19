@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Mail, Phone, Building2, UserPlus } from "lucide-react";
+import { Plus, Search, Loader2, Trash2, X, ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight, Mail, Phone, Building2, UserPlus, Upload } from "lucide-react";
+import { CsvImport } from "@/components/crm/csv-import";
+import { CONTACT_IMPORT_FIELDS, CONTACT_IMPORT_ALIASES } from "@/lib/crm/csv";
+import { importContactsAction } from "@/lib/actions/import";
 import {
   contactsPageAction,
   addContactAction,
@@ -49,6 +52,7 @@ export default function ContactsPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowAdd(true);
   }, []);
@@ -149,11 +153,26 @@ export default function ContactsPage() {
           <p className="mt-0.5 text-sm text-muted-foreground">{total} contact{total === 1 ? "" : "s"} across your accounts</p>
         </div>
         {canWrite && (
-          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
-            <UserPlus size={15} /> Add contact
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => { setShowImport((v) => !v); setShowAdd(false); }}><Upload size={14} /> Import</Button>
+            <Button size="sm" onClick={() => { setShowAdd((v) => !v); setShowImport(false); }}><UserPlus size={15} /> Add contact</Button>
+          </div>
         )}
       </div>
+
+      {canWrite && showImport && (
+        <CsvImport
+          title="Import contacts from CSV"
+          entity="contact"
+          fields={CONTACT_IMPORT_FIELDS}
+          aliases={CONTACT_IMPORT_ALIASES}
+          sample={"name,company,email,phone,title\nJane Doe,Acme d.o.o.,jane@acme.rs,+38160123,CTO"}
+          note="Each contact is linked to its company (matched by name, or created). Up to 500 per import."
+          onImport={importContactsAction}
+          onDone={() => { setShowImport(false); refetch(); }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {canWrite && showAdd && (
         <Card className="space-y-3 p-4">

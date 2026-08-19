@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Search, Trash2, Download, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { Plus, Search, Trash2, Download, Upload, X, ArrowUp, ArrowDown, ChevronsUpDown, Loader2, Rows3, Rows2, Bookmark, Check, SlidersHorizontal, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { CsvImport } from "@/components/crm/csv-import";
+import { COMPANY_IMPORT_FIELDS, COMPANY_IMPORT_ALIASES } from "@/lib/crm/csv";
+import { importCompaniesAction } from "@/lib/actions/import";
 import {
   companiesPageAction,
   createCompanyAction,
@@ -75,6 +78,7 @@ export default function CompaniesPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "score", dir: -1 });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [dupes, setDupes] = useState<GlobalHit[]>([]);
   useEffect(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") setShowCreate(true);
@@ -311,11 +315,26 @@ export default function CompaniesPage() {
           <p className="mt-0.5 text-sm text-muted-foreground">{total} account{total === 1 ? "" : "s"}</p>
         </div>
         {canWrite && (
-          <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
-            <Plus size={15} /> New company
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => { setShowImport((v) => !v); setShowCreate(false); }}><Upload size={14} /> Import</Button>
+            <Button size="sm" onClick={() => { setShowCreate((v) => !v); setShowImport(false); }}><Plus size={15} /> New company</Button>
+          </div>
         )}
       </div>
+
+      {canWrite && showImport && (
+        <CsvImport
+          title="Import companies from CSV"
+          entity="company"
+          fields={COMPANY_IMPORT_FIELDS}
+          aliases={COMPANY_IMPORT_ALIASES}
+          sample={"name,industry,city,website,email,vat\nAcme d.o.o.,IT,Beograd,acme.rs,office@acme.rs,RS12345678"}
+          note="New accounts start as leads. Up to 500 per import."
+          onImport={importCompaniesAction}
+          onDone={() => { setShowImport(false); refetch(); }}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {/* Saved views */}
       <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
