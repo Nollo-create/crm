@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeft, Search, Plus, LogOut, Building2, Users, Target, Handshake, CheckSquare, Settings, CreditCard, KeyRound } from "lucide-react";
@@ -292,6 +292,13 @@ function resolveActiveHref(pathname: string): string | null {
 
 function SidebarNav({ collapsed, pathname, onNavigate }: { collapsed: boolean; pathname: string; onNavigate?: () => void }) {
   const activeHref = resolveActiveHref(pathname);
+  const activeRef = useRef<HTMLAnchorElement | null>(null);
+  // Keep the highlighted item in view (and the scrollbar tracking it) whenever
+  // the active route changes — so a deep item like Account Security isn't left
+  // off-screen after navigating.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeHref]);
   return (
     <div className="space-y-3">
       {crmNav.map((group, gi) => (
@@ -327,7 +334,7 @@ function SidebarNav({ collapsed, pathname, onNavigate }: { collapsed: boolean; p
                 {inner}
               </span>
             ) : (
-              <Link key={item.href} href={item.href} onClick={onNavigate} className={cls} title={collapsed ? item.label : undefined}>
+              <Link key={item.href} ref={active ? activeRef : null} href={item.href} onClick={onNavigate} className={cls} title={collapsed ? item.label : undefined}>
                 {inner}
               </Link>
             );
