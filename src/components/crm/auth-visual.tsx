@@ -59,6 +59,11 @@ export function AuthVisual() {
         ))}
       </svg>
 
+      {/* Fade the right edge into the login side (#090b15) so the split-screen
+       * seam blends gradually instead of showing a hard line. Sits above the
+       * gradient/aurora/network but below the cards, which stay bright. */}
+      <div className="absolute inset-y-0 right-0 w-2/5 bg-gradient-to-r from-transparent to-[#090b15]" />
+
       {/* ---- Floating data widgets (top band + right column) ---- */}
 
       {/* Pipeline — top-right */}
