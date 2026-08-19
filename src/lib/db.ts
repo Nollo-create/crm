@@ -2557,6 +2557,35 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_goal_period (organization_id, period_month)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Commission rate per rep (owner 0 = org default), in basis points
+      // (1000 = 10%). Commission earned is derived from won deals x rate; only
+      // payouts are stored.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_commission_rates (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL DEFAULT 0,
+          rate_bp INT UNSIGNED NOT NULL DEFAULT 0,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_comm_rate (organization_id, owner_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      // A commission payout record. Its presence marks a rep+month as paid; the
+      // amount is snapshotted so later deal/rate edits don't rewrite history.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_commission_payouts (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL,
+          period_month VARCHAR(7) NOT NULL DEFAULT '',
+          amount_cents BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          paid_by VARCHAR(190) NOT NULL DEFAULT '',
+          note VARCHAR(300) NOT NULL DEFAULT '',
+          paid_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_comm_payout (organization_id, owner_user_id, period_month),
+          INDEX idx_comm_payout_period (organization_id, period_month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -3619,6 +3648,65 @@ export async function newLeadsByOwner(orgId: number, startYmd: string, endYmd: s
     [orgId, startYmd, endYmd]
   );
   return rows;
+}
+
+// ---- Commission tracking ---------------------------------------------------
+
+export interface CommissionRateRow extends mysql.RowDataPacket {
+  owner_user_id: number;
+  rate_bp: number;
+}
+export interface CommissionPayoutRow extends mysql.RowDataPacket {
+  owner_user_id: number;
+  period_month: string;
+  amount_cents: number;
+  paid_by: string;
+  paid_at: Date;
+}
+
+export async function listCommissionRates(orgId: number): Promise<CommissionRateRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<CommissionRateRow[]>(
+    "SELECT owner_user_id, rate_bp FROM crm_commission_rates WHERE organization_id = ?",
+    [orgId]
+  );
+  return rows;
+}
+
+export async function upsertCommissionRate(orgId: number, ownerUserId: number, rateBp: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `INSERT INTO crm_commission_rates (organization_id, owner_user_id, rate_bp) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE rate_bp = VALUES(rate_bp)`,
+    [orgId, Math.max(0, Math.floor(ownerUserId)), Math.max(0, Math.min(1_000_000, Math.round(rateBp)))]
+  );
+}
+
+export async function listCommissionPayouts(orgId: number, periodMonth: string): Promise<CommissionPayoutRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<CommissionPayoutRow[]>(
+    "SELECT owner_user_id, period_month, amount_cents, paid_by, paid_at FROM crm_commission_payouts WHERE organization_id = ? AND period_month = ?",
+    [orgId, periodMonth.slice(0, 7)]
+  );
+  return rows;
+}
+
+export async function recordCommissionPayout(orgId: number, p: { ownerUserId: number; periodMonth: string; amountCents: number; paidBy: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `INSERT INTO crm_commission_payouts (organization_id, owner_user_id, period_month, amount_cents, paid_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE amount_cents = VALUES(amount_cents), paid_by = VALUES(paid_by), paid_at = CURRENT_TIMESTAMP`,
+    [orgId, Math.floor(p.ownerUserId), p.periodMonth.slice(0, 7), Math.max(0, Math.round(p.amountCents)), p.paidBy.slice(0, 190)]
+  );
+}
+
+export async function deleteCommissionPayout(orgId: number, ownerUserId: number, periodMonth: string): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "DELETE FROM crm_commission_payouts WHERE organization_id = ? AND owner_user_id = ? AND period_month = ?",
+    [orgId, Math.floor(ownerUserId), periodMonth.slice(0, 7)]
+  );
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

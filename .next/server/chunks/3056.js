@@ -439,6 +439,28 @@ exports.id=3056,exports.ids=[3056],exports.modules={28303:a=>{function b(a){var 
           INDEX idx_goal_period (organization_id, period_month)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `),await a.query(`
+        CREATE TABLE IF NOT EXISTS crm_commission_rates (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL DEFAULT 0,
+          rate_bp INT UNSIGNED NOT NULL DEFAULT 0,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_comm_rate (organization_id, owner_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `),await a.query(`
+        CREATE TABLE IF NOT EXISTS crm_commission_payouts (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          owner_user_id INT UNSIGNED NOT NULL,
+          period_month VARCHAR(7) NOT NULL DEFAULT '',
+          amount_cents BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          paid_by VARCHAR(190) NOT NULL DEFAULT '',
+          note VARCHAR(300) NOT NULL DEFAULT '',
+          paid_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_comm_payout (organization_id, owner_user_id, period_month),
+          INDEX idx_comm_payout_period (organization_id, period_month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `),await a.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
           organization_id INT UNSIGNED NOT NULL,

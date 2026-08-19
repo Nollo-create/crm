@@ -279,6 +279,12 @@
       "namedRegex": "^/calls(?:/)?$"
     },
     {
+      "page": "/commissions",
+      "regex": "^/commissions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/commissions(?:/)?$"
+    },
+    {
       "page": "/companies",
       "regex": "^/companies(?:/)?$",
       "routeKeys": {},
