@@ -273,7 +273,25 @@ export function Shell({ connected, user, children }: { connected: boolean; user:
   );
 }
 
+/** The active nav item is the one whose href is the *longest* prefix of the
+ *  current path (with a "/" boundary so "/settings/email" doesn't match
+ *  "/settings/email-templates"). Longest-match also stops a parent like
+ *  "/emails" lighting up on "/emails/bulk". */
+function resolveActiveHref(pathname: string): string | null {
+  let best: string | null = null;
+  for (const group of crmNav) {
+    for (const item of group.items) {
+      if (item.soon) continue;
+      const href = item.href;
+      const matches = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+      if (matches && (best === null || href.length > best.length)) best = href;
+    }
+  }
+  return best;
+}
+
 function SidebarNav({ collapsed, pathname, onNavigate }: { collapsed: boolean; pathname: string; onNavigate?: () => void }) {
+  const activeHref = resolveActiveHref(pathname);
   return (
     <div className="space-y-3">
       {crmNav.map((group, gi) => (
@@ -287,7 +305,7 @@ function SidebarNav({ collapsed, pathname, onNavigate }: { collapsed: boolean; p
           )}
           {group.title && collapsed && gi > 0 && <div className="mx-auto my-2 h-px w-6 bg-gradient-to-r from-transparent via-electric/40 to-transparent" />}
           {group.items.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const active = item.href === activeHref;
             const Icon = item.icon;
             const cls = cn(
               "group flex items-center rounded-lg text-sm transition-colors",
