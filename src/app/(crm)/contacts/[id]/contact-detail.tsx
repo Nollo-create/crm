@@ -35,6 +35,7 @@ import { eur, timeAgo } from "@/lib/format";
 import { stageLabel } from "@/lib/crm/pipeline";
 import { TagEditor } from "@/components/crm/tag-editor";
 import { EmailComposer } from "@/components/crm/email-composer";
+import { ContactSequences } from "@/components/crm/contact-sequences";
 import { cn } from "@/lib/utils";
 
 const INFLUENCE: Record<string, { label: string; stars: number; tone: Tone }> = {
@@ -303,6 +304,8 @@ export function ContactDetail({ id }: { id: number }) {
               </span>
             </Link>
           </Card>
+
+          <ContactSequences contactId={id} />
 
           <div className="ai-surface p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-royal"><Compass size={15} /> Next best action</p>

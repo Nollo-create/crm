@@ -263,6 +263,12 @@
       "namedRegex": "^/emails/scheduled(?:/)?$"
     },
     {
+      "page": "/emails/sequences",
+      "regex": "^/emails/sequences(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/emails/sequences(?:/)?$"
+    },
+    {
       "page": "/icon.svg",
       "regex": "^/icon\\.svg(?:/)?$",
       "routeKeys": {},

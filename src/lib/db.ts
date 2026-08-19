@@ -2333,6 +2333,55 @@ export function ensureAuthSchema(): Promise<void> {
           INDEX idx_sched_org (organization_id, status, send_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Multi-step follow-up sequences: a sequence, its ordered steps, and per-
+      // contact enrollments the cron advances.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_sequences (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          name VARCHAR(120) NOT NULL DEFAULT '',
+          stop_on_open TINYINT NOT NULL DEFAULT 0,
+          created_by VARCHAR(190) NOT NULL DEFAULT '',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_seq_org (organization_id, name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_sequence_steps (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          sequence_id INT UNSIGNED NOT NULL,
+          step_order INT UNSIGNED NOT NULL DEFAULT 0,
+          delay_days INT UNSIGNED NOT NULL DEFAULT 0,
+          subject VARCHAR(300) NOT NULL DEFAULT '',
+          body TEXT NULL,
+          INDEX idx_step_seq (sequence_id, step_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_sequence_enrollments (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          organization_id INT UNSIGNED NOT NULL,
+          sequence_id INT UNSIGNED NOT NULL,
+          contact_id INT UNSIGNED NULL,
+          company_id INT UNSIGNED NULL,
+          to_email VARCHAR(190) NOT NULL DEFAULT '',
+          recipient_name VARCHAR(190) NOT NULL DEFAULT '',
+          company_name VARCHAR(190) NOT NULL DEFAULT '',
+          enrolled_by VARCHAR(190) NOT NULL DEFAULT '',
+          current_step INT UNSIGNED NOT NULL DEFAULT 0,
+          next_send_at TIMESTAMP NOT NULL,
+          status VARCHAR(12) NOT NULL DEFAULT 'active',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_enr_due (status, next_send_at),
+          INDEX idx_enr_org (organization_id, sequence_id),
+          INDEX idx_enr_contact (organization_id, contact_id, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
+      // Link tracked sends back to a sequence enrollment (for stop-on-open).
+      await ensureColumn(pool, "crm_email_sends", "enrollment_id", "enrollment_id BIGINT UNSIGNED NULL");
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
@@ -2585,13 +2634,23 @@ export async function deleteEmailTemplate(orgId: number, id: number): Promise<vo
 
 // ---------------------------------------------------------- email open tracking
 
-export async function createEmailSend(orgId: number, s: { token: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; toEmail: string; subject: string; sentBy: string }): Promise<void> {
+export async function createEmailSend(orgId: number, s: { token: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; toEmail: string; subject: string; sentBy: string; enrollmentId?: number | null }): Promise<void> {
   await ensureAuthSchema();
   await getPool().query(
-    `INSERT INTO crm_email_sends (organization_id, token, contact_id, company_id, deal_id, to_email, subject, sent_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [orgId, s.token.slice(0, 48), s.contactId ?? null, s.companyId ?? null, s.dealId ?? null, s.toEmail.slice(0, 190), s.subject.slice(0, 300), s.sentBy.slice(0, 190)]
+    `INSERT INTO crm_email_sends (organization_id, token, contact_id, company_id, deal_id, to_email, subject, sent_by, enrollment_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orgId, s.token.slice(0, 48), s.contactId ?? null, s.companyId ?? null, s.dealId ?? null, s.toEmail.slice(0, 190), s.subject.slice(0, 300), s.sentBy.slice(0, 190), s.enrollmentId ?? null]
   );
+}
+
+/** Whether any send for this sequence enrollment has been opened (stop-on-open). */
+export async function enrollmentHasOpen(enrollmentId: number): Promise<boolean> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT 1 FROM crm_email_sends WHERE enrollment_id = ? AND opened_at IS NOT NULL LIMIT 1",
+    [enrollmentId]
+  );
+  return rows.length > 0;
 }
 
 export interface OpenedSend {
@@ -2745,6 +2804,158 @@ export async function markScheduledEmail(id: number, status: "sent" | "failed", 
     "UPDATE crm_scheduled_emails SET status = ?, error = ?, sent_at = CURRENT_TIMESTAMP WHERE id = ?",
     [status, error.slice(0, 300), id]
   );
+}
+
+// ---------------------------------------------------------- follow-up sequences
+
+export interface SequenceRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  stop_on_open: number;
+  created_by: string;
+  step_count: number;
+  active_count: number;
+  total_enrolled: number;
+}
+export interface SequenceStepRow extends mysql.RowDataPacket {
+  id: number;
+  sequence_id: number;
+  step_order: number;
+  delay_days: number;
+  subject: string;
+  body: string | null;
+}
+export interface SequenceEnrollmentRow extends mysql.RowDataPacket {
+  id: number;
+  organization_id: number;
+  sequence_id: number;
+  contact_id: number | null;
+  company_id: number | null;
+  to_email: string;
+  recipient_name: string;
+  company_name: string;
+  enrolled_by: string;
+  current_step: number;
+  next_send_at: Date;
+  status: string;
+}
+
+export async function listSequences(orgId: number): Promise<SequenceRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SequenceRow[]>(
+    `SELECT s.id, s.name, s.stop_on_open, s.created_by,
+            (SELECT COUNT(*) FROM crm_sequence_steps st WHERE st.sequence_id = s.id) AS step_count,
+            (SELECT COUNT(*) FROM crm_sequence_enrollments e WHERE e.sequence_id = s.id AND e.status = 'active') AS active_count,
+            (SELECT COUNT(*) FROM crm_sequence_enrollments e WHERE e.sequence_id = s.id) AS total_enrolled
+       FROM crm_sequences s WHERE s.organization_id = ? ORDER BY s.name ASC, s.id DESC`,
+    [orgId]
+  );
+  return rows;
+}
+
+export async function getSequenceSteps(orgId: number, sequenceId: number): Promise<SequenceStepRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SequenceStepRow[]>(
+    "SELECT * FROM crm_sequence_steps WHERE sequence_id = ? AND organization_id = ? ORDER BY step_order ASC",
+    [sequenceId, orgId]
+  );
+  return rows;
+}
+
+export async function getSequence(orgId: number, id: number): Promise<SequenceRow | null> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SequenceRow[]>(
+    "SELECT id, name, stop_on_open, created_by, 0 AS step_count, 0 AS active_count, 0 AS total_enrolled FROM crm_sequences WHERE id = ? AND organization_id = ? LIMIT 1",
+    [id, orgId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function createSequence(orgId: number, s: { name: string; stopOnOpen: boolean; createdBy: string }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "INSERT INTO crm_sequences (organization_id, name, stop_on_open, created_by) VALUES (?, ?, ?, ?)",
+    [orgId, s.name.slice(0, 120), s.stopOnOpen ? 1 : 0, s.createdBy.slice(0, 190)]
+  );
+  return res.insertId;
+}
+
+export async function updateSequence(orgId: number, id: number, s: { name: string; stopOnOpen: boolean }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_sequences SET name = ?, stop_on_open = ? WHERE id = ? AND organization_id = ?", [s.name.slice(0, 120), s.stopOnOpen ? 1 : 0, id, orgId]);
+}
+
+export async function replaceSequenceSteps(orgId: number, sequenceId: number, steps: { delayDays: number; subject: string; body: string }[]): Promise<void> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  await pool.query("DELETE FROM crm_sequence_steps WHERE sequence_id = ? AND organization_id = ?", [sequenceId, orgId]);
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    await pool.query(
+      "INSERT INTO crm_sequence_steps (organization_id, sequence_id, step_order, delay_days, subject, body) VALUES (?, ?, ?, ?, ?, ?)",
+      [orgId, sequenceId, i, Math.max(0, Math.min(365, st.delayDays | 0)), st.subject.slice(0, 300), st.body.slice(0, 20000)]
+    );
+  }
+}
+
+export async function deleteSequence(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  const pool = getPool();
+  await pool.query("DELETE FROM crm_sequence_steps WHERE sequence_id = ? AND organization_id = ?", [id, orgId]);
+  await pool.query("UPDATE crm_sequence_enrollments SET status = 'stopped' WHERE sequence_id = ? AND organization_id = ? AND status = 'active'", [id, orgId]);
+  await pool.query("DELETE FROM crm_sequences WHERE id = ? AND organization_id = ?", [id, orgId]);
+}
+
+export async function activeEnrollmentExists(orgId: number, sequenceId: number, contactId: number): Promise<boolean> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT 1 FROM crm_sequence_enrollments WHERE organization_id = ? AND sequence_id = ? AND contact_id = ? AND status = 'active' LIMIT 1",
+    [orgId, sequenceId, contactId]
+  );
+  return rows.length > 0;
+}
+
+export async function createEnrollment(orgId: number, e: { sequenceId: number; contactId?: number | null; companyId?: number | null; toEmail: string; recipientName: string; companyName: string; enrolledBy: string; nextSendAt: Date }): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    `INSERT INTO crm_sequence_enrollments (organization_id, sequence_id, contact_id, company_id, to_email, recipient_name, company_name, enrolled_by, current_step, next_send_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active')`,
+    [orgId, e.sequenceId, e.contactId ?? null, e.companyId ?? null, e.toEmail.slice(0, 190), e.recipientName.slice(0, 190), e.companyName.slice(0, 190), e.enrolledBy.slice(0, 190), e.nextSendAt]
+  );
+  return res.insertId;
+}
+
+export async function listDueEnrollments(limit = 30): Promise<SequenceEnrollmentRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<SequenceEnrollmentRow[]>(
+    "SELECT * FROM crm_sequence_enrollments WHERE status = 'active' AND next_send_at <= NOW() ORDER BY next_send_at ASC LIMIT ?",
+    [Math.min(Math.max(limit, 1), 100)]
+  );
+  return rows;
+}
+
+export async function advanceEnrollment(id: number, e: { currentStep: number; nextSendAt: Date | null; status: string }): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    "UPDATE crm_sequence_enrollments SET current_step = ?, next_send_at = COALESCE(?, next_send_at), status = ? WHERE id = ?",
+    [e.currentStep, e.nextSendAt, e.status, id]
+  );
+}
+
+export async function stopEnrollment(orgId: number, id: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query("UPDATE crm_sequence_enrollments SET status = 'stopped' WHERE id = ? AND organization_id = ? AND status = 'active'", [id, orgId]);
+}
+
+export async function listContactEnrollments(orgId: number, contactId: number): Promise<{ id: number; sequenceId: number; sequenceName: string; status: string; currentStep: number }[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT e.id, e.sequence_id, e.status, e.current_step, s.name AS sequence_name
+       FROM crm_sequence_enrollments e JOIN crm_sequences s ON s.id = e.sequence_id
+      WHERE e.organization_id = ? AND e.contact_id = ? AND e.status = 'active' ORDER BY e.id DESC`,
+    [orgId, contactId]
+  );
+  return rows.map((r) => ({ id: r.id, sequenceId: r.sequence_id, sequenceName: String(r.sequence_name ?? ""), status: r.status, currentStep: r.current_step }));
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

@@ -52,7 +52,7 @@ export async function deliverTracked(
   sentBy: string,
   config: SmtpConfig,
   base: string,
-  msg: { to: string; subject: string; body: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; track: boolean; replyTo?: string }
+  msg: { to: string; subject: string; body: string; contactId?: number | null; companyId?: number | null; dealId?: number | null; track: boolean; replyTo?: string; enrollmentId?: number | null }
 ): Promise<{ ok: boolean; error?: string }> {
   let token: string | undefined;
   let pixelUrl: string | undefined;
@@ -63,7 +63,7 @@ export async function deliverTracked(
   const r = await sendMail(config, { to: msg.to, subject: msg.subject, text: msg.body, html: buildEmailHtml(msg.body, pixelUrl), replyTo: msg.replyTo });
   if (!r.ok) return { ok: false, error: r.error };
   if (token) {
-    await createEmailSend(orgId, { token, contactId: msg.contactId ?? null, companyId: msg.companyId ?? null, dealId: msg.dealId ?? null, toEmail: msg.to, subject: msg.subject, sentBy }).catch(() => {});
+    await createEmailSend(orgId, { token, contactId: msg.contactId ?? null, companyId: msg.companyId ?? null, dealId: msg.dealId ?? null, toEmail: msg.to, subject: msg.subject, sentBy, enrollmentId: msg.enrollmentId ?? null }).catch(() => {});
   }
   if (msg.companyId) {
     await addActivity(orgId, { companyId: msg.companyId, contactId: msg.contactId ?? null, dealId: msg.dealId ?? null, type: "email", summary: `Email → ${msg.to}: ${msg.subject}` }).catch(() => {});
