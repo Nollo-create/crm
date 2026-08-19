@@ -42,6 +42,7 @@ import {
   Siren,
   Settings,
   FormInput,
+  Combine,
 } from "lucide-react";
 
 export type NavIcon = ComponentType<{ size?: number; className?: string }>;
@@ -78,6 +79,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Leads", href: "/leads", icon: Target },
       { label: "Deals", href: "/deals", icon: Handshake },
       { label: "Customers", href: "/customers", icon: UserCheck },
+      { label: "Duplicates", href: "/duplicates", icon: Combine },
     ],
   },
   {

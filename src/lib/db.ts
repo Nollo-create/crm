@@ -694,6 +694,123 @@ export async function bulkSetCompanyStatus(orgId: number, ids: number[], status:
   await getPool().query(`UPDATE crm_companies SET status = ? WHERE organization_id = ? AND id IN (${ph})`, [status.slice(0, 20), orgId, ...clean]);
 }
 
+// ---- Duplicate detection + merge -------------------------------------------
+
+export interface DedupeCompanyRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  website: string;
+  email: string;
+  vat_id: string;
+  city: string;
+  status: string;
+  created_at: Date;
+  contact_count: number;
+  deal_count: number;
+  activity_count: number;
+}
+
+/** Lightweight scan of every company in the org, with child counts so the UI can
+ *  suggest which record to keep as the survivor. */
+export async function listCompaniesForDedupe(orgId: number): Promise<DedupeCompanyRow[]> {
+  await ensureSchema();
+  const [rows] = await getPool().query<DedupeCompanyRow[]>(
+    `SELECT c.id, c.name, c.website, c.email, c.vat_id, c.city, c.status, c.created_at,
+       (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.company_id = c.id AND ct.organization_id = c.organization_id) AS contact_count,
+       (SELECT COUNT(*) FROM crm_deals d WHERE d.company_id = c.id AND d.organization_id = c.organization_id) AS deal_count,
+       (SELECT COUNT(*) FROM crm_activities a WHERE a.company_id = c.id AND a.organization_id = c.organization_id) AS activity_count
+     FROM crm_companies c WHERE c.organization_id = ? ORDER BY c.id ASC`,
+    [orgId]
+  );
+  return rows;
+}
+
+export interface MergeResult {
+  contacts: number;
+  deals: number;
+  activities: number;
+  quotes: number;
+  tasks: number;
+  meetings: number;
+}
+
+/** Merge `duplicateId` into `primaryId`: reassign every child record, fill blank
+ *  fields on the survivor from the duplicate, then delete the duplicate. Runs in
+ *  a transaction so a failure leaves both records untouched. Returns null if the
+ *  ids are the same or either isn't this org's. */
+export async function mergeCompanies(orgId: number, primaryId: number, duplicateId: number): Promise<MergeResult | null> {
+  if (!Number.isInteger(primaryId) || !Number.isInteger(duplicateId) || primaryId === duplicateId) return null;
+  await ensureSchema();
+  const conn = await getPool().getConnection();
+  try {
+    // Both must exist and belong to this org.
+    const [check] = await conn.query<mysql.RowDataPacket[]>(
+      "SELECT id FROM crm_companies WHERE organization_id = ? AND id IN (?, ?)",
+      [orgId, primaryId, duplicateId]
+    );
+    if (check.length !== 2) return null;
+
+    await conn.beginTransaction();
+    const move = async (table: string, col = "company_id"): Promise<number> => {
+      const [res] = await conn.query<mysql.ResultSetHeader>(
+        `UPDATE ${table} SET ${col} = ? WHERE ${col} = ? AND organization_id = ?`,
+        [primaryId, duplicateId, orgId]
+      );
+      return res.affectedRows;
+    };
+
+    const contacts = await move("crm_contacts");
+    const deals = await move("crm_deals");
+    const activities = await move("crm_activities");
+    const quotes = await move("crm_quotes");
+    const tasks = await move("crm_tasks");
+    const meetings = await move("crm_meetings");
+    await move("crm_email_sends");
+    await move("crm_scheduled_emails");
+    await move("crm_sequence_enrollments");
+    await move("crm_leads", "converted_company_id");
+
+    // Tags: repoint what doesn't collide, then drop the loser's leftovers (a tag
+    // the survivor already carries) so nothing is orphaned by the delete below.
+    await conn.query(
+      "UPDATE IGNORE crm_entity_tags SET entity_id = ? WHERE organization_id = ? AND entity_type = 'company' AND entity_id = ?",
+      [primaryId, orgId, duplicateId]
+    );
+    await conn.query(
+      "DELETE FROM crm_entity_tags WHERE organization_id = ? AND entity_type = 'company' AND entity_id = ?",
+      [orgId, duplicateId]
+    );
+
+    // Fill blank fields on the survivor from the duplicate.
+    await conn.query(
+      `UPDATE crm_companies p JOIN crm_companies d ON d.id = ? AND d.organization_id = ?
+         SET p.industry = IF(p.industry = '', d.industry, p.industry),
+             p.city = IF(p.city = '', d.city, p.city),
+             p.website = IF(p.website = '', d.website, p.website),
+             p.account_manager = IF(p.account_manager = '', d.account_manager, p.account_manager),
+             p.legal_name = IF(p.legal_name = '', d.legal_name, p.legal_name),
+             p.phone = IF(p.phone = '', d.phone, p.phone),
+             p.email = IF(p.email = '', d.email, p.email),
+             p.country = IF(p.country = '', d.country, p.country),
+             p.address = IF(p.address = '', d.address, p.address),
+             p.vat_id = IF(p.vat_id = '', d.vat_id, p.vat_id),
+             p.employees = COALESCE(p.employees, d.employees),
+             p.annual_value = IF(p.annual_value = 0, d.annual_value, p.annual_value)
+       WHERE p.id = ? AND p.organization_id = ?`,
+      [duplicateId, orgId, primaryId, orgId]
+    );
+
+    await conn.query("DELETE FROM crm_companies WHERE id = ? AND organization_id = ?", [duplicateId, orgId]);
+    await conn.commit();
+    return { contacts, deals, activities, quotes, tasks, meetings };
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 // -------- bulk ops for leads & deals (org-scoped, capped, ?-bound like companies)
 function cleanIds(ids: number[]): number[] {
   return ids.filter((n) => Number.isInteger(n)).slice(0, 500);

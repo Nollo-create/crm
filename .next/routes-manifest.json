@@ -303,6 +303,12 @@
       "namedRegex": "^/deals(?:/)?$"
     },
     {
+      "page": "/duplicates",
+      "regex": "^/duplicates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/duplicates(?:/)?$"
+    },
+    {
       "page": "/emails",
       "regex": "^/emails(?:/)?$",
       "routeKeys": {},
