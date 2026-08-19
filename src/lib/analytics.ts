@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { STAGES, stage as stageOf, type StageId } from "@/lib/crm/pipeline";
 import {
@@ -64,8 +65,8 @@ function last12Months(): string[] {
 
 /** All CRM analytics in one pass — computed server-side, degrades to zeros if the
  *  DB is unreachable. Weighting + win rate use the canonical pipeline stages. */
-export async function getAnalytics(): Promise<AnalyticsData> {
-  const { organizationId: org } = await requireSession();
+const computeAnalytics = unstable_cache(
+  async (org: number): Promise<AnalyticsData> => {
   const [companies, dealStage, owners, forecastRows, leadStatus, leadSource, actType, act30, quoteStatus, wonMonth, actMonth, leadMonth, dealMonth] = await Promise.all([
     analyticsCompanies(org).catch(() => []),
     analyticsDealsByStage(org).catch(() => []),
@@ -168,4 +169,15 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     trends,
     topOpenDeals,
   };
+  },
+  ["crm-analytics"],
+  { revalidate: 60 }
+);
+
+/** Analytics for the caller's org. The heavy aggregate pass is cached for 60s
+ *  (keyed by org) — these dashboards don't need to be real-time, and a user
+ *  clicking across the five analytics tabs now shares one computation. */
+export async function getAnalytics(): Promise<AnalyticsData> {
+  const { organizationId: org } = await requireSession();
+  return computeAnalytics(org);
 }

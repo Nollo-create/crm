@@ -18,6 +18,13 @@ import { buildInvoiceOrderBy } from "@/lib/crm/invoices";
 
 const globalForDb = globalThis as unknown as { __cmsPool?: mysql.Pool; __crmSchema?: Promise<void>; __crmAuthSchema?: Promise<void> };
 
+// Cold-start gate: the build's commit count changes on every deploy, so a
+// process restart on the SAME build can't carry a schema change — skipping the
+// ~90-statement sweep there is always safe. A new build always re-runs it.
+// DB_SCHEMA_ALWAYS_VERIFY=1 forces the full sweep regardless (escape hatch).
+const SCHEMA_MARKER = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
+const SCHEMA_ALWAYS_VERIFY = process.env.DB_SCHEMA_ALWAYS_VERIFY === "1";
+
 export function getPool(): mysql.Pool {
   if (!globalForDb.__cmsPool) {
     globalForDb.__cmsPool = mysql.createPool({
@@ -27,7 +34,15 @@ export function getPool(): mysql.Pool {
       password: process.env.DB_PASSWORD || "",
       database: process.env.DB_NAME || "",
       waitForConnections: true,
-      connectionLimit: 5,
+      // Modest default (was 5); tune via DB_POOL_SIZE if the cPanel plan caps
+      // connections lower or you need more headroom under load.
+      connectionLimit: Math.max(1, Number(process.env.DB_POOL_SIZE) || 8),
+      maxIdle: Math.max(1, Number(process.env.DB_POOL_SIZE) || 8),
+      idleTimeout: 60_000,
+      // Keep pooled connections warm so we don't pay a reconnect on cold gaps.
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10_000,
+      queueLimit: 0,
       charset: "utf8mb4_general_ci",
     });
   }
@@ -69,10 +84,27 @@ async function ensureIndex(pool: mysql.Pool, table: string, indexName: string, c
   }
 }
 
+/** True if the schema for `key` was already brought up to date by this exact
+ *  build — lets a same-build restart skip the full sweep. Always creates the
+ *  tiny marker table first (one cheap statement). */
+async function schemaAlreadyCurrent(pool: mysql.Pool, key: string): Promise<boolean> {
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS crm_schema_meta (k VARCHAR(24) NOT NULL PRIMARY KEY, v VARCHAR(40) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+  );
+  if (SCHEMA_ALWAYS_VERIFY) return false;
+  const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT v FROM crm_schema_meta WHERE k = ? LIMIT 1", [key]);
+  return rows[0]?.v === SCHEMA_MARKER;
+}
+
+async function markSchemaCurrent(pool: mysql.Pool, key: string): Promise<void> {
+  await pool.query("INSERT INTO crm_schema_meta (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [key, SCHEMA_MARKER]);
+}
+
 export function ensureSchema(): Promise<void> {
   if (!globalForDb.__crmSchema) {
     globalForDb.__crmSchema = (async () => {
       const pool = getPool();
+      if (await schemaAlreadyCurrent(pool, "core")) return;
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_companies (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -320,6 +352,7 @@ export function ensureSchema(): Promise<void> {
       await ensureIndex(pool, "crm_activities", "idx_activity_deal", "deal_id");
       await ensureIndex(pool, "crm_activities", "idx_activity_contact", "contact_id");
       await ensureIndex(pool, "crm_leads", "idx_lead_created", "organization_id, created_at");
+      await markSchemaCurrent(pool, "core");
     })().catch((err) => {
       globalForDb.__crmSchema = undefined;
       throw err;
@@ -2573,6 +2606,7 @@ export function ensureAuthSchema(): Promise<void> {
   if (!globalForDb.__crmAuthSchema) {
     globalForDb.__crmAuthSchema = (async () => {
       const pool = getPool();
+      if (await schemaAlreadyCurrent(pool, "auth")) return;
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_organizations (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -2992,6 +3026,7 @@ export function ensureAuthSchema(): Promise<void> {
       `);
       // Link tracked sends back to a sequence enrollment (for stop-on-open).
       await ensureColumn(pool, "crm_email_sends", "enrollment_id", "enrollment_id BIGINT UNSIGNED NULL");
+      await markSchemaCurrent(pool, "auth");
     })().catch((err) => {
       globalForDb.__crmAuthSchema = undefined;
       throw err;
