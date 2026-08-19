@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { isGoalMetric, isValidMonth, monthBounds, shiftMonth, monthLabel, goalPct } from "./goals";
+import { isGoalMetric, isValidMonth, monthBounds, shiftMonth, monthLabel, goalPct, daysInMonth, monthElapsedPct } from "./goals";
+
+describe("daysInMonth", () => {
+  it("handles 31/30/28-day months", () => {
+    expect(daysInMonth("2026-08")).toBe(31);
+    expect(daysInMonth("2026-09")).toBe(30);
+    expect(daysInMonth("2026-02")).toBe(28);
+    expect(daysInMonth("2028-02")).toBe(29); // leap year
+  });
+});
+
+describe("monthElapsedPct", () => {
+  it("is 100 for past months and 0 for future months", () => {
+    expect(monthElapsedPct("2026-07", "2026-08-19")).toBe(100);
+    expect(monthElapsedPct("2026-09", "2026-08-19")).toBe(0);
+  });
+  it("scales by day within the current month", () => {
+    expect(monthElapsedPct("2026-08", "2026-08-01")).toBe(3); // 1/31
+    expect(monthElapsedPct("2026-08", "2026-08-31")).toBe(100); // 31/31
+    expect(monthElapsedPct("2026-06", "2026-06-15")).toBe(50); // 15/30
+  });
+});
 
 describe("goal metrics", () => {
   it("validates metric keys", () => {

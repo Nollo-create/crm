@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession, guardWrite } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/auth/audit";
-import { isGoalMetric, isValidMonth, monthBounds } from "@/lib/crm/goals";
+import { isGoalMetric, isValidMonth, monthBounds, shiftMonth } from "@/lib/crm/goals";
 import { listUsers, listGoals, upsertGoal, wonByOwner, newLeadsByOwner } from "@/lib/db";
 
 export interface MetricGoal {
@@ -90,4 +90,28 @@ export async function setGoalAction(input: { ownerUserId: number; metric: string
   await recordAudit(g.session, "goal_set", "goal", ownerUserId, `${input.metric} ${input.periodMonth} = ${target}`);
   revalidatePath("/goals");
   return {};
+}
+
+/** Copy every target from the previous month into `periodMonth` (upsert, so it
+ *  won't wipe targets already set for the month). Returns how many were copied. */
+export async function copyGoalsFromPreviousMonthAction(periodMonth: string): Promise<{ copied?: number; error?: string }> {
+  const g = await guardWrite();
+  if ("error" in g) return { error: g.error };
+  if (!isValidMonth(periodMonth)) return { error: "Invalid month." };
+  const { organizationId } = g.session;
+  const prev = shiftMonth(periodMonth, -1);
+  const prevGoals = await listGoals(organizationId, prev).catch(() => []);
+  if (prevGoals.length === 0) return { copied: 0 };
+  for (const goal of prevGoals) {
+    await upsertGoal(organizationId, {
+      ownerUserId: goal.owner_user_id,
+      metric: goal.metric,
+      periodMonth,
+      target: Number(goal.target_amount),
+      createdBy: g.session.email,
+    });
+  }
+  await recordAudit(g.session, "goals_copied", "goal", 0, `${prev} -> ${periodMonth} (${prevGoals.length})`);
+  revalidatePath("/goals");
+  return { copied: prevGoals.length };
 }

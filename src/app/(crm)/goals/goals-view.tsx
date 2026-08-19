@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Goal, ChevronLeft, ChevronRight, Trophy, TrendingUp, Users } from "lucide-react";
-import { goalsBoardAction, setGoalAction, type GoalsBoard, type MetricGoal } from "@/lib/actions/goals";
-import { shiftMonth, monthLabel, goalPct } from "@/lib/crm/goals";
+import { Goal, ChevronLeft, ChevronRight, Trophy, TrendingUp, Users, CopyPlus, Loader2 } from "lucide-react";
+import { goalsBoardAction, setGoalAction, copyGoalsFromPreviousMonthAction, type GoalsBoard, type MetricGoal } from "@/lib/actions/goals";
+import { shiftMonth, monthLabel, goalPct, monthElapsedPct } from "@/lib/crm/goals";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -57,6 +57,7 @@ export function GoalsView() {
   const canWrite = useCanWrite();
   const [period, setPeriod] = useState(currentMonth());
   const [board, setBoard] = useState<GoalsBoard | null>(null);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   function load(p: string) {
     setBoard(null);
@@ -69,8 +70,18 @@ export function GoalsView() {
     if (r.error) return toast(r.error, { tone: "error" });
     load(period);
   }
+  async function copyLastMonth() {
+    setCopyBusy(true);
+    const r = await copyGoalsFromPreviousMonthAction(period);
+    setCopyBusy(false);
+    if (r.error) return toast(r.error, { tone: "error" });
+    toast(r.copied ? `Copied ${r.copied} target${r.copied === 1 ? "" : "s"} from last month` : "No targets were set last month", { tone: r.copied ? "success" : "default" });
+    if (r.copied) load(period);
+  }
 
   const isThisMonth = period === currentMonth();
+  const elapsedPct = monthElapsedPct(period, new Date().toISOString().slice(0, 10));
+  const showPace = isThisMonth; // pace only makes sense for the month in progress
   const repsByRevenue = board ? [...board.reps].sort((a, b) => b.revenue.actual - a.revenue.actual) : [];
   const hasUnassigned = board && (board.unassigned.revenue > 0 || board.unassigned.dealsWon > 0 || board.unassigned.newLeads > 0);
 
@@ -81,10 +92,17 @@ export function GoalsView() {
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight"><Goal size={18} className="text-electric" /> Goals & Quotas</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Monthly targets and how the team is tracking against them.</p>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setPeriod((p) => shiftMonth(p, -1))} className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground" aria-label="Previous month"><ChevronLeft size={15} /></button>
-          <span className="min-w-[130px] text-center text-sm font-medium">{monthLabel(period)}</span>
-          <button onClick={() => setPeriod((p) => shiftMonth(p, 1))} disabled={isThisMonth} className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Next month"><ChevronRight size={15} /></button>
+        <div className="flex items-center gap-2">
+          {canWrite && (
+            <button onClick={copyLastMonth} disabled={copyBusy} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50" title="Copy last month's targets into this month">
+              {copyBusy ? <Loader2 size={12} className="animate-spin" /> : <CopyPlus size={12} />} Copy last month
+            </button>
+          )}
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPeriod((p) => shiftMonth(p, -1))} className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground" aria-label="Previous month"><ChevronLeft size={15} /></button>
+            <span className="min-w-[130px] text-center text-sm font-medium">{monthLabel(period)}</span>
+            <button onClick={() => setPeriod((p) => shiftMonth(p, 1))} disabled={isThisMonth} className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Next month"><ChevronRight size={15} /></button>
+          </div>
         </div>
       </div>
 
@@ -93,6 +111,7 @@ export function GoalsView() {
       ) : (
         <>
           {/* Team targets */}
+          {showPace && <p className="text-2xs text-muted-foreground">Pace check — {elapsedPct}% of {monthLabel(period)} elapsed. A goal is <span className="font-medium text-emerald">on track</span> when its progress is ahead of the month.</p>}
           <div className="grid gap-3 sm:grid-cols-3">
             {METRICS.map(({ key, metric, label, money, icon: Icon }) => {
               const g: MetricGoal = board.team[key];
@@ -102,8 +121,17 @@ export function GoalsView() {
                   <p className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground"><Icon size={12} /> {label}</p>
                   <p className="text-xl font-semibold tabular">{fmt(g.actual, money)}</p>
                   <Bar pct={pct} />
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xs text-muted-foreground">{g.target > 0 ? `${pct}% of goal` : "No goal set"}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-2xs">
+                      {g.target > 0 ? (
+                        <>
+                          <span className="text-muted-foreground">{pct}% of goal</span>
+                          {showPace && <span className={cn("ml-1 font-medium", pct >= elapsedPct ? "text-emerald" : "text-warning")}>· {pct >= elapsedPct ? "on track" : "behind"}</span>}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">No goal set</span>
+                      )}
+                    </span>
                     <span className="flex items-center gap-1 text-2xs text-muted-foreground">Goal <TargetInput value={g.target} money={money} disabled={!canWrite} onSave={(n) => save(0, metric, n)} /></span>
                   </div>
                 </Card>

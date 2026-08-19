@@ -52,3 +52,18 @@ export function goalPct(actual: number, target: number): number {
   if (target <= 0) return 0;
   return Math.max(0, Math.round((actual / target) * 100));
 }
+
+/** Number of days in a YYYY-MM period. */
+export function daysInMonth(periodMonth: string): number {
+  const [y, m] = periodMonth.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of the next month = last day of this one
+}
+
+/** How far through the month we are, 0–100. Past months are 100, future 0. */
+export function monthElapsedPct(periodMonth: string, todayYmd: string): number {
+  const todayMonth = todayYmd.slice(0, 7);
+  if (todayMonth > periodMonth) return 100;
+  if (todayMonth < periodMonth) return 0;
+  const day = Number(todayYmd.slice(8, 10));
+  return Math.max(0, Math.min(100, Math.round((day / daysInMonth(periodMonth)) * 100)));
+}
