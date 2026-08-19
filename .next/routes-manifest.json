@@ -161,6 +161,12 @@
       "namedRegex": "^/analytics/conversion(?:/)?$"
     },
     {
+      "page": "/analytics/email",
+      "regex": "^/analytics/email(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/analytics/email(?:/)?$"
+    },
+    {
       "page": "/analytics/forecast",
       "regex": "^/analytics/forecast(?:/)?$",
       "routeKeys": {},

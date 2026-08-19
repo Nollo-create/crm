@@ -7,7 +7,7 @@ import { requireSession, guardWrite } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { enforceAdminMfa } from "@/lib/auth/mfa-policy";
 import { recordAudit } from "@/lib/auth/audit";
-import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend } from "@/lib/db";
+import { getEmailSettings, upsertEmailSettings, addActivity, listEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate, createEmailSend, emailSendStats, emailSendsByRep, listRecentEmailSends } from "@/lib/db";
 import { encryptSecret, decryptSecret, isMfaCryptoConfigured } from "@/lib/auth/crypto";
 import { sendMail, type SmtpConfig } from "@/lib/email/send";
 import { buildEmailHtml } from "@/lib/crm/email-html";
@@ -295,4 +295,51 @@ export async function deleteEmailTemplateAction(id: number): Promise<{ error?: s
   await recordAudit(g.session, "email_template_delete", "email_template", id);
   revalidatePath("/settings/email-templates");
   return {};
+}
+
+// ---------------------------------------------------------- sent-email report
+
+export interface SentEmail {
+  id: number;
+  to: string;
+  subject: string;
+  sentBy: string;
+  sentAt: string;
+  openedAt: string | null;
+  openCount: number;
+  companyId: number | null;
+  companyName: string | null;
+}
+
+export interface EmailDashboard {
+  sent: { all: number; last30: number };
+  opened: { all: number; last30: number };
+  byRep: { rep: string; sent: number; opened: number }[];
+  recent: SentEmail[];
+}
+
+/** Read-only sent-email report (org-scoped). Any authenticated user. */
+export async function emailDashboardAction(): Promise<EmailDashboard> {
+  const { organizationId } = await requireSession();
+  const [stats, byRep, recentRows] = await Promise.all([
+    emailSendStats(organizationId).catch(() => ({ sentAll: 0, openedAll: 0, sent30: 0, opened30: 0 })),
+    emailSendsByRep(organizationId).catch(() => []),
+    listRecentEmailSends(organizationId, 30).catch(() => []),
+  ]);
+  return {
+    sent: { all: stats.sentAll, last30: stats.sent30 },
+    opened: { all: stats.openedAll, last30: stats.opened30 },
+    byRep,
+    recent: recentRows.map((r) => ({
+      id: r.id,
+      to: r.to_email,
+      subject: r.subject,
+      sentBy: r.sent_by,
+      sentAt: new Date(r.sent_at).toISOString(),
+      openedAt: r.opened_at ? new Date(r.opened_at).toISOString() : null,
+      openCount: r.open_count,
+      companyId: r.company_id,
+      companyName: r.company_name,
+    })),
+  };
 }

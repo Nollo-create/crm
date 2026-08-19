@@ -2605,6 +2605,62 @@ export async function markEmailOpened(token: string): Promise<OpenedSend | null>
   };
 }
 
+export interface EmailSendStats {
+  sentAll: number;
+  openedAll: number;
+  sent30: number;
+  opened30: number;
+}
+
+export async function emailSendStats(orgId: number): Promise<EmailSendStats> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT COUNT(*) AS sent_all,
+            COALESCE(SUM(opened_at IS NOT NULL), 0) AS opened_all,
+            COALESCE(SUM(sent_at >= (NOW() - INTERVAL 30 DAY)), 0) AS sent_30,
+            COALESCE(SUM(sent_at >= (NOW() - INTERVAL 30 DAY) AND opened_at IS NOT NULL), 0) AS opened_30
+       FROM crm_email_sends WHERE organization_id = ?`,
+    [orgId]
+  );
+  const r = rows[0] ?? {};
+  return { sentAll: Number(r.sent_all ?? 0), openedAll: Number(r.opened_all ?? 0), sent30: Number(r.sent_30 ?? 0), opened30: Number(r.opened_30 ?? 0) };
+}
+
+export async function emailSendsByRep(orgId: number): Promise<{ rep: string; sent: number; opened: number }[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT sent_by AS rep, COUNT(*) AS sent, COALESCE(SUM(opened_at IS NOT NULL), 0) AS opened
+       FROM crm_email_sends WHERE organization_id = ? GROUP BY sent_by ORDER BY sent DESC LIMIT 10`,
+    [orgId]
+  );
+  return rows.map((r) => ({ rep: String(r.rep ?? ""), sent: Number(r.sent ?? 0), opened: Number(r.opened ?? 0) }));
+}
+
+export interface RecentSendRow extends mysql.RowDataPacket {
+  id: number;
+  to_email: string;
+  subject: string;
+  sent_by: string;
+  sent_at: Date;
+  opened_at: Date | null;
+  open_count: number;
+  company_id: number | null;
+  company_name: string | null;
+}
+
+export async function listRecentEmailSends(orgId: number, limit = 25): Promise<RecentSendRow[]> {
+  await ensureAuthSchema();
+  await ensureSchema();
+  const [rows] = await getPool().query<RecentSendRow[]>(
+    `SELECT s.id, s.to_email, s.subject, s.sent_by, s.sent_at, s.opened_at, s.open_count, s.company_id, co.name AS company_name
+       FROM crm_email_sends s
+       LEFT JOIN crm_companies co ON co.id = s.company_id AND co.organization_id = s.organization_id
+      WHERE s.organization_id = ? ORDER BY s.id DESC LIMIT ?`,
+    [orgId, Math.min(Math.max(limit, 1), 100)]
+  );
+  return rows;
+}
+
 /** Force sign-out for the whole org — revoke every session except `keepId`
  *  (0 to revoke all). Returns how many were revoked. */
 export async function revokeAllOrgSessionsExcept(orgId: number, keepId: number): Promise<number> {

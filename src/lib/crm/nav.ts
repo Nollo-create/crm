@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   LayoutDashboard,
   Sun,
+  MailOpen,
   Building2,
   Users,
   Target,
@@ -116,6 +117,7 @@ export const crmNav: CrmNavGroup[] = [
       { label: "Revenue Forecast", href: "/analytics/forecast", icon: TrendingUp },
       { label: "Team Performance", href: "/analytics/team", icon: Users2 },
       { label: "Conversion", href: "/analytics/conversion", icon: BarChart3 },
+      { label: "Email Report", href: "/analytics/email", icon: MailOpen },
     ],
   },
   {
