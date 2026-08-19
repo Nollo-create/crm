@@ -27,6 +27,8 @@ export interface EmailSettingsView {
   fromName: string;
   fromEmail: string;
   hasPassword: boolean; // whether a password is stored (never returns the value)
+  imapHost: string;
+  imapPort: number;
 }
 
 export async function getEmailSettingsAction(): Promise<EmailSettingsView | null> {
@@ -45,6 +47,8 @@ export async function getEmailSettingsAction(): Promise<EmailSettingsView | null
     fromName: row?.from_name ?? "",
     fromEmail: row?.from_email ?? "",
     hasPassword: !!row?.password_enc,
+    imapHost: row?.imap_host ?? "",
+    imapPort: row?.imap_port ?? 993,
   };
 }
 
@@ -57,6 +61,8 @@ export interface EmailSettingsDTO {
   fromName?: string;
   fromEmail?: string;
   enabled?: boolean;
+  imapHost?: string;
+  imapPort?: number;
 }
 
 export async function saveEmailSettingsAction(input: EmailSettingsDTO): Promise<{ error?: string }> {
@@ -71,6 +77,8 @@ export async function saveEmailSettingsAction(input: EmailSettingsDTO): Promise<
     fromName: vString("From name", input.fromName, { max: 120 }),
     fromEmail: vEmail("From address", input.fromEmail),
     port: vInt("Port", input.port, { required: true, min: 1, max: 65535 }) ?? 587,
+    imapHost: vString("IMAP host", input.imapHost, { max: 190 }),
+    imapPort: vInt("IMAP port", input.imapPort, { min: 1, max: 65535 }) ?? 993,
   }));
   if (!v.ok) return { error: v.error };
   if (!v.value.fromEmail) return { error: "Enter the From address emails are sent from." };
@@ -96,6 +104,8 @@ export async function saveEmailSettingsAction(input: EmailSettingsDTO): Promise<
     fromName: v.value.fromName,
     fromEmail: v.value.fromEmail,
     enabled: !!input.enabled,
+    imapHost: v.value.imapHost,
+    imapPort: v.value.imapPort,
   });
   await recordAudit(session, "email_settings_update", "organization", session.organizationId, `${v.value.host}:${v.value.port}`);
   revalidatePath("/settings/email");

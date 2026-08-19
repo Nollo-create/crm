@@ -2277,6 +2277,18 @@ export function ensureAuthSchema(): Promise<void> {
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
       `);
+      // Incoming mail (IMAP) — reuses the SMTP username/password. Empty host = off.
+      await ensureColumn(pool, "crm_email_settings", "imap_host", "imap_host VARCHAR(190) NOT NULL DEFAULT ''");
+      await ensureColumn(pool, "crm_email_settings", "imap_port", "imap_port INT UNSIGNED NOT NULL DEFAULT 993");
+      // Per-org IMAP sync cursor (last processed UID + uidvalidity).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS crm_email_sync (
+          organization_id INT UNSIGNED NOT NULL PRIMARY KEY,
+          last_uid BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          uid_validity BIGINT UNSIGNED NOT NULL DEFAULT 0,
+          last_synced_at TIMESTAMP NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+      `);
       // Reusable email templates (subject + body with {{name}}/{{company}} vars).
       await pool.query(`
         CREATE TABLE IF NOT EXISTS crm_email_templates (
@@ -2541,6 +2553,8 @@ export interface EmailSettingsRow extends mysql.RowDataPacket {
   from_name: string;
   from_email: string;
   enabled: number;
+  imap_host: string;
+  imap_port: number;
   updated_at: Date;
 }
 
@@ -2554,6 +2568,8 @@ export interface EmailSettingsInput {
   fromName: string;
   fromEmail: string;
   enabled: boolean;
+  imapHost: string;
+  imapPort: number;
 }
 
 export async function getEmailSettings(orgId: number): Promise<EmailSettingsRow | null> {
@@ -2571,10 +2587,11 @@ export async function upsertEmailSettings(orgId: number, s: EmailSettingsInput):
   await ensureAuthSchema();
   const pwdClause = s.passwordEnc === null ? "" : ", password_enc = VALUES(password_enc)";
   await getPool().query(
-    `INSERT INTO crm_email_settings (organization_id, host, port, secure, username, password_enc, from_name, from_email, enabled)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO crm_email_settings (organization_id, host, port, secure, username, password_enc, from_name, from_email, enabled, imap_host, imap_port)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE host = VALUES(host), port = VALUES(port), secure = VALUES(secure),
-       username = VALUES(username)${pwdClause}, from_name = VALUES(from_name), from_email = VALUES(from_email), enabled = VALUES(enabled)`,
+       username = VALUES(username)${pwdClause}, from_name = VALUES(from_name), from_email = VALUES(from_email), enabled = VALUES(enabled),
+       imap_host = VALUES(imap_host), imap_port = VALUES(imap_port)`,
     [
       orgId,
       s.host.slice(0, 190),
@@ -2585,6 +2602,8 @@ export async function upsertEmailSettings(orgId: number, s: EmailSettingsInput):
       s.fromName.slice(0, 120),
       s.fromEmail.slice(0, 190),
       s.enabled ? 1 : 0,
+      s.imapHost.slice(0, 190),
+      s.imapPort,
     ]
   );
 }
@@ -2956,6 +2975,70 @@ export async function listContactEnrollments(orgId: number, contactId: number): 
     [orgId, contactId]
   );
   return rows.map((r) => ({ id: r.id, sequenceId: r.sequence_id, sequenceName: String(r.sequence_name ?? ""), status: r.status, currentStep: r.current_step }));
+}
+
+// ---------------------------------------------------------- inbox sync (IMAP)
+
+export interface ContactMatch {
+  id: number;
+  name: string;
+  companyId: number;
+  companyName: string;
+}
+
+export async function getContactByEmail(orgId: number, email: string): Promise<ContactMatch | null> {
+  await ensureSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    `SELECT ct.id, ct.name, ct.company_id, co.name AS company_name
+       FROM crm_contacts ct LEFT JOIN crm_companies co ON co.id = ct.company_id AND co.organization_id = ct.organization_id
+      WHERE ct.organization_id = ? AND LOWER(ct.email) = LOWER(?) LIMIT 1`,
+    [orgId, email]
+  );
+  const r = rows[0];
+  return r ? { id: r.id, name: String(r.name ?? ""), companyId: r.company_id, companyName: String(r.company_name ?? "") } : null;
+}
+
+/** Stop every active sequence enrollment for a contact (they replied). */
+export async function stopContactEnrollments(orgId: number, contactId: number): Promise<number> {
+  await ensureAuthSchema();
+  const [res] = await getPool().query<mysql.ResultSetHeader>(
+    "UPDATE crm_sequence_enrollments SET status = 'stopped' WHERE organization_id = ? AND contact_id = ? AND status = 'active'",
+    [orgId, contactId]
+  );
+  return res.affectedRows ?? 0;
+}
+
+export async function getEmailSyncState(orgId: number): Promise<{ lastUid: number; uidValidity: number }> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>("SELECT last_uid, uid_validity FROM crm_email_sync WHERE organization_id = ? LIMIT 1", [orgId]);
+  const r = rows[0];
+  return { lastUid: Number(r?.last_uid ?? 0), uidValidity: Number(r?.uid_validity ?? 0) };
+}
+
+export async function setEmailSyncState(orgId: number, lastUid: number, uidValidity: number): Promise<void> {
+  await ensureAuthSchema();
+  await getPool().query(
+    `INSERT INTO crm_email_sync (organization_id, last_uid, uid_validity, last_synced_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE last_uid = VALUES(last_uid), uid_validity = VALUES(uid_validity), last_synced_at = CURRENT_TIMESTAMP`,
+    [orgId, lastUid, uidValidity]
+  );
+}
+
+export interface ImapOrgRow extends mysql.RowDataPacket {
+  organization_id: number;
+  imap_host: string;
+  imap_port: number;
+  username: string;
+  password_enc: string;
+}
+
+/** Orgs with an enabled mailbox that also have IMAP configured. */
+export async function orgsWithImap(): Promise<ImapOrgRow[]> {
+  await ensureAuthSchema();
+  const [rows] = await getPool().query<ImapOrgRow[]>(
+    "SELECT organization_id, imap_host, imap_port, username, password_enc FROM crm_email_settings WHERE imap_host <> '' AND enabled = 1 LIMIT 50"
+  );
+  return rows;
 }
 
 /** Force sign-out for the whole org — revoke every session except `keepId`

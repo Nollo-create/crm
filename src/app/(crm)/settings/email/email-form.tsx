@@ -18,6 +18,8 @@ export function EmailForm({ data }: { data: EmailSettingsView }) {
   const [fromName, setFromName] = useState(data.fromName);
   const [fromEmail, setFromEmail] = useState(data.fromEmail);
   const [enabled, setEnabled] = useState(data.enabled);
+  const [imapHost, setImapHost] = useState(data.imapHost);
+  const [imapPort, setImapPort] = useState(String(data.imapPort || 993));
   const [busy, setBusy] = useState(false);
 
   const [testTo, setTestTo] = useState(data.fromEmail);
@@ -26,7 +28,7 @@ export function EmailForm({ data }: { data: EmailSettingsView }) {
 
   async function save() {
     setBusy(true);
-    const r = await saveEmailSettingsAction({ host, port: Number(port), secure, username, password, fromName, fromEmail, enabled });
+    const r = await saveEmailSettingsAction({ host, port: Number(port), secure, username, password, fromName, fromEmail, enabled, imapHost, imapPort: Number(imapPort) });
     setBusy(false);
     if (r.error) return toast(r.error, { tone: "error" });
     if (password) setHasPassword(true);
@@ -96,6 +98,22 @@ export function EmailForm({ data }: { data: EmailSettingsView }) {
             Use implicit TLS (port 465). Leave off for STARTTLS (587).
           </label>
         </div>
+
+        <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
+          <div className="sm:col-span-3">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Incoming mail (IMAP) — optional</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">Turn on inbox sync so replies from contacts land on their timeline and stop their sequences. Uses the same username &amp; password (SSL, usually port 993). Leave the host blank to keep it off.</p>
+          </div>
+          <label className="text-2xs uppercase tracking-wide text-muted-foreground sm:col-span-2">
+            IMAP host
+            <Input value={imapHost} onChange={(e) => setImapHost(e.target.value)} placeholder="imap.gmail.com" className="mt-1" autoComplete="off" />
+          </label>
+          <label className="text-2xs uppercase tracking-wide text-muted-foreground">
+            IMAP port
+            <Input inputMode="numeric" value={imapPort} onChange={(e) => setImapPort(e.target.value.replace(/[^0-9]/g, ""))} placeholder="993" className="mt-1" />
+          </label>
+        </div>
+
         <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3">
           <label className="flex cursor-pointer items-center gap-1.5 text-sm">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4 accent-electric" />

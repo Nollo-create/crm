@@ -2,7 +2,7 @@
   "version": 1,
   "config": {
     "env": {
-      "NEXT_PUBLIC_APP_VERSION": "120"
+      "NEXT_PUBLIC_APP_VERSION": "121"
     },
     "webpack": null,
     "eslint": {
